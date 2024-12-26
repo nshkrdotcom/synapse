@@ -5,6 +5,17 @@ import sys
 from datetime import datetime
 from json import JSONDecodeError
 
+
+
+
+
+
+from axon_python.agents.example_agent import agent as example_agent
+ 
+
+
+
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
@@ -17,10 +28,20 @@ from pydantic_ai.result import RunResult, Usage
 
 from .agents.example_agent import agent as example_agent
 
+
+
+import asyncio
+from typing import AsyncIterator
+from .agents.example_agent import agent as example_agent # , chat_agent
+
+
+
 app = FastAPI(title='Axon Python Agent Wrapper')
 
 # Global dictionary to hold agent instances
+# Agent Registry (In a real app, consider using a more robust solution)
 agent_instances: Dict[str, Agent] = {"example_agent": example_agent}
+
 # Helper functions
 def _resolve_model_name(model_name: str) -> str:
     return f"openai:{model_name}"
@@ -154,6 +175,10 @@ async def run_agent_sync(agent_id: str, request_data: dict):
             usage_limits=request_data.get("usage_limits"),
             infer_name=False
         )
+
+        # Log the successful run
+        logger.info(f"Agent {agent_id} completed run_sync successfully")
+
         return JSONResponse(content={
             "result": to_jsonable_python(result.data),
             "usage": to_jsonable_python(result.usage)
@@ -176,8 +201,79 @@ async def log_message(agent_id: str, log_entry: LogEntry):
     print(f"[{log_entry.timestamp}] {agent_id} - {log_entry.level}: {log_entry.message}")
     return JSONResponse({"status": "success"})
 
+# Error handler for generic exceptions
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"An unexpected error occurred: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "error_type": exc.__class__.__name__,
+            "message": str(exc),
+        },
+    )
+    
+ 
+async def event_stream(result: AsyncIterator):
+    try:
+        async for event in result:
+            yield f"data: {json.dumps(to_jsonable_python(event))}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-# ... (streaming endpoint, etc.)
+@app.post("/agents/{agent_id}/run_sync")
+async def run_agent_sync(agent_id: str, request_data: dict):
+    if agent_id not in agent_instances:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent = agent_instances[agent_id]
+
+    try:
+        result = agent.run_sync(
+            request_data["prompt"],
+            message_history=request_data.get("message_history"),
+            model_settings=request_data.get("model_settings"),
+            usage_limits=request_data.get("usage_limits"),
+            infer_name=False
+        )
+        return JSONResponse(content={
+            "result": to_jsonable_python(result.data),
+            "usage": to_jsonable_python(result.usage)
+        })
+    except ValidationError as e:
+        logger.error(f"Agent {agent_id} encountered a validation error: {e.errors()}")
+        raise HTTPException(status_code=400, detail=e.errors())
+    except UnexpectedModelBehavior as e:
+        logger.error(f"Agent {agent_id} encountered an unexpected model behavior: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected model behavior: {e}")
+    except Exception as e:
+        logger.exception(f"Agent {agent_id} encountered an unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/agents/{agent_id}/run_stream")
+async def run_agent_stream(agent_id: str, request_data: dict):
+    if agent_id not in agent_instances:
+        return PlainTextResponse("Agent not found", status_code=404)
+
+    agent = agent_instances[agent_id]
+
+    try:
+        result = agent.run_stream(
+            request_data["prompt"],
+            message_history=request_data.get("message_history"),
+            model_settings=request_data.get("model_settings"),
+            usage_limits=request_data.get("usage_limits"),
+            infer_name=False
+        )
+
+        return StreamingResponse(event_stream(result), media_type="text/event-stream")
+
+    except Exception as e:
+        logger.exception(f"Agent {agent_id} encountered an error during streaming: {e}")
+        return PlainTextResponse(f"Error during streaming: {e}", status_code=500)
+ 
+
 
 def start_fastapi(port: int):
     uvicorn.run(app, host="0.0.0.0", port=port)

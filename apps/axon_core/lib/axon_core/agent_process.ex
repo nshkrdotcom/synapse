@@ -29,35 +29,24 @@ defmodule AxonCore.AgentProcess do
     )
   end
 
+  @doc """
+  Returns the PID of the agent process associated with the given agent name.
+  """
+  def pid(agent_name) when is_binary(agent_name) do
+    case :pg.get_members(agent_name) do
+      [] ->
+        nil
+
+      [pid | _] ->
+        pid
+    end
+  end
 
   def get_free_port do
     {:ok, socket} = :gen_tcp.listen(0, [:binary, packet: :raw, reuseaddr: true, active: false])
     {_, port} = :inet.sockname(socket)
     :gen_tcp.close(socket)
     port
-  end
-
-
-  @doc """
-  Initializes the agent process.
-
-  Starts the Python agent process using `Port.open/2`.
-  """
-  @impl true
-  def init(state) do
-    # Start the Python agent process using Ports
-    # Pass configuration as environment variables or command-line arguments
-    port =
-      Port.open(
-        {:spawn_executable, "./python_agent_runner.sh"},
-        [
-          {:args, [state.python_module, Integer.to_string(state.port), state.model |> inspect()]}
-          # this is necessary so that poetry can be found
-          | Enum.into(state.extra_env, [{:cd, "./python_agents"}])
-        ]
-      )
-
-    {:ok, %{state | port: port}}
   end
 
   @doc """
@@ -75,6 +64,67 @@ defmodule AxonCore.AgentProcess do
   def send_message(agent_name, message) do
     GenServer.call(agent_name, {:send_message, message}, @default_timeout)
   end
+
+  @doc """
+  Initializes the agent process.
+
+  Starts the Python agent process using `Port.open/2`.
+  """
+  # @impl true
+  # def init(state) do
+  #   # Start the Python agent process using Ports
+  #   # Pass configuration as environment variables or command-line arguments
+  #   port =
+  #     Port.open(
+  #       {:spawn_executable, "./python_agent_runner.sh"},
+  #       [
+  #         {:args, [state.python_module, Integer.to_string(state.port), state.model |> inspect()]}
+  #         # this is necessary so that poetry can be found
+  #         | Enum.into(state.extra_env, [{:cd, "./python_agents"}])
+  #       ]
+  #     )
+
+  #   {:ok, %{state | port: port}}
+  # end
+  @impl true
+  def init(state) do
+    # Start the Python agent process using Ports
+    # Pass configuration as environment variables or command-line arguments
+    port = get_free_port()
+
+    python_command =
+      if System.get_env("PYTHON_EXEC") != nil do
+        System.get_env("PYTHON_EXEC")
+      else
+        "python"
+      end
+
+    {:ok, _} = Application.ensure_all_started(:os_mon)
+    spawn_port = "#{python_command} -u -m axon_python.agent_wrapper"
+
+    python_process =
+      Port.open(
+        {:spawn_executable, spawn_port},
+        [
+          {:args,
+           [
+             state.python_module || raise("--python_module is required"),
+             Integer.to_string(port),
+             state.model || raise("--model is required")
+           ]},
+          {:cd, "apps/axon_python/src"},
+          {:env, ["PYTHONPATH=./", "AXON_PYTHON_AGENT_MODEL=#{state.model}" | state.extra_env]},
+          :binary,
+          :use_stdio,
+          :stderr_to_stdout,
+          :hide
+        ]
+      )
+
+    # Store the port and python process in the state
+    {:ok, %{state | port: port, python_process: python_process}}
+  end
+
 
 
 
@@ -144,6 +194,105 @@ defmodule AxonCore.AgentProcess do
         {:reply, {:error, reason}, state}
     end
   end
+
+
+  @doc """
+  Handles incoming messages from the Python agent.
+
+  This is a placeholder for handling different types of messages,
+  including streamed data and log messages.
+  """
+  @impl true
+  def handle_info({:http_response, request_id, status_code, headers, body}, state) do
+    # Find the original request data based on the request_id
+    case Map.fetch(state.requests, request_id) do
+      {:ok, {original_call_type, original_from, original_request}} ->
+        case original_call_type do
+          :run_sync ->
+            # Handle the response for a synchronous run
+            case process_response(response) do
+              {:ok, result} ->
+                GenServer.reply(original_from, {:ok, result})
+                {:noreply, Map.delete(state, :requests)}
+
+              {:error, reason} ->
+                GenServer.reply(original_from, {:error, reason})
+                {:noreply, Map.delete(state, :requests)}
+            end
+
+          :run_stream ->
+            # Handle streamed responses
+            case status_code do
+              200 ->
+                # Process the streamed chunk
+                case JSONCodec.decode(body) do
+                  {:ok, %{"status" => "chunk", "data" => chunk}} ->
+                    # Send the chunk to the caller
+                    send(original_from, {:stream_chunk, chunk})
+                    # Schedule the next poll
+                    Process.send_after(self(), {:poll_stream, request_id}, @poll_interval)
+                    {:noreply, state}
+
+                  {:ok, %{"status" => "complete"}} ->
+                    # Stream has completed, send the final usage info if available
+                    usage = Map.get(JSONCodec.decode(body), "usage")
+                    GenServer.reply(original_from, {:ok, usage})
+                    {:noreply, Map.delete(state, :requests)}
+
+                  {:error, reason} ->
+                    # Handle decoding error
+                    GenServer.reply(original_from, {:error, reason})
+                    {:noreply, Map.delete(state, :requests)}
+                end
+
+              _ ->
+                # Handle other HTTP status codes (errors)
+                {:reply, {:error, "Unexpected HTTP status: #{status_code}"}, Map.delete(state, :requests)}
+            end
+
+          :log ->
+            # Handle log messages
+            case JSONCodec.decode(body) do
+              {:ok, log_entry} ->
+                Logger.info("Agent #{state.name} (log): #{inspect(log_entry)}")
+                {:noreply, state}
+
+              {:error, reason} ->
+                Logger.error("Error decoding log message from agent #{state.name}: #{reason}")
+                {:noreply, state}
+            end
+        end
+
+      :error ->
+        Logger.error("Received HTTP response for unknown request ID: #{request_id}")
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:poll_stream, request_id}, state) do
+    # Poll the Python agent for more streamed data
+    # ... (Implementation depends on how you design the streaming API in Python)
+    # ... (e.g., send an HTTP GET request to a `/stream` endpoint with a request_id)
+
+    case HTTPClient.get("http://localhost:#{state.port}/stream/#{request_id}") do
+      {:ok, response} ->
+        # Process the streamed chunk (similar to handle_info with :run_stream)
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.error("Error while polling for streamed data: #{reason}")
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(_msg, state) do
+    Logger.warn("Agent process received unexpected message: #{inspect(_msg)}")
+    {:noreply, state}
+  end
+
+
+
+
 
   # @impl true
   # def handle_call({:send_message, message}, _from, state) do
