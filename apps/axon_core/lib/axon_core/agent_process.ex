@@ -16,15 +16,15 @@ defmodule AxonCore.AgentProcess do
         extra_env: extra_env \\ []
       ) do
     GenServer.start_link(__MODULE__, %{
-        python_module: python_module,
-        model: model,
-        port: port,
-        name: name,
-        extra_env: extra_env,
-        requests: %{},
-        streams: %{}
-      },
-      name: name
+      python_module: python_module,
+      model: model,
+      port: port,
+      name: name,
+      extra_env: extra_env,
+      requests: %{},
+      streams: %{}
+    },
+    name: name
     )
   end
 
@@ -137,23 +137,23 @@ defmodule AxonCore.AgentProcess do
         ]
       )
 
-      result_schema =
-        case opts[:result_type] do
-          nil ->
-            nil
+    result_schema =
+      case opts[:result_type] do
+        nil ->
+          nil
 
-          result_type ->
-            SchemaUtils.elixir_to_json_schema(result_type)
-        end
+        result_type ->
+          SchemaUtils.elixir_to_json_schema(result_type)
+      end
 
-      initial_state = %{
-        state
-        | port: port,
-          python_process: python_process,
-          result_schema: result_schema
-      }
+    initial_state = %{
+      state
+      | port: port,
+        python_process: python_process,
+        result_schema: result_schema
+    }
 
-      {:ok, initial_state}
+    {:ok, initial_state}
   end
 
   @impl true
@@ -499,11 +499,11 @@ defmodule AxonCore.AgentProcess do
     with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
       # Process the response
       {:reply, {:ok, request_id},
-      Map.put(
-        state,
-        :requests,
-        Map.put(state.requests, request_id, {:run_stream, from, request, response})
-      )}
+       Map.put(
+         state,
+         :requests,
+         Map.put(state.requests, request_id, {:run_stream, from, request, response})
+       )}
     else
       {:error, reason} ->
         # Handle error, potentially restart the Python process using the supervisor
@@ -786,10 +786,10 @@ defmodule AxonCore.AgentProcess do
             case SchemaUtils.validate(state.result_schema, result) do
               :ok ->
                 {:ok,
-                result,
-                usage,
-                messages, ## ??
-                }
+                 result,
+                 usage,
+                 messages}
+
               {:error, reason} ->
                 Logger.error("Result validation failed: #{inspect(reason)}")
                 {:error, :result_validation_failed, reason}
@@ -801,9 +801,10 @@ defmodule AxonCore.AgentProcess do
               {:error, "Error decoding response: #{inspect(e)}"}
           end
         end
-    %{status_code: status_code, body: body} ->
+      %{status_code: status_code, body: body} ->
         handle_error_response(status_code, body)
 
+    end
   end
 
   defp process_tool_response(response) do
@@ -865,7 +866,7 @@ defmodule AxonCore.AgentProcess do
 
         # "ModelRetry" ->
         "UnexpectedModelBehavior" ->
-            # Handle model retry request
+          # Handle model retry request
           {:error, :model_retry, message}
 
         _ ->
@@ -882,6 +883,7 @@ defmodule AxonCore.AgentProcess do
       {:error, "HTTP error: #{status_code}", body}
     end
   end
+
 
   defp handle_error(state, reason, from) do
     # Implement your error handling logic here
