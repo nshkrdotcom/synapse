@@ -18,8 +18,18 @@ defmodule Axon do
       AxonWeb.Endpoint,
       # Start a worker by calling: Axon.Worker.start_link(arg)
       # {Axon.Worker, arg}
-      {Axon.Agent, python_module: "location_agent", model: "openai:gpt-4o", name: "python_agent_1"},
-      {Axon.Agent, python_module: "example_agent", model: "openai:gpt-4o", name: "python_agent_2"}
+      # {Axon.Agent, python_module: "location_agent", model: "openai:gpt-4o", name: "python_agent_1"},
+      # {Axon.Agent, python_module: "example_agent", model: "openai:gpt-4o", name: "python_agent_2"}
+      {Axon.Agent,
+        python_module: "agents.example_agent",
+        model: "openai:gpt-4o",
+        name: "example_agent"},
+      {Axon.Agent,
+       python_module: "agents.bank_support_agent",
+       model: "openai:gpt-4o",
+       name: "bank_support_agent"}
+
+
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

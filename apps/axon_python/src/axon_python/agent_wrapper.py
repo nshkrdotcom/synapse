@@ -1,9 +1,12 @@
  
 import asyncio
 
+import importlib
+import inspect
 import json
 import logging
 import os
+from platform import python_branch
 import sys
 from datetime import datetime
 from json import JSONDecodeError
@@ -20,6 +23,7 @@ from axon_python.agents.example_agent import agent as example_agent
 
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 import uvicorn
+import grpc
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError, create_model
@@ -27,6 +31,17 @@ from pydantic_core import to_jsonable_python
 
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.message import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.result import RunResult, Usage
 
 
@@ -42,6 +57,11 @@ from .agents.bank_support_agent import support_agent
 
 from .agents.example_agent import agent as example_agent
 from .agents.example_agent import agent as example_agent # , chat_agent
+
+
+# Import generated gRPC stubs
+from .protos import axon_pb2, axon_pb2_grpc
+
 
 app = FastAPI(title='Axon Python Agent Wrapper')
 
@@ -154,13 +174,20 @@ async def create_agent(request: Request):
         tools = _resolve_tools(data.get("tools", []))
         result_type = _resolve_result_type(data.get("result_type", {}))
 
-        agent = Agent(
-            model=model,
-            system_prompt=system_prompt,
-            tools=tools,
-            result_type=result_type,
-            # Add other agent parameters as needed
-        )
+        # agent = Agent(
+        #     model=model,
+        #     system_prompt=system_prompt,
+        #     tools=tools,
+        #     result_type=result_type,
+        #     # Add other agent parameters as needed
+        # )
+
+        # Dynamically import the agent module based on the provided name
+        module_name = f"axon_python.agents.{data['agent_module']}"
+        agent_module = importlib.import_module(module_name)
+
+        # Assuming each agent module has an 'agent' attribute which is an instance of pydantic_ai.Agent
+        agent = agent_module.agent
 
         agent_instances[agent_id] = agent
 
@@ -307,7 +334,8 @@ async def run_agent_sync(agent_id: str, request_data: dict):
         )
         return JSONResponse(content={
             "result": to_jsonable_python(result.data),
-            "usage": to_jsonable_python(result.usage)
+            "usage": to_jsonable_python(result.usage),
+            "messages": to_jsonable_python(result.messages) # Assuming result.messages is a list of messages
         })
     except ValidationError as e:
         logger.error(f"Agent {agent_id} encountered a validation error: {e.errors()}")
@@ -329,29 +357,47 @@ async def run_and_stream(agent: Agent, request_data: dict) -> AsyncIterator[str]
         infer_name=False
     ) as result:
         try:
-            async for response_part in result.stream_text():
-                # Use a structured format for sending chunks
-                chunk = {
-                    "status": "chunk",
-                    "data": response_part
-                }
-                yield json.dumps(to_jsonable_python(chunk))
-
-            # Send a completion message with usage info
-            final_result = {
-                "status": "complete",
-                "result": result.data,
-                "usage": result.usage()
-            }
-            yield json.dumps(to_jsonable_python(final_result))
+            async for text in result.stream_text():
+                yield json.dumps(to_jsonable_python({"data": text})) # Stream text chunks
         except Exception as e:
-            # Handle any errors that occur during streaming
-            error_message = {
-                "status": "error",
-                "error_type": e.__class__.__name__,
-                "message": str(e)
-            }
-            yield json.dumps(error_message)
+            logger.exception(f"Error during streaming: {e}")
+            yield json.dumps({"error": str(e)})
+
+            
+
+# async def run_and_stream(agent: Agent, request_data: dict) -> AsyncIterator[str]:
+#     """Run an agent and stream the response."""
+#     async with agent.run_stream(
+#         request_data["prompt"],
+#         message_history=request_data.get("message_history"),
+#         model_settings=request_data.get("model_settings"),
+#         usage_limits=request_data.get("usage_limits"),
+#         infer_name=False
+#     ) as result:
+#         try:
+#             async for response_part in result.stream_text():
+#                 # Use a structured format for sending chunks
+#                 chunk = {
+#                     "status": "chunk",
+#                     "data": response_part
+#                 }
+#                 yield json.dumps(to_jsonable_python(chunk))
+
+#             # Send a completion message with usage info
+#             final_result = {
+#                 "status": "complete",
+#                 "result": result.data,
+#                 "usage": result.usage()
+#             }
+#             yield json.dumps(to_jsonable_python(final_result))
+#         except Exception as e:
+#             # Handle any errors that occur during streaming
+#             error_message = {
+#                 "status": "error",
+#                 "error_type": e.__class__.__name__,
+#                 "message": str(e)
+#             }
+#             yield json.dumps(error_message)
 
 @app.post("/agents/{agent_id}/run_stream")
 async def run_agent_stream(agent_id: str, request_data: dict):
@@ -391,6 +437,325 @@ async def crash_agent(agent_id: str):
     os._exit(1)
 
 
+
+
+
+
+
+
+
+
+# class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
+#     def __init__(self, agent_instances: dict[str, Agent]):
+#         self.agent_instances = agent_instances
+
+#     def RunSync(self, request, context):
+#         agent_id = request.agent_id
+#         if agent_id not in self.agent_instances:
+#             context.abort(grpc.StatusCode.NOT_FOUND, f"Agent '{agent_id}' not found")
+
+#         agent = self.agent_instances[agent_id]
+#         prompt = request.prompt
+#         message_history = [self._convert_message_to_pydantic_ai(msg) for msg in request.message_history]
+
+#         # Execute the agent synchronously and get the result
+#         try:
+#             result = agent.run_sync(prompt, message_history=message_history)
+#             # Convert the result to a protobuf message
+#             return axon_pb2.RunSyncResponse(
+#                 result=json.dumps(result.data),
+#                 usage=axon_pb2.Usage(
+#                     requests=result.usage.requests,
+#                     request_tokens=result.usage.request_tokens,
+#                     response_tokens=result.usage.response_tokens,
+#                     total_tokens=result.usage.total_tokens
+#                     # Convert details as needed
+#                 ),
+#                 messages=[_convert_pydantic_ai_message_to_protobuf(msg) for msg in result.messages]
+#             )
+#         except Exception as e:
+#             context.abort(grpc.StatusCode.UNKNOWN, f"Error during agent execution: {e}")
+
+#     def RunStream(self, request, context):
+#         agent_id = request.agent_id
+#         if agent_id not in self.agent_instances:
+#             context.abort(grpc.StatusCode.NOT_FOUND, f"Agent '{agent_id}' not found")
+#             return
+
+#         agent = self.agent_instances[agent_id]
+#         prompt = request.prompt
+#         message_history = [self._convert_message_to_pydantic_ai(msg) for msg in request.message_history]
+
+#         try:
+#             async for chunk in agent.run_stream(prompt, message_history=message_history):
+#                 # Convert each chunk to a RunResponseChunk message
+#                 yield axon_pb2.RunResponseChunk(data=json.dumps(chunk).encode('utf-8'))
+#         except Exception as e:
+#             logger.exception(f"Error during streaming for agent {agent_id}: {e}")
+#             context.abort(grpc.StatusCode.UNKNOWN, f"Error during streaming: {e}")
+#             return
+
+#     def _convert_message_to_pydantic_ai(self, msg):
+#         # Convert a gRPC ModelMessage to a pydantic-ai ModelMessage
+#         # Convert a gRPC ModelMessage to a pydantic-ai ModelMessage or a compatible format
+#         parts = []
+#         for part in msg.parts:
+#             if part.HasField('system_prompt_part'):
+#                 parts.append(
+#                     SystemPromptPart(content=part.system_prompt_part.content, part_kind='system-prompt')
+#                 )
+#             elif part.HasField('user_prompt_part'):
+#                 parts.append(
+#                     UserPromptPart(
+#                         content=part.user_prompt_part.content,
+#                         timestamp=Timestamp(seconds=part.user_prompt_part.timestamp),
+#                         part_kind='user-prompt'
+#                     )
+#                 )
+#             elif part.HasField('tool_return_part'):
+#                 parts.append(
+#                     ToolReturnPart(
+#                         tool_name=part.tool_return_part.tool_name,
+#                         content=part.tool_return_part.content,
+#                         tool_call_id=part.tool_return_part.tool_call_id,
+#                         part_kind='tool-return'
+#                     )
+#                 )
+#             elif part.HasField('retry_prompt_part'):
+#                 parts.append(
+#                     RetryPromptPart(
+#                         content=part.retry_prompt_part.content,
+#                         tool_name=part.retry_prompt_part.tool_name,
+#                         tool_call_id=part.retry_prompt_part.tool_call_id,
+#                         part_kind='retry-prompt'
+#                     )
+#                 )
+#             elif part.HasField('text_part'):
+#                 parts.append(
+#                     TextPart(content=part.text_part.content, part_kind='text')
+#                 )
+#             elif part.HasField('tool_call_part'):
+#                 parts.append(
+#                     ToolCallPart(
+#                         tool_name=part.tool_call_part.tool_name,
+#                         args=part.tool_call_part.args,  # Assuming this is already a JSON string
+#                         tool_call_id=part.tool_call_part.tool_call_id,
+#                         part_kind='tool-call'
+#                     )
+#                 )
+
+#         # Determine the kind of message
+#         kind = 'request' if msg.kind == axon_pb2.ModelMessage.REQUEST else 'response'
+
+#         # Create and return the appropriate ModelMessage
+#         if kind == 'request':
+#             return ModelRequest(parts=parts, kind=kind)
+#         else:  # kind == 'response'
+#             return ModelResponse(parts=parts, timestamp=Timestamp(seconds=msg.timestamp), kind=kind)
+
+# def serve():
+#     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+#     axon_pb2_grpc.add_AgentServiceServicer_to_server(AgentServicer(agent_instances), server)
+#     server.add_insecure_port('[::]:50051')  # Specify the port your agent should listen on
+#     server.start()
+#     server.wait_for_termination()
+
+
+
+
+
+
+
+class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
+    def __init__(self, agent_instances: dict[str, Agent]):
+        self.agent_instances = agent_instances
+
+    async def RunSync(self, request: axon_pb2.RunSyncRequest, context) -> axon_pb2.RunSyncResponse:
+        agent_id = request.agent_id
+        if agent_id not in self.agent_instances:
+            raise Exception(f"Agent not found: {agent_id}")
+
+        agent = self.agent_instances[agent_id]
+        prompt = request.prompt
+        message_history = [self._convert_message_to_pydantic_ai(msg) for msg in request.message_history]
+
+        try:
+            result = agent.run_sync(
+                prompt,
+                message_history=message_history,
+                # model_settings=request.model_settings,
+                # usage_limits=request.usage_limits,
+                infer_name=False
+            )
+
+            return axon_pb2.RunSyncResponse(
+                result=json.dumps(result.data).encode("utf-8"),
+                usage=axon_pb2.Usage(
+                    requests=result.usage.requests,
+                    request_tokens=result.usage.request_tokens,
+                    response_tokens=result.usage.response_tokens,
+                    total_tokens=result.usage.total_tokens,
+                ),
+                messages=[_convert_pydantic_ai_message_to_protobuf(msg) for msg in result.messages],
+            )
+
+        except Exception as e:
+            logger.exception(f"Error during RunSync for agent {agent_id}: {e}")
+            raise
+
+    async def RunStream(self, request: axon_pb2.RunRequest, context):
+        agent_id = request.agent_id
+        if agent_id not in self.agent_instances:
+            raise Exception(f"Agent not found: {agent_id}")
+
+        agent = self.agent_instances[agent_id]
+        prompt = request.prompt
+        message_history = [self._convert_message_to_pydantic_ai(msg) for msg in request.message_history]
+
+        try:
+            async for chunk in agent.run_stream(
+                prompt,
+                message_history=message_history,
+                # model_settings=request.model_settings,
+                # usage_limits=request.usage_limits,
+                infer_name=False
+            ):
+                yield axon_pb2.RunResponseChunk(data=json.dumps(chunk).encode("utf-8"))
+
+        except Exception as e:
+            logger.exception(f"Error during RunStream for agent {agent_id}: {e}")
+            raise
+
+    def _convert_message_to_pydantic_ai(self, msg: axon_pb2.ModelMessage) -> ModelMessage:
+        """Convert a gRPC ModelMessage to a pydantic-ai ModelMessage."""
+        parts = []
+        for part in msg.parts:
+            if part.HasField("system_prompt_part"):
+                parts.append(
+                    SystemPromptPart(
+                        content=part.system_prompt_part.content,
+                        part_kind="system-prompt",
+                    )
+                )
+            elif part.HasField("user_prompt_part"):
+                parts.append(
+                    UserPromptPart(
+                        content=part.user_prompt_part.content,
+                        timestamp=datetime.fromtimestamp(part.user_prompt_part.timestamp),
+                        part_kind="user-prompt",
+                    )
+                )
+            elif part.HasField("tool_return_part"):
+                parts.append(
+                    ToolReturnPart(
+                        tool_name=part.tool_return_part.tool_name,
+                        content=json.loads(part.tool_return_part.content),
+                        tool_call_id=part.tool_return_part.tool_call_id,
+                        part_kind="tool-return",
+                    )
+                )
+            elif part.HasField("retry_prompt_part"):
+                parts.append(
+                    RetryPromptPart(
+                        content=part.retry_prompt_part.content,
+                        tool_name=part.retry_prompt_part.tool_name,
+                        tool_call_id=part.retry_prompt_part.tool_call_id,
+                        part_kind="retry-prompt",
+                    )
+                )
+            elif part.HasField("text_part"):
+                parts.append(TextPart(content=part.text_part.content, part_kind="text"))
+            elif part.HasField("tool_call_part"):
+                parts.append(
+                    ToolCallPart(
+                        tool_name=part.tool_call_part.tool_name,
+                        args=part.tool_call_part.args,  # Assuming this is already a JSON string
+                        tool_call_id=part.tool_call_part.tool_call_id,
+                        part_kind="tool-call",
+                    )
+                )
+
+        kind = "request" if msg.kind == axon_pb2.ModelMessage.REQUEST else "response"
+
+        if kind == "request":
+            return ModelRequest(parts=parts, kind=kind)
+        else:  # kind == 'response'
+            return ModelResponse(parts=parts, timestamp=datetime.now(), kind=kind)
+
+    def _convert_pydantic_ai_message_to_protobuf(self, msg: ModelMessage) -> axon_pb2.ModelMessage:
+        """Convert a pydantic-ai ModelMessage to a gRPC ModelMessage."""
+        parts = []
+        for part in msg.parts:
+            if isinstance(part, SystemPromptPart):
+                parts.append(axon_pb2.ModelMessagePart(system_prompt_part=axon_pb2.SystemPromptPart(content=part.content)))
+            elif isinstance(part, UserPromptPart):
+                parts.append(
+                    axon_pb2.ModelMessagePart(
+                        user_prompt_part=axon_pb2.UserPromptPart(
+                            content=part.content, timestamp=int(part.timestamp.timestamp())
+                        )
+                    )
+                )
+            elif isinstance(part, ToolReturnPart):
+                parts.append(
+                    axon_pb2.ModelMessagePart(
+                        tool_return_part=axon_pb2.ToolReturnPart(
+                            tool_name=part.tool_name,
+                            content=json.dumps(part.content).encode("utf-8"),
+                            tool_call_id=part.tool_call_id,
+                        )
+                    )
+                )
+            elif isinstance(part, RetryPromptPart):
+                parts.append(
+                    axon_pb2.ModelMessagePart(
+                        retry_prompt_part=axon_pb2.RetryPromptPart(
+                            content=part.content, tool_name=part.tool_name, tool_call_id=part.tool_call_id
+                        )
+                    )
+                )
+            elif isinstance(part, TextPart):
+                parts.append(axon_pb2.ModelMessagePart(text_part=axon_pb2.TextPart(content=part.content)))
+            elif isinstance(part, ToolCallPart):
+                parts.append(
+                    axon_pb2.ModelMessagePart(
+                        tool_call_part=axon_pb2.ToolCallPart(
+                            tool_name=part.tool_name,
+                            args=part.args.encode("utf-8"),  # Assuming args is a JSON string
+                            tool_call_id=part.tool_call_id,
+                        )
+                    )
+                )
+
+        kind = axon_pb2.ModelMessage.REQUEST if msg.kind == "request" else axon_pb2.ModelMessage.RESPONSE
+
+        return axon_pb2.ModelMessage(kind=kind, parts=parts, timestamp=int(msg.timestamp.timestamp()))
+
+## FOR gRPC:
+# def serve():
+#     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+#     axon_pb2_grpc.add_AgentServiceServicer_to_server(AgentServicer(agent_instances), server)
+#     server.add_insecure_port(f"[::]:{os.environ.get('AXON_PYTHON_AGENT_PORT', '50051')}")
+#     server.start()
+#     server.wait_for_termination()
+
+# if __name__ == "__main__":
+#     serve()
+
+
+# #### TODO: Generate Python gRPC Code:
+# ```python
+# python -m grpc_tools.protoc -I=./apps/axon_python/src/axon_python/protos --python_out=./apps/axon_python/src/axon_python/generated --pyi_out=./apps/axon_python/src/axon_python/generated --grpc_python_out=./apps/axon_python/src/axon_python/generated axon.proto
+# ````
+
+
+
+
+
+
+
+    
+
 def start_fastapi(port: int):
     uvicorn.run(app, host="0.0.0.0", port=port)
 
@@ -398,3 +763,8 @@ if __name__ == "__main__":
      # Get port from environment variable or default to 8000
     port = int(os.environ.get("AXON_PYTHON_AGENT_PORT", 8000))
     start_fastapi(port=port)
+
+
+
+
+

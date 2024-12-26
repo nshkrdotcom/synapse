@@ -58,7 +58,7 @@ defmodule AxonCore.ToolUtils do
 
   ## Returns
 
-  A list of tool definitions.
+  A list of tool definitions with handlers set for Python functions.
   """
   @spec extract_tools(map()) :: list(tool_definition())
   def extract_tools(config) do
@@ -68,7 +68,9 @@ defmodule AxonCore.ToolUtils do
         name: tool.name,
         description: tool.description,
         parameters: SchemaUtils.elixir_to_json_schema(tool.parameters),
-        handler: tool.handler
+        # handler: tool.handler
+        # Assuming all tools are Python-based for this example
+        handler: {:python, module: config[:module], function: tool.name}
       }
     end)
   end

@@ -91,6 +91,10 @@ defmodule AxonCore.AgentProcess do
   # end
   @impl true
   def init(state) do
+    # Start the gRPC Server
+    {:ok, _} = AxonCore.AgentGrpcServer.start(50051)
+
+
     # Start the Python agent process using Ports
     # Pass configuration as environment variables or command-line arguments
     port = get_free_port()
@@ -230,6 +234,55 @@ defmodule AxonCore.AgentProcess do
   #       {:reply, {:error, reason}, state}
   #   end
   # end
+  # @impl true
+  # def handle_call({:send_message, message}, from, state) do
+  #   # Send an HTTP request to the Python agent
+  #   endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+  #   headers = [{"Content-Type", "application/json"}]
+
+  #   # Encode the message to JSON and send the request
+  #   with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
+  #     # Process the response based on status code
+  #     case response do
+  #       %{status_code: 200, body: body} ->
+  #         # Attempt to decode the response body
+  #         try do
+  #           decoded_response = JSONCodec.decode(body)
+
+  #           # Check for the expected keys in the decoded response
+  #           case {Map.has_key?(decoded_response, "result"), Map.has_key?(decoded_response, "usage")} do
+  #             {true, true} ->
+  #               result = Map.get(decoded_response, "result")
+  #               usage = Map.get(decoded_response, "usage")
+  #               # Log successful result and usage
+  #               Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+  #               Logger.info("Usage info: #{inspect(usage)}")
+  #               {:reply, {:ok, result, usage}, state}
+
+  #             _ ->
+  #               # Handle the case where expected keys are missing
+  #               Logger.error("Incomplete response data from agent #{state.name}")
+  #               {:reply, {:error, :incomplete_response}, state}
+  #           end
+  #         rescue
+  #           e in JSON.DecodeError ->
+  #             # Handle JSON decoding error
+  #             Logger.error("Failed to decode response from agent #{state.name}: #{inspect(e)}")
+  #             {:reply, {:error, :decode_error}, state}
+  #         end
+
+  #       %{status_code: status_code, body: body} ->
+  #         # Handle error responses
+  #         Logger.error("Agent #{state.name} run failed with status #{status_code}: #{body}")
+  #         {:reply, {:error, "Agent run failed with status #{status_code}"}, state}
+  #     end
+  #   else
+  #     # Handle HTTP request errors
+  #     {:error, reason} ->
+  #       Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+  #       {:reply, {:error, reason}, state}
+  #   end
+  # end
   @impl true
   def handle_call({:send_message, message}, from, state) do
     # Send an HTTP request to the Python agent
@@ -239,73 +292,133 @@ defmodule AxonCore.AgentProcess do
     # Encode the message to JSON and send the request
     with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
       # Process the response based on status code
-      case response do
-        %{status_code: 200, body: body} ->
-          # Attempt to decode the response body
-          try do
-            decoded_response = JSONCodec.decode(body)
+      case process_response(response) do
+        {:ok, result, usage} ->
+          # Log successful result and usage
+          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+          Logger.info("Usage info: #{inspect(usage)}")
+          {:reply, {:ok, result, usage}, state}
 
-            # Check for the expected keys in the decoded response
-            case {Map.has_key?(decoded_response, "result"), Map.has_key?(decoded_response, "usage")} do
-              {true, true} ->
-                result = Map.get(decoded_response, "result")
-                usage = Map.get(decoded_response, "usage")
-                # Log successful result and usage
-                Logger.info("Agent #{state.name} returned: #{inspect(result)}")
-                Logger.info("Usage info: #{inspect(usage)}")
-                {:reply, {:ok, result, usage}, state}
-
-              _ ->
-                # Handle the case where expected keys are missing
-                Logger.error("Incomplete response data from agent #{state.name}")
-                {:reply, {:error, :incomplete_response}, state}
-            end
-          rescue
-            e in JSON.DecodeError ->
-              # Handle JSON decoding error
-              Logger.error("Failed to decode response from agent #{state.name}: #{inspect(e)}")
-              {:reply, {:error, :decode_error}, state}
-          end
-
-        %{status_code: status_code, body: body} ->
-          # Handle error responses
-          Logger.error("Agent #{state.name} run failed with status #{status_code}: #{body}")
-          {:reply, {:error, "Agent run failed with status #{status_code}"}, state}
+        {:error, reason} ->
+          # Log the error
+          Logger.error("Agent #{state.name} run failed: #{reason}")
+          # Handle error (retry, restart, escalate, etc.)
+          handle_error(state, reason, from)
       end
     else
-      # Handle HTTP request errors
       {:error, reason} ->
         Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
         {:reply, {:error, reason}, state}
     end
   end
 
+  def handle_call({:call_tool, tool_name, args}, from, state) do
+    # Similar to send_message, but constructs a request to the /tool_call endpoint
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+    headers = [{"Content-Type", "application/json"}]
+    body = %{
+      "tool_name" => tool_name,
+      "args" => args
+    }
+    |> JSONCodec.encode!()
 
-  # Example of how to call a tool from handle_call (or another handler)
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+      # Process the tool call response
+      case process_tool_response(response) do
+        {:ok, result} ->
+          {:reply, {:ok, result}, state}
+
+        {:error, reason} ->
+          {:reply, {:error, reason}, state}
+      end
+    else
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  # def handle_call({:call_tool, tool_name, args}, from, state) do
+  #   # Assuming tool definitions are stored in the state
+  #   case state.tools[tool_name] do
+  #     {:elixir, fun} ->
+  #       # Call Elixir function directly
+  #       case ToolUtils.call_elixir_tool(fun, args) do
+  #         {:ok, result} ->
+  #           {:reply, {:ok, result}, state}
+  #         {:error, reason} ->
+  #           {:reply, {:error, reason}, state}
+  #       end
+
+  #     {:python, module: module, function: function} ->
+  #       # Send a request to Python to call the function
+  #       request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
+  #       send(self(), {:call_python_tool, request_id, module, function, args})
+  #       {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:tool_call, from, nil}))}
+
+  #     nil ->
+  #       {:reply, {:error, "Tool not found: #{tool_name}"}, state}
+  #   end
+  # end
+
+
+  # # Example of how to call a tool from handle_call (or another handler)
+  # def handle_call({:run_sync, request}, from, state) do
+  #   # ... (previous logic for preparing the request)
+
+  #   # Assuming the model returns a tool call, you would extract the tool name and arguments
+  #   # For example:
+  #   # tool_call = extract_tool_call_from_response(response)
+
+  #   # Instead of directly executing the tool, send a message to self() to run the tool
+  #   # Generate a unique request ID to track the request-response cycle
+  #   request_id = :erlang.unique_integer([:positive])
+
+  #   send(self(), {:run_tool, tool_call.name, tool_call.args, request_id})
+
+  #   # Tell the caller we have initiated the action and will send a response later
+  #   {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:run_sync, from, request}))}
+
+  #   # ... (rest of your handle_call logic)
+  # end
+  @impl true
   def handle_call({:run_sync, request}, from, state) do
-    # ... (previous logic for preparing the request)
+    # Generate a unique request ID for this streaming request
+    request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
 
-    # Assuming the model returns a tool call, you would extract the tool name and arguments
-    # For example:
-    # tool_call = extract_tool_call_from_response(response)
+    # Construct the request to be sent to the Python agent
+    request = %{
+      "prompt" => prompt,
+      "message_history" => message_history,
+      "model_settings" => model_settings,
+      "usage_limits" => usage_limits
+    }
 
-    # Instead of directly executing the tool, send a message to self() to run the tool
-    # Generate a unique request ID to track the request-response cycle
-    request_id = :erlang.unique_integer([:positive])
+    # Send an HTTP POST request to start the streaming run
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+    headers = [{"Content-Type", "application/json"}]
 
-    send(self(), {:run_tool, tool_call.name, tool_call.args, request_id})
+    send(self(), {:execute_run_sync, request_id, from, request})
 
-    # Tell the caller we have initiated the action and will send a response later
-    {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:run_sync, from, request}))}
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+      # Process the response
+      {:noreply,
+      Map.put(
+        state,
+        :requests,
+        Map.put(state.requests, request_id, {:run_sync, from, request, response})
+      )}
+    else
+      {:error, reason} ->
+        # Handle error, potentially restart the Python process using the supervisor
+        {:reply, {:error, reason}, state}
+    end
+  end
 
-    # ... (rest of your handle_call logic)
-end
 
 
 
 
-
-@doc """
+  @doc """
   Initiates a streaming run of the agent.
 
   ## Parameters
@@ -325,7 +438,138 @@ end
     GenServer.call(agent_name, {:run_stream, prompt, message_history, model_settings, usage_limits}, @default_timeout)
   end
 
-  # ...
+  def handle_call({:run_stream, request}, from, state) do
+    # Create a unique request ID for this stream
+    request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
+
+    # Store the caller's PID and the request ID for sending stream chunks later
+    new_state = Map.put(state, :streams, Map.put(state.streams, request_id, from))
+
+    # Start a task to handle the stream
+    Task.start_link(fn ->
+      handle_streaming_request(state.grpc_channel, request, request_id, self())
+    end)
+
+    # Acknowledge the start of the streaming
+    {:reply, {:ok, request_id}, new_state}
+
+    # Construct HTTP request to start the stream
+    # ...
+
+    # Send the request
+    # case HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+    #   {:ok, response} ->
+    #     # Check for success status code
+    #     if response.status_code == 200 do
+    #       # Generate a unique request_id for this stream
+    #       request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
+
+    #       # Store the request_id and the caller's `from` tag in the state
+    #       # for sending stream chunks later
+    #       new_state =
+    #         state
+    #         |> Map.put(:requests, Map.put(state.requests, request_id, {:run_stream, from, request}))
+
+    #       # Start polling for streamed data
+    #       Process.send_after(self(), {:poll_stream, request_id}, @poll_interval)
+
+    #       # Reply to the caller, indicating that the stream has started
+    #       {:reply, {:ok, request_id}, new_state}
+    #     else
+    #       {:reply, {:error, "Failed to start stream"}, state}
+    #     end
+
+    #   {:error, reason} ->
+    #     {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp handle_streaming_request(grpc_channel, request, request_id, agent_pid) do
+    try do
+      stream = Axon.AgentService.Stub.run_stream(grpc_channel, request)
+
+      # Iterate over the stream and send chunks to the original caller
+      Stream.each(stream, fn chunk ->
+        send(agent_pid, {:stream_chunk, request_id, chunk})
+      end)
+
+      # Handle stream completion
+      receive do
+        {:stream_complete, request_id, usage} ->
+          send(agent_pid, {:stream_complete, request_id, usage})
+
+        {:stream_error, request_id, reason} ->
+          send(agent_pid, {:stream_error, request_id, reason})
+      after
+        @default_timeout ->
+          Logger.error("Stream timeout for request_id: #{request_id}")
+          send(agent_pid, {:stream_error, request_id, "Timeout"})
+      end
+    catch
+      # Handle exceptions during streaming
+      e ->
+        Logger.error("Error during streaming for request_id: #{request_id}: #{inspect(e)}")
+        send(agent_pid, {:stream_error, request_id, e})
+    end
+  end
+
+
+  @impl true
+  def handle_info({:stream_chunk, request_id, chunk}, state) do
+    case Map.fetch(state.streams, request_id) do
+      {:ok, from} ->
+        # Relay the chunk to the original caller
+        send(from, {:stream_chunk, chunk})
+        {:noreply, state}
+
+      :error ->
+        # Handle the case where the stream has been closed or the ID is invalid
+        Logger.warn("Received stream chunk for unknown request ID: #{request_id}")
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:stream_complete, request_id, usage}, state) do
+    case Map.fetch(state.streams, request_id) do
+      {:ok, from} ->
+        send(from, {:stream_complete, usage})
+        {:noreply, Map.update!(state, :streams, &Map.delete(&1, request_id))}
+
+      :error ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:stream_error, request_id, reason}, state) do
+    case Map.fetch(state.streams, request_id) do
+      {:ok, from} ->
+        send(from, {:stream_error, reason})
+        {:noreply, Map.update!(state, :streams, &Map.delete(&1, request_id))}
+
+      :error ->
+        {:noreply, state}
+    end
+  end
+
+
+  def handle_info({:grpc_stream_response, request_id, chunk}, state) do
+    case Map.fetch(state.streams, request_id) do
+      {:ok, from} ->
+        # Relay the chunk to the original caller
+        send(from, {:stream_chunk, chunk})
+        {:noreply, state}
+
+      :error ->
+        # Handle the case where the stream has been closed or the ID is invalid
+        Logger.warn("Received stream chunk for unknown request ID: #{request_id}")
+        {:noreply, state}
+    end
+  end
+
+
+
+
+
 
   @impl true
   def handle_call({:run_stream, prompt, message_history, model_settings, usage_limits}, from, state) do
@@ -373,28 +617,6 @@ end
 
 
 
-  def handle_call({:call_tool, tool_name, args}, from, state) do
-    # Assuming tool definitions are stored in the state
-    case state.tools[tool_name] do
-      {:elixir, fun} ->
-        # Call Elixir function directly
-        case ToolUtils.call_elixir_tool(fun, args) do
-          {:ok, result} ->
-            {:reply, {:ok, result}, state}
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
-
-      {:python, module: module, function: function} ->
-        # Send a request to Python to call the function
-        request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
-        send(self(), {:call_python_tool, request_id, module, function, args})
-        {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:tool_call, from, nil}))}
-
-      nil ->
-        {:reply, {:error, "Tool not found: #{tool_name}"}, state}
-    end
-  end
 
   def handle_info({:call_python_tool, request_id, module, function, args}, state) do
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
@@ -429,20 +651,6 @@ end
     end
   end
 
-  defp process_tool_response(response) do
-    case response do
-      %{status_code: 200, body: body} ->
-        try do
-          decoded_response = JSONCodec.decode(body)
-          {:ok, decoded_response["result"]}
-        rescue
-          e in [JSON.DecodeError, KeyError] ->
-            {:error, "Error decoding tool response: #{inspect(e)}"}
-        end
-      %{status_code: status_code, body: body} ->
-        {:error, "Tool call HTTP error: #{status_code}"}
-    end
-  end
 
 
   @impl true
@@ -565,27 +773,61 @@ end
     end
   end
 
+  # @impl true
+  # def handle_info({:run_tool, tool_name, tool_args, request_id}, state) do
+  #   endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+  #   headers = [{"Content-Type", "application/json"}]
+  #   body = %{
+  #     "tool_name" => tool_name,
+  #     "args" => tool_args
+  #   } |> JSONCodec.encode!() # Ensure args are encoded as JSON
+
+  #   case HTTPClient.post(endpoint, headers, body) do
+  #     {:ok, %{status_code: 200, body: response_body}} ->
+  #       # Send the tool result back to the agent process that initiated the tool call
+  #       send(state.caller, {:tool_result, request_id, response_body})
+
+  #     {:error, reason} ->
+  #       # Handle the error, potentially log it or send an error message back to the agent
+  #       Logger.error("Error calling tool #{tool_name} on agent #{state.name}: #{reason}")
+  #       send(state.caller, {:tool_error, request_id, reason})
+  #   end
+
+  #   {:noreply, state}
+  # end
+
   @impl true
-  def handle_info({:run_tool, tool_name, tool_args, request_id}, state) do
+  def handle_info({:run_tool, tool_name, args, request_id}, state) do
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
     headers = [{"Content-Type", "application/json"}]
     body = %{
       "tool_name" => tool_name,
-      "args" => tool_args
-    } |> JSONCodec.encode!() # Ensure args are encoded as JSON
+      "args" => args
+    }
+    |> JSONCodec.encode!()
 
-    case HTTPClient.post(endpoint, headers, body) do
-      {:ok, %{status_code: 200, body: response_body}} ->
-        # Send the tool result back to the agent process that initiated the tool call
-        send(state.caller, {:tool_result, request_id, response_body})
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+      case process_tool_response(response) do
+        {:ok, result} ->
+          # Find the original caller based on request_id and reply
+          case Map.fetch(state.requests, request_id) do
+            {:ok, {:tool_call, original_from, _}} ->
+              send(original_from, {:tool_result, request_id, result})
+            _ ->
+              Logger.error("Could not find caller for request_id: #{request_id}")
+          end
+          {:noreply, Map.delete(state, :requests)}
 
+        {:error, reason} ->
+          # Handle error, potentially retry or escalate
+          Logger.error("Tool call error: #{reason}")
+          {:noreply, state}
+      end
+    else
       {:error, reason} ->
-        # Handle the error, potentially log it or send an error message back to the agent
-        Logger.error("Error calling tool #{tool_name} on agent #{state.name}: #{reason}")
-        send(state.caller, {:tool_error, request_id, reason})
+        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+        {:reply, {:error, reason}, state}
     end
-
-    {:noreply, state}
   end
 
 
@@ -691,6 +933,21 @@ end
 
       %{status_code: status_code, body: body} ->
         handle_error_response(status_code, body)
+    end
+  end
+
+  defp process_tool_response(response) do
+    case response do
+      %{status_code: 200, body: body} ->
+        try do
+          decoded_response = JSONCodec.decode(body)
+          {:ok, decoded_response["result"]}
+        rescue
+          e in [JSON.DecodeError, KeyError] ->
+            {:error, "Error decoding tool response: #{inspect(e)}"}
+        end
+      %{status_code: status_code, body: body} ->
+        {:error, "Tool call HTTP error: #{status_code}"}
     end
   end
 
