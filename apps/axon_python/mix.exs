@@ -1,9 +1,9 @@
-defmodule AxonCore.MixProject do
+defmodule AxonPython.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :axon_core,
+      app: :axon_python,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -17,19 +17,15 @@ defmodule AxonCore.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
-      mod: {AxonCore.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
   defp deps do
     [
-      {:grpc, "~> 0.7.0"},
-      {:protobuf, "~> 0.11.0"},
-      {:google_protos, "~> 0.3.0"},
-      {:jason, "~> 1.4"},
-      {:tesla, "~> 1.7"},
-      {:hackney, "~> 1.18"}
+      {:axon_core, in_umbrella: true},
+      {:erlport, "~> 0.10.1"},  # For Python integration
+      {:jason, "~> 1.2"}        # For JSON encoding/decoding
     ]
   end
 end
