@@ -6,8 +6,6 @@ defmodule AxonCore.PydanticToolRegistry do
   use GenServer
   require Logger
 
-  alias AxonCore.PydanticJSONCodec
-
   # Types
 
   @type tool_config :: %{

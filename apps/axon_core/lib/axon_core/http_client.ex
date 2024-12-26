@@ -1,6 +1,6 @@
-defmodule AxonCore.PydanticHTTPClient do
+defmodule AxonCore.HTTPClient do
   @moduledoc """
-  HTTP client for making requests to the Pydantic agent.
+  HTTP client for making requests.
   """
 
   require Logger
@@ -12,7 +12,7 @@ defmodule AxonCore.PydanticHTTPClient do
     case Finch.build(:post, url, headers, JSONCodec.encode!(body))
          |> Finch.request(AxonFinch) do
       {:ok, response} ->
-        {:ok, %{status: response.status, body: JSONCodec.decode!(response.body)}}
+        {:ok, %{status: response.status, body: response.body}}
       
       {:error, reason} ->
         Logger.error("HTTP request failed: #{inspect(reason)}")
@@ -20,7 +20,7 @@ defmodule AxonCore.PydanticHTTPClient do
     end
   end
 
-  def stream_request(url, body, _opts \\ []) do
+  def post_stream(url, body) when is_binary(url) do
     headers = [{"content-type", "application/json"}]
     
     case Finch.build(:post, url, headers, JSONCodec.encode!(body))

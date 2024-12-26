@@ -7,8 +7,6 @@ defmodule AxonCore.PythonEnvManager do
   require Logger
   alias AxonCore.Error.PythonEnvError
 
-  @venv_dir ".venv"
-  @requirements_file "pyproject.toml"
   @python_min_version "3.10"
 
   def min_version, do: @python_min_version
@@ -117,7 +115,7 @@ defmodule AxonCore.PythonEnvManager do
   end
 
   defp venv_path do
-    Path.join(project_root(), @venv_dir)
+    Path.join(project_root(), ".venv")
   end
 
   defp project_root do

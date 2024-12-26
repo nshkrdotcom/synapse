@@ -21,7 +21,7 @@ defmodule AxonCore.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :finch],
       mod: {AxonCore.Application, []}
     ]
   end
@@ -33,7 +33,8 @@ defmodule AxonCore.MixProject do
       {:google_protos, "~> 0.3.0"},
       {:jason, "~> 1.4"},
       {:tesla, "~> 1.7"},
-      {:hackney, "~> 1.18"}
+      {:hackney, "~> 1.18"},
+      {:finch, "~> 0.16"}
     ]
   end
 end

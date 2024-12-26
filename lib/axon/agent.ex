@@ -12,14 +12,15 @@ defmodule Axon.Agent do
   Starts the Agent supervisor.
   """
   def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+    name = opts[:name] || raise ArgumentError, "name is required"
+    Supervisor.start_link(__MODULE__, opts, name: String.to_atom("#{__MODULE__}.#{name}"))
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     children = [
-      {Task.Supervisor, name: Axon.TaskSupervisor},
-      {Agent.Server, []}
+      {Task.Supervisor, name: String.to_atom("Axon.TaskSupervisor.#{opts[:name]}")},
+      {Server, opts}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -30,8 +31,8 @@ defmodule Axon.Agent do
   """
   def child_spec(opts) do
     %{
-      id: "agent-#{opts[:name]}",
-      start: {Agent.Server, :start_link, [opts]},
+      id: opts[:name] || raise(ArgumentError, "name is required"),
+      start: {__MODULE__, :start_link, [opts]},
       type: :supervisor
     }
   end
