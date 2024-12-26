@@ -197,7 +197,7 @@ async def create_agent(request: Request):
     try:
         data = await request.json()
         agent_id = data["agent_id"]
-
+        print(f"DATA: {data}")
         if agent_id in agent_instances:
             raise HTTPException(status_code=400, detail="Agent with this ID already exists")
 
@@ -205,6 +205,8 @@ async def create_agent(request: Request):
         system_prompt = data["system_prompt"]
         tools = _resolve_tools(data.get("tools", []))
         result_type = _resolve_result_type(data.get("result_type", {}))
+
+
 
         # agent = Agent(
         #     model=model,
@@ -321,11 +323,11 @@ async def call_tool(agent_id: str, tool_name: str, request_data: dict):
         logger.exception(f"Error calling tool '{tool_name}' for agent '{agent_id}': {e}")
         raise HTTPException(status_code=500, detail=f"Error calling tool: {e}")
 
-# Tool registry
-tool_registry: Dict[str, Callable] = {}
+# # Tool registry
+# tool_registry: Dict[str, Callable] = {}
 
-def register_tool(name: str, func: Callable):
-    tool_registry[name] = func
+# def register_tool(name: str, func: Callable):
+#     tool_registry[name] = func
 
 def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
     """
@@ -343,6 +345,7 @@ def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
 def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
     """
     Dynamically creates a Pydantic model from a JSON schema-like definition.
+    This is a placeholder for a more complete schema translation mechanism.
     """
     fields = {}
     for field_name, field_info in result_type_config.items():
@@ -367,11 +370,14 @@ def some_tool(arg1: str, arg2: int) -> str:
 def another_tool(data: dict) -> list:
     return list(data.values())
 
+# # Register tools
+# register_tool("some_tool", some_tool)
+# register_tool("another_tool", another_tool)
+
 # Register tools
-register_tool("some_tool", some_tool)
-register_tool("another_tool", another_tool)
-
-
+tool_registry: Dict[str, Callable] = {}
+tool_registry["some_tool"] = some_tool
+tool_registry["another_tool"] = another_tool
 
 
 

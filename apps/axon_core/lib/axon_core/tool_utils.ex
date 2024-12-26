@@ -32,17 +32,54 @@ defmodule AxonCore.ToolUtils do
   end
 
   @doc """
-  Calls an Elixir tool function dynamically.
+  Calls an Elixir function dynamically, identified by its module and function name.
+
+  This function provides a mechanism for Elixir code to invoke other Elixir functions
+  based on information received from the Python agent. It's crucial for enabling Elixir-based
+  tools within the Axon framework.
 
   ## Parameters
 
-    - `fun`: The function to call.
-    - `args`: The arguments to pass to the function.
+  - `module`: The name of the module where the function is defined (e.g., `MyModule`).
+  - `function_name`: The name of the function to call (e.g., `my_function`).
+  - `args`: A list of arguments to pass to the function.
+
+  ## Returns
+
+  - `{:ok, result}` if the function call is successful. `result` is the return value of the function.
+  - `{:error, reason}` if an error occurs during the function call. `reason` will contain details about the error.
+
+  ## Security Considerations
+
+  This function uses `apply/3` to dynamically call functions based on their module and function name.
+  **Be extremely cautious about the source of `module` and `function_name` to prevent arbitrary code execution.**
+  Only use this function with trusted inputs, ideally from a predefined set of allowed tools.
+
+  Do not directly expose this function to user input without proper sanitization and validation.
+
+  ## Example
+
+  To call a function named `add_numbers` in a module named `MyModule` with arguments `[1, 2]`:
+
+  ```elixir
+  case AxonCore.ToolUtils.call_elixir_tool(MyModule, :add_numbers, [1, 2]) do
+    {:ok, result} ->
+      # Handle successful result
+      IO.inspect(result) # Output: 3
+
+    {:error, reason} ->
+      # Handle error
+      IO.inspect(reason)
+  end
   """
   @spec call_elixir_tool(function(), list()) :: {:ok, any()} | {:error, any()}
   def call_elixir_tool(fun, args) do
     try do
-      {:ok, apply(fun, args)}
+      # Convert atom function_name to string for apply
+      function_name_str = Atom.to_string(function_name)
+      # Dynamically call the function using apply
+      {:ok, apply(module, String.to_atom(function_name_str), args)}
+      #{:ok, apply(fun, args)}
     catch
       kind, reason ->
         {:error, {kind, reason, __STACKTRACE__}}

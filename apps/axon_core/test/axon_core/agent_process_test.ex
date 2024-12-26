@@ -114,28 +114,59 @@ defmodule AxonCore.AgentProcessTest do
   end
 
   describe "handle_call/3 :call_tool" do
+    # test "correctly calls a Python tool and returns the result", %{agent_pid: agent_pid} do
+    #   # Define the tool call details
+    #   tool_name = "some_tool"
+    #   tool_args = %{"arg1" => "hello", "arg2" => 123}
+    #   request_id = "unique_request_id"
+
+    #   # Mock the HTTP POST request to simulate the Python agent's response
+    #   expected_response = {:ok, %{status_code: 200, body: Jason.encode!(%{result: "Tool called successfully"})}}
+    #   expect(HTTPClientMock, :post, fn _url, _headers, body ->
+    #     # Assert the structure of the body being sent to the Python agent
+    #     assert Jason.decode!(body) == %{"tool_name" => tool_name, "args" => tool_args}
+
+    #     # Return the mocked response
+    #     expected_response
+    #   end)
+
+    #   # Send the call_tool message and capture the reply
+    #   assert {:ok, result} =
+    #            AgentProcess.call_tool(agent_pid, tool_name, tool_args)
+
+    #   # Assert the result
+    #   assert result == "Tool called successfully"
+    # end
     test "correctly calls a Python tool and returns the result", %{agent_pid: agent_pid} do
+      # Start the agent process with necessary configuration
+      {:ok, agent_pid} =
+        AgentProcess.start_link(
+          name: "test_agent",
+          python_module: "test_agent",
+          model: "test_model",
+          port: 8081,
+          extra_env: []
+        )
+
       # Define the tool call details
       tool_name = "some_tool"
       tool_args = %{"arg1" => "hello", "arg2" => 123}
-      request_id = "unique_request_id"
 
       # Mock the HTTP POST request to simulate the Python agent's response
-      expected_response = {:ok, %{status_code: 200, body: Jason.encode!(%{result: "Tool called successfully"})}}
-      expect(HTTPClientMock, :post, fn _url, _headers, body ->
+      Mox.expect(HTTPClientMock, :post, fn _url, _headers, body ->
         # Assert the structure of the body being sent to the Python agent
         assert Jason.decode!(body) == %{"tool_name" => tool_name, "args" => tool_args}
 
-        # Return the mocked response
-        expected_response
+        # Return a successful response with a result
+        {:ok, %{status_code: 200, body: Jason.encode!(%{result: "Tool called successfully"})}}
       end)
 
-      # Send the call_tool message and capture the reply
-      assert {:ok, result} =
-               AgentProcess.call_tool(agent_pid, tool_name, tool_args)
+      # Send the call_tool message to the agent process
+      assert {:ok, result} = AgentProcess.call_tool(agent_pid, tool_name, tool_args)
 
       # Assert the result
       assert result == "Tool called successfully"
+      Mox.verify(HTTPClientMock)
     end
 
     test "handles tool not found error", %{agent_pid: agent_pid} do
@@ -184,5 +215,46 @@ defmodule AxonCore.AgentProcessTest do
 
   end
 
+
+  describe "send_message/2" do
+    test "correctly processes request and returns result", %{agent_pid: agent_pid} do
+      # Start the agent process with necessary configuration
+      {:ok, agent_pid} =
+        AgentProcess.start_link(
+          name: "test_agent",
+          python_module: "agents.example_agent",
+          model: "openai:gpt-4o",
+          port: 8089,
+          extra_env: []
+        )
+
+      # Mock the HTTP POST request to simulate the Python agent's response
+      expected_response =
+        {:ok,
+         %{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "result" => %{response: "Test response"},
+               "usage" => %{requests: 1, request_tokens: 10, response_tokens: 5, total_tokens: 15}
+             })
+         }}
+
+      expect(HTTPClientMock, :post, fn _url, _headers, body ->
+        request = JSONCodec.decode!(body)
+        assert request["prompt"] == "test prompt"
+        expected_response
+      end)
+
+      # Send a synchronous run request
+      {:ok, result, usage} = AgentProcess.send_message("test_agent", %{prompt: "test prompt"})
+
+      # Assert the result and usage
+      assert result == %{"response" => "Test response"}
+      assert usage == %{"requests" => 1, "request_tokens" => 10, "response_tokens" => 5, "total_tokens" => 15}
+    end
+
+    # Add more test cases for error handling, streaming, etc.
+  end
 
 end

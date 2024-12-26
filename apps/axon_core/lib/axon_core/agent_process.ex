@@ -27,8 +27,15 @@ defmodule AxonCore.AgentProcess do
         port: port,
         extra_env: extra_env \\ []
       ) do
-    GenServer.start_link(__MODULE__, %{python_module: python_module, model: model, port: port, name: name},
-      name: name
+    GenServer.start_link(__MODULE__, %
+      {
+        python_module: python_module,
+        model: model,
+        port: port,
+        name: name,
+        extra_env: extra_env,
+      },
+    name: name
     )
   end
 
@@ -99,33 +106,69 @@ defmodule AxonCore.AgentProcess do
     # Pass configuration as environment variables or command-line arguments
     port = get_free_port()
 
-    python_command =
-      if System.get_env("PYTHON_EXEC") != nil do
-        System.get_env("PYTHON_EXEC")
-      else
-        "python"
-      end
+    python_command = System.get_env("PYTHON_EXEC", "python")
 
     {:ok, _} = Application.ensure_all_started(:os_mon)
     spawn_port = "#{python_command} -u -m axon_python.agent_wrapper"
 
-    python_process =
+
+    # Pass the python_module as an argument to the script
+    port_args =
+      [
+        state.python_module || raise("python_module is required"),
+        Integer.to_string(port),
+        state.model || raise("model is required")
+      ] ++
+        if state.extra_env do
+          Enum.flat_map(state.extra_env, fn {k, v} -> ["--env", "#{k}=#{v}"] end)
+        else
+          []
+        end
+
+    # Use a relative path for `cd`
+    relative_path_to_python_src = "../../../apps/axon_python/src"
+
+    port =
       Port.open(
-        {:spawn_executable, spawn_port},
+        {:spawn_executable, System.find_executable("bash")},
         [
           {:args,
            [
-             state.python_module || raise("--python_module is required"),
-             Integer.to_string(port),
-             state.model || raise("--model is required")
+             "-c",
+             "cd #{relative_path_to_python_src}; source ../../.venv/bin/activate; #{spawn_port} #{Enum.join(port_args, " ")}"
            ]},
-          {:cd, "apps/axon_python/src"},
+          {:cd, File.cwd!()},
           {:env, ["PYTHONPATH=./", "AXON_PYTHON_AGENT_MODEL=#{state.model}" | state.extra_env]},
           :binary,
           :use_stdio,
           :stderr_to_stdout,
           :hide
         ]
+      )
+
+    {:ok, %{state | port: port, python_process: port}}
+  end
+
+
+
+
+    # python_process =
+    #   Port.open(
+    #     {:spawn_executable, spawn_port},
+    #     [
+    #       {:args,
+    #        [
+    #          state.python_module || raise("--python_module is required"),
+    #          Integer.to_string(port),
+    #          state.model || raise("--model is required")
+    #        ]},
+    #       {:cd, "apps/axon_python/src"},
+    #       {:env, ["PYTHONPATH=./", "AXON_PYTHON_AGENT_MODEL=#{state.model}" | state.extra_env]},
+    #       :binary,
+    #       :use_stdio,
+    #       :stderr_to_stdout,
+    #       :hide
+    #     ]
       )
 
     # Store the port and python process in the state
@@ -439,17 +482,18 @@ defmodule AxonCore.AgentProcess do
     # Generate a unique request ID for this streaming request
     request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
 
-    # Construct the request to be sent to the Python agent
-    request = %{
-      "prompt" => prompt,
-      "message_history" => message_history,
-      "model_settings" => model_settings,
-      "usage_limits" => usage_limits
-    }
+    # # Construct the request to be sent to the Python agent
+    # request = %{
+    #   "prompt" => prompt,
+    #   "message_history" => message_history,
+    #   "model_settings" => model_settings,
+    #   "usage_limits" => usage_limits
+    # }
 
     # Send an HTTP POST request to start the streaming run
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
+    body = JSONCodec.encode!(request)
 
     # For demonstration, let's assume the agent decides to call a tool here
     # In a real scenario, this would be based on the LLM's response
@@ -474,12 +518,22 @@ defmodule AxonCore.AgentProcess do
 
       with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
         # Process the response
-        {:noreply,
-        Map.put(
-          state,
-          :requests,
-          Map.put(state.requests, request_id, {:run_sync, from, request, response})
-        )}
+
+        # Store the from tag (PID of the caller) and the original request,
+        # associating them with the request_id
+        new_state = Map.put(state, :requests, Map.put(state.requests, request_id, {from, request}))
+
+        # Send the HTTP request asynchronously
+        send_request_async(endpoint, headers, body, request_id)
+
+        # Reply to the caller indicating that the request has been accepted
+        {:noreply, new_state}
+        # {:noreply,
+        #   Map.put(
+        #     state,
+        #     :requests,
+        #     Map.put(state.requests, request_id, {:run_sync, from, request, response})
+        #   )}
       else
         {:error, reason} ->
           # Handle error, potentially restart the Python process using the supervisor
@@ -503,9 +557,37 @@ defmodule AxonCore.AgentProcess do
     # end
   end
 
+  defp send_request_async(endpoint, headers, body, request_id) do
+    Task.start_link(fn ->
+      with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+        # Send the response back to the AgentProcess using the request_id
+        send(self(), {:http_response, request_id, response.status_code, response.headers, response.body})
+      else
+        {:error, reason} ->
+          # Handle HTTP request errors
+          Logger.error("HTTP request failed: #{reason}")
+          send(self(), {:http_error, request_id, reason})
+      end
+    end)
+  end
 
 
+  def handle_info({:http_error, request_id, reason}, state) do
+    # Log the error
+    Logger.error("HTTP request failed for request_id #{request_id}: #{reason}")
 
+    # Find the original caller and inform about the error
+    case Map.fetch(state.requests, request_id) do
+      {:ok, {from, _original_request}} ->
+        GenServer.reply(from, {:error, :http_request_failed})
+
+      :error ->
+        Logger.error("Could not find caller for request_id: #{request_id}")
+    end
+
+    # Remove the request from the state
+    {:noreply, %{state | requests: Map.delete(state.requests, request_id)}}
+  end
 
   @doc """
   Initiates a streaming run of the agent.
@@ -815,6 +897,7 @@ defmodule AxonCore.AgentProcess do
   @impl true
   def handle_info({:http_response, request_id, status_code, headers, body}, state) do
     # Find the original request data based on the request_id
+    # (Ensure the request ID exists in the state)
     case Map.fetch(state.requests, request_id) do
       {:ok, {original_call_type, original_from, original_request}} ->
         case original_call_type do
@@ -1077,19 +1160,28 @@ defmodule AxonCore.AgentProcess do
           # Extract result and usage
           result = Map.get(decoded_response, "result")
           usage = Map.get(decoded_response, "usage")
-          messages = Map.get(decoded_response, "messages")
+          messages = Map.get(decoded_response, "messages") ## ??
 
           # Validate result against schema if necessary
           # if has_result_schema?(state) do
           #   validate_result(result, state.result_schema)
           # end
 
+          # You can perform validation here if necessary
+          # if state.result_schema do
+          #   validate_result(result, state.result_schema)
+          # end
+
+
           # Validate result if schema is available
           if state.result_schema do
             case SchemaUtils.validate(state.result_schema, result) do
               :ok ->
-                {:ok, result, usage, messages}
-
+                {:ok,
+                result,
+                usage,
+                messages, ## ??
+                }
               {:error, reason} ->
                 Logger.error("Result validation failed: #{inspect(reason)}")
                 {:error, :result_validation_failed, reason}

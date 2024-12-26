@@ -11,7 +11,11 @@
 #     result_type=Output,
 #     system_prompt="You are a helpful assistant that answers in JSON format.",
 # )
+ 
+# def some_tool(arg1: str, arg2: int) -> str:
+#     return f"Tool executed with arg1: {arg1}, arg2: {arg2}"
 
+# agent.tools = [some_tool]
 
 
 
@@ -28,7 +32,14 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 # agent which constrained to only return text
-chat_agent = Agent('gemini-1.5-flash', system_prompt='You are a helpful assistant.')
+chat_agent = Agent(
+    'gemini-1.5-flash', 
+    # result_type=Output,
+    system_prompt="""
+"You are a helpful assistant that responds in JSON format. You are running within an agent process in the Axon framework.",
+""",
+    temperature=0.0
+)
 
 app = FastAPI(title='pydantic-ai chat app example')
 # dictionary to store chat histories, in a real application this would be a database
@@ -208,7 +219,7 @@ def some_tool(arg1: str, arg2: int) -> str:
     return f"Tool executed with arg1: {arg1}, arg2: {arg2}"
 
 
-    
+
 
 if __name__ == '__main__':
     uvicorn.run(app, host='0.0.0.0', port=8000)
