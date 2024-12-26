@@ -1,4 +1,11 @@
 defmodule AxonCore.Error do
+  require Logger
+
+  def log_error(error) do
+    Logger.error("#{inspect(error)}")
+    error
+  end
+
   defmodule PythonEnvError do
     defexception [:message, :context]
 

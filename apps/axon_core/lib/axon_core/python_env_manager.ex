@@ -16,7 +16,8 @@ defmodule AxonCore.PythonEnvManager do
   Creates and configures if needed.
   """
   def ensure_env! do
-    with :ok <- check_python_version(),
+    with :ok <- ensure_project_structure(),
+         :ok <- check_python_version(),
          :ok <- ensure_venv(),
          :ok <- install_dependencies() do
       :ok
@@ -46,6 +47,20 @@ defmodule AxonCore.PythonEnvManager do
   end
 
   # Private Functions
+
+  defp ensure_project_structure do
+    python_root = project_root()
+    src_path = python_package_path()
+    agents_path = Path.join(src_path, "agents")
+
+    with :ok <- File.mkdir_p(python_root),
+         :ok <- File.mkdir_p(src_path),
+         :ok <- File.mkdir_p(agents_path) do
+      :ok
+    else
+      {:error, reason} -> {:error, :project_structure_failed, %{error: reason}}
+    end
+  end
 
   defp check_python_version do
     case System.cmd("python3", ["--version"]) do
