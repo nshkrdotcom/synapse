@@ -38,13 +38,27 @@ from .agents.example_agent import agent as example_agent # , chat_agent
 
 app = FastAPI(title='Axon Python Agent Wrapper')
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Global dictionary to hold agent instances
-# Agent Registry (In a real app, consider using a more robust solution)
-agent_instances: Dict[str, Agent] = {"example_agent": example_agent}
+agent_instances: dict[str, Agent] = {"example_agent": example_agent, "bank_support_agent": support_agent}
 
 # Helper functions
 def _resolve_model_name(model_name: str) -> str:
+    # Basic model name resolution.
+    # You could add more sophisticated logic here if needed.
     return f"openai:{model_name}"
+
+
+# # Global dictionary to hold agent instances
+# # Agent Registry (In a real app, consider using a more robust solution)
+# agent_instances: Dict[str, Agent] = {"example_agent": example_agent}
+
+# # Helper functions
+# def _resolve_model_name(model_name: str) -> str:
+#     return f"openai:{model_name}"
 
 # TODO: Add this to the agent creation endpoint
 # def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
@@ -182,14 +196,66 @@ async def run_agent_sync(agent_id: str, request_data: dict):
 
         return JSONResponse(content={
             "result": to_jsonable_python(result.data),
-            "usage": to_jsonable_python(result.usage)
+            "usage": to_jsonable_python(result.usage),
+            "messages": result.messages
         })
     except ValidationError as e:
+        logger.error(f"Agent {agent_id} encountered a validation error: {e.errors()}")
         raise HTTPException(status_code=400, detail=e.errors())
     except UnexpectedModelBehavior as e:
+        logger.error(f"Agent {agent_id} encountered an unexpected model behavior: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected model behavior: {e}")
     except Exception as e:
+        logger.exception(f"Agent {agent_id} encountered an unexpected error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/agents/{agent_id}/tool_call")
+async def call_tool(agent_id: str, tool_name: str, request_data: dict):
+    if agent_id not in agent_instances:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent = agent_instances[agent_id]
+
+    # Access the agent's tools
+    agent_tools = {tool.name: tool for tool in agent.tools}
+
+    if tool_name not in agent_tools:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found for agent '{agent_id}'")
+
+    tool = agent_tools[tool_name]
+
+    # Prepare the arguments for the tool function
+    # Assuming the tool function expects keyword arguments
+    tool_args = request_data.get("args", {})
+
+    # Call the tool function
+    try:
+        # If the tool function expects a context, you need to pass it here
+        # For example, if your tool function is defined like `def my_tool(ctx, **kwargs)`
+        # result = tool.function(None, **tool_args)
+        # Assuming no context for this example:
+        result = tool.function(**tool_args)
+
+        # Convert the result to a JSON-serializable format
+        result_json = json.dumps(result)
+
+        # Return the result as a JSON response
+        return JSONResponse(content={"result": result_json})
+
+    except Exception as e:
+        logger.exception(f"Error calling tool '{tool_name}' for agent '{agent_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error calling tool: {e}")
+
+
+
+
+
+
+
+
+
 
 class LogEntry(BaseModel):
     timestamp: datetime

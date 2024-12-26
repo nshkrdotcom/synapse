@@ -179,21 +179,55 @@ defmodule AxonCore.AgentProcess do
 
   # # ... (other code, including handle_call for sending messages)
 
+  # @impl true
+  # def handle_call({:send_message, message}, _from, state) do
+  #   # Send an HTTP request to the Python agent
+  #   endpoint = "http://localhost:#{state.port}/run"
+  #   headers = [{"Content-Type", "application/json"}]
+
+  #   with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
+  #     # Process the response
+  #     {:reply, {:ok, JSONCodec.decode(response.body)}, state}
+  #   else
+  #     {:error, reason} ->
+  #       # Handle error, potentially restart the Python process using the supervisor
+  #       {:reply, {:error, reason}, state}
+  #   end
+  # end
   @impl true
-  def handle_call({:send_message, message}, _from, state) do
-    # Send an HTTP request to the Python agent
-    endpoint = "http://localhost:#{state.port}/run"
+  def handle_call({:send_message, message}, from, state) do
+    # Construct the full endpoint URL for the specific agent
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
 
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
+    # Encode the message to JSON
+    encoded_message = JSONCodec.encode(message)
+
+    # Log the outgoing message
+    Logger.info("Sending message to agent #{state.name}: #{inspect(message)}")
+
+    # Send an HTTP POST request to the Python agent
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, encoded_message) do
       # Process the response
-      {:reply, {:ok, JSONCodec.decode(response.body)}, state}
+      case process_response(response) do
+        {:ok, result} ->
+          # Log successful result and usage
+          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+          {:reply, {:ok, result}, state}
+
+        {:error, reason} ->
+          # Log the error
+          Logger.error("Agent #{state.name} run failed: #{reason}")
+          # Handle error (retry, restart, escalate, etc.)
+          handle_error(state, reason, from)
+      end
     else
       {:error, reason} ->
-        # Handle error, potentially restart the Python process using the supervisor
+        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
         {:reply, {:error, reason}, state}
     end
   end
+
 
 
   # Example of how to call a tool from handle_call (or another handler)
@@ -367,12 +401,32 @@ end
 
   # ... (handle_info for receiving streamed data, errors, etc.)
 
+  # defp process_response(response) do
+  #   case response do
+  #     %{status_code: 200, body: body} ->
+  #       try do
+  #         decoded_response = JSONCodec.decode(body)
+  #         handle_success(decoded_response)
+  #       rescue
+  #         e in [JSON.DecodeError, KeyError] ->
+  #           {:error, "Error decoding response: #{inspect(e)}"}
+  #       end
+
+  #     %{status_code: status_code, body: body} ->
+  #       handle_error_response(status_code, body)
+  #   end
+  # end
   defp process_response(response) do
     case response do
       %{status_code: 200, body: body} ->
         try do
-          decoded_response = JSONCodec.decode(body)
-          handle_success(decoded_response)
+          %{
+            "result" => result,
+            "usage" => usage,
+            "messages" => messages
+          } = JSONCodec.decode(body)
+
+          handle_success(%{result: result, usage: usage, messages: messages})
         rescue
           e in [JSON.DecodeError, KeyError] ->
             {:error, "Error decoding response: #{inspect(e)}"}
@@ -381,6 +435,19 @@ end
       %{status_code: status_code, body: body} ->
         handle_error_response(status_code, body)
     end
+  end
+
+  defp handle_success(%{result: result, usage: usage, messages: messages}) do
+    # Log successful result and usage
+    Logger.info("Agent run completed successfully. Result: #{inspect(result)}, Usage: #{inspect(usage)}")
+
+    # If there are any messages, you might want to log them or process them
+    if messages && messages != [] do
+      Logger.info("Messages from agent: #{inspect(messages)}")
+    end
+
+    # Return the result and usage
+    {:ok, %{result: result, usage: usage}}
   end
 
 
@@ -412,8 +479,9 @@ end
           # Handle validation errors, potentially retrying the operation
           {:error, :validation_error, details}
 
-        "ModelRetry" ->
-          # Handle model retry request
+        # "ModelRetry" ->
+        "UnexpectedModelBehavior" ->
+            # Handle model retry request
           {:error, :model_retry, message}
 
         _ ->
