@@ -57,19 +57,19 @@ defmodule AxonCore.SchemaUtils do
     schema = %{
       "type" => "object",
       "properties" => properties,
-      "required" => required_keys
+      #"required" => required_keys
     }
 
     # Remove "required" key if it's empty
-    if required_keys == [] do
-      Map.delete(schema, "required")
-    else
-      schema
-    end
+    # if required_keys == [] do
+    #   Map.delete(schema, "required")
+    # else
+    #   schema
+    # end
 
 
     ## Remove "required" key if it's empty, otherwise add it
-    #if required_keys == [], do: schema, else: Map.put(schema, "required", required_keys)
+    if required_keys == [], do: schema, else: Map.put(schema, "required", required_keys)
   end
 
   def elixir_to_json_schema(type) do

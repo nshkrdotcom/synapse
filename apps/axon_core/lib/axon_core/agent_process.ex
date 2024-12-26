@@ -1,3 +1,4 @@
+import Poison
 defmodule AxonCore.AgentProcess do
   use GenServer
 
@@ -5,6 +6,7 @@ defmodule AxonCore.AgentProcess do
   alias AxonCore.Types, as: T
 
   @default_timeout 60_000
+  @poll_interval 500 # Interval for polling for streamed data, in milliseconds
 
   @doc """
   Starts an agent process.
@@ -253,6 +255,147 @@ end
 
 
 
+
+@doc """
+  Initiates a streaming run of the agent.
+
+  ## Parameters
+
+    - `agent_name`: The name of the agent.
+    - `prompt`: The initial prompt for the agent.
+    - `message_history`: An optional list of previous messages.
+    - `model_settings`: Optional model settings.
+    - `usage_limits`: Optional usage limits.
+
+  ## Returns
+
+  `{:ok, stream_id}` to indicate that the streaming request has been accepted.
+  The client should then listen for `:stream_chunk` messages.
+  """
+  def run_stream(agent_name, prompt, message_history \\ [], model_settings \\ %{}, usage_limits \\ %{}) do
+    GenServer.call(agent_name, {:run_stream, prompt, message_history, model_settings, usage_limits}, @default_timeout)
+  end
+
+  # ...
+
+  @impl true
+  def handle_call({:run_stream, prompt, message_history, model_settings, usage_limits}, from, state) do
+    # Generate a unique request ID for this streaming request
+    request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
+
+    # Construct the request to be sent to the Python agent
+    request = %{
+      "prompt" => prompt,
+      "message_history" => message_history,
+      "model_settings" => model_settings,
+      "usage_limits" => usage_limits
+    }
+
+    # Send an HTTP POST request to start the streaming run
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_stream"
+    headers = [{"Content-Type", "application/json"}]
+    send(self(), {:start_streaming, request_id, from})
+
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+      # Process the response
+      {:reply, {:ok, request_id},
+      Map.put(
+        state,
+        :requests,
+        Map.put(state.requests, request_id, {:run_stream, from, request, response})
+      )}
+    else
+      {:error, reason} ->
+        # Handle error, potentially restart the Python process using the supervisor
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:start_streaming, request_id, from}, state) do
+    # Start polling for streamed data
+    Process.send_after(self(), {:poll_stream, request_id}, @poll_interval)
+    # Update state to include the 'from' tag for sending responses back to caller
+    {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:run_stream, from, nil, nil}))}
+  end
+
+
+
+
+
+
+  def handle_call({:call_tool, tool_name, args}, from, state) do
+    # Assuming tool definitions are stored in the state
+    case state.tools[tool_name] do
+      {:elixir, fun} ->
+        # Call Elixir function directly
+        case ToolUtils.call_elixir_tool(fun, args) do
+          {:ok, result} ->
+            {:reply, {:ok, result}, state}
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
+
+      {:python, module: module, function: function} ->
+        # Send a request to Python to call the function
+        request_id = :erlang.unique_integer([:positive]) |> Integer.to_string()
+        send(self(), {:call_python_tool, request_id, module, function, args})
+        {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:tool_call, from, nil}))}
+
+      nil ->
+        {:reply, {:error, "Tool not found: #{tool_name}"}, state}
+    end
+  end
+
+  def handle_info({:call_python_tool, request_id, module, function, args}, state) do
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+    headers = [{"Content-Type", "application/json"}]
+    body = %{
+      "module" => module,
+      "function" => function,
+      "args" => args
+    } |> JSONCodec.encode!()
+
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+      case process_tool_response(response) do
+        {:ok, result} ->
+          # Find the original caller based on request_id and reply
+          case Map.fetch(state.requests, request_id) do
+            {:ok, {:tool_call, original_from, _}} ->
+              send(original_from, {:tool_result, request_id, result})
+            _ ->
+              Logger.error("Could not find caller for request_id: #{request_id}")
+          end
+          {:noreply, Map.delete(state, :requests)}
+
+        {:error, reason} ->
+          # Handle error, potentially retry or escalate
+          Logger.error("Tool call error: #{reason}")
+          {:noreply, state}
+      end
+    else
+      {:error, reason} ->
+        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp process_tool_response(response) do
+    case response do
+      %{status_code: 200, body: body} ->
+        try do
+          decoded_response = JSONCodec.decode(body)
+          {:ok, decoded_response["result"]}
+        rescue
+          e in [JSON.DecodeError, KeyError] ->
+            {:error, "Error decoding tool response: #{inspect(e)}"}
+        end
+      %{status_code: status_code, body: body} ->
+        {:error, "Tool call HTTP error: #{status_code}"}
+    end
+  end
+
+
   @doc """
   Handles incoming messages from the Python agent.
 
@@ -326,19 +469,51 @@ end
     end
   end
 
+  # def handle_info({:poll_stream, request_id}, state) do
+  #   # Poll the Python agent for more streamed data
+  #   # ... (Implementation depends on how you design the streaming API in Python)
+  #   # ... (e.g., send an HTTP GET request to a `/stream` endpoint with a request_id)
+
+  #   case HTTPClient.get("http://localhost:#{state.port}/stream/#{request_id}") do
+  #     {:ok, response} ->
+  #       # Process the streamed chunk (similar to handle_info with :run_stream)
+  #       {:noreply, state}
+
+  #     {:error, reason} ->
+  #       Logger.error("Error while polling for streamed data: #{reason}")
+  #       {:noreply, state}
+  #   end
+  # end
   def handle_info({:poll_stream, request_id}, state) do
-    # Poll the Python agent for more streamed data
-    # ... (Implementation depends on how you design the streaming API in Python)
-    # ... (e.g., send an HTTP GET request to a `/stream` endpoint with a request_id)
-
-    case HTTPClient.get("http://localhost:#{state.port}/stream/#{request_id}") do
-      {:ok, response} ->
-        # Process the streamed chunk (similar to handle_info with :run_stream)
+    case Map.get(state.requests, request_id) do
+      nil ->
+        # Request is not in the state anymore, it might have been completed or errored out
         {:noreply, state}
 
-      {:error, reason} ->
-        Logger.error("Error while polling for streamed data: #{reason}")
-        {:noreply, state}
+      {_call_type, from, _request, _response} ->
+        # Poll the Python agent for more streamed data
+        endpoint = "http://localhost:#{state.port}/stream/#{request_id}"
+
+        case HTTPClient.get(endpoint) do
+          {:ok, response} ->
+            # Process the streamed chunk
+            case process_streaming_response(response, from) do
+              :continue ->
+                # Schedule the next poll if the stream is still active
+                Process.send_after(self(), {:poll_stream, request_id}, @poll_interval)
+                {:noreply, state}
+
+              :completed ->
+                # Remove the request from the state as the stream is completed
+                {:noreply, Map.delete(state.requests, request_id)}
+            end
+
+          {:error, reason} ->
+            Logger.error("Error while polling for streamed data for agent #{state.name}: #{reason}")
+            # Notify the original caller about the error
+            send(from, {:error, "Error during streaming: #{reason}"})
+            {:noreply, Map.delete(state.requests, request_id)}
+        end
     end
   end
 
@@ -364,6 +539,14 @@ end
 
     {:noreply, state}
   end
+
+
+  def handle_info(_msg, state) do
+    Logger.warn("Agent process received unexpected message: #{inspect(_msg)}")
+    {:noreply, state}
+  end
+
+
 
   def handle_info(_msg, state) do
     Logger.warn("Agent process received unexpected message: #{inspect(_msg)}")

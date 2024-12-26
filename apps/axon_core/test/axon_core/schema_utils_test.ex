@@ -1,16 +1,55 @@
+# # axon_core/test/axon_core/schema_utils_test.exs
+
+# defmodule AxonCore.SchemaUtilsTest do
+#   use ExUnit.Case, async: true
+
+#   doctest AxonCore.SchemaUtils
+
+#   # Test cases for elixir_to_json_schema
+#   # ...
+
+#   # Test cases for json_schema_to_elixir_type
+#   # ...
+
+#   # Test cases for validate
+#   # ...
+# end
+
+
 # axon_core/test/axon_core/schema_utils_test.exs
 
 defmodule AxonCore.SchemaUtilsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
-  doctest AxonCore.SchemaUtils
+  describe "elixir_to_json_schema/1" do
+    test "converts basic types" do
+      assert SchemaUtils.elixir_to_json_schema(:string) == %{"type" => "string"}
+      assert SchemaUtils.elixir_to_json_schema(:integer) == %{"type" => "integer"}
+      # ... other basic types
+    end
 
-  # Test cases for elixir_to_json_schema
-  # ...
+    test "converts lists" do
+      assert SchemaUtils.elixir_to_json_schema([:integer]) == %{"type" => "array", "items" => %{"type" => "integer"}}
+    end
 
-  # Test cases for json_schema_to_elixir_type
-  # ...
+    test "converts maps" do
+      schema = %{
+        name: :string,
+        age: {:integer, :required},
+        city: :string
+      }
+      expected_schema = %{
+        "type" => "object",
+        "properties" => %{
+          "name" => %{"type" => "string"},
+          "age" => %{"type" => "integer"},
+          "city" => %{"type" => "string"}
+        },
+        "required" => ["age"]
+      }
+      assert SchemaUtils.elixir_to_json_schema(schema) == expected_schema
+    end
+  end
 
-  # Test cases for validate
-  # ...
+  # ... more test cases for other functions ...
 end

@@ -1,5 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional
+ 
+import asyncio
+
 import json
+import logging
 import os
 import sys
 from datetime import datetime
@@ -15,7 +18,7 @@ from axon_python.agents.example_agent import agent as example_agent
 
 
 
-
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
@@ -26,15 +29,19 @@ from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.result import RunResult, Usage
 
+
+
+
+
+
+# Assuming all agents are defined in the .agents module.
+# This could be adapted to load agents from other modules.
+from .agents import example_agent
+from .agents.bank_support_agent import support_agent
+
+
 from .agents.example_agent import agent as example_agent
-
-
-
-import asyncio
-from typing import AsyncIterator
 from .agents.example_agent import agent as example_agent # , chat_agent
-
-
 
 app = FastAPI(title='Axon Python Agent Wrapper')
 
@@ -251,12 +258,6 @@ async def call_tool(agent_id: str, tool_name: str, request_data: dict):
 
 
 
-
-
-
-
-
-
 class LogEntry(BaseModel):
     timestamp: datetime
     level: str
@@ -318,27 +319,63 @@ async def run_agent_sync(agent_id: str, request_data: dict):
         logger.exception(f"Agent {agent_id} encountered an unexpected error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def run_and_stream(agent: Agent, request_data: dict) -> AsyncIterator[str]:
+    """Run an agent and stream the response."""
+    async with agent.run_stream(
+        request_data["prompt"],
+        message_history=request_data.get("message_history"),
+        model_settings=request_data.get("model_settings"),
+        usage_limits=request_data.get("usage_limits"),
+        infer_name=False
+    ) as result:
+        try:
+            async for response_part in result.stream_text():
+                # Use a structured format for sending chunks
+                chunk = {
+                    "status": "chunk",
+                    "data": response_part
+                }
+                yield json.dumps(to_jsonable_python(chunk))
+
+            # Send a completion message with usage info
+            final_result = {
+                "status": "complete",
+                "result": result.data,
+                "usage": result.usage()
+            }
+            yield json.dumps(to_jsonable_python(final_result))
+        except Exception as e:
+            # Handle any errors that occur during streaming
+            error_message = {
+                "status": "error",
+                "error_type": e.__class__.__name__,
+                "message": str(e)
+            }
+            yield json.dumps(error_message)
+
 @app.post("/agents/{agent_id}/run_stream")
 async def run_agent_stream(agent_id: str, request_data: dict):
     if agent_id not in agent_instances:
         return PlainTextResponse("Agent not found", status_code=404)
 
     agent = agent_instances[agent_id]
+    
+    return StreamingResponse(run_and_stream(agent, request_data), media_type="application/json")
 
-    try:
-        result = agent.run_stream(
-            request_data["prompt"],
-            message_history=request_data.get("message_history"),
-            model_settings=request_data.get("model_settings"),
-            usage_limits=request_data.get("usage_limits"),
-            infer_name=False
-        )
+    # try:
+    #     result = agent.run_stream(
+    #         request_data["prompt"],
+    #         message_history=request_data.get("message_history"),
+    #         model_settings=request_data.get("model_settings"),
+    #         usage_limits=request_data.get("usage_limits"),
+    #         infer_name=False
+    #     )
 
-        return StreamingResponse(event_stream(result), media_type="text/event-stream")
+    #     return StreamingResponse(event_stream(result), media_type="text/event-stream")
 
-    except Exception as e:
-        logger.exception(f"Agent {agent_id} encountered an error during streaming: {e}")
-        return PlainTextResponse(f"Error during streaming: {e}", status_code=500)
+    # except Exception as e:
+    #     logger.exception(f"Agent {agent_id} encountered an error during streaming: {e}")
+    #     return PlainTextResponse(f"Error during streaming: {e}", status_code=500)
  
 
 
