@@ -1,6 +1,7 @@
 import Poison
 defmodule AxonCore.AgentProcess do
   use GenServer
+  require Logger
 
   alias AxonCore.{HTTPClient, JSONCodec, SchemaUtils, ToolUtils}
   alias AxonCore.Types, as: T
@@ -196,40 +197,88 @@ defmodule AxonCore.AgentProcess do
   #       {:reply, {:error, reason}, state}
   #   end
   # end
+  # @impl true
+  # def handle_call({:send_message, message}, from, state) do
+  #   # Construct the full endpoint URL for the specific agent
+  #   endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+  #   headers = [{"Content-Type", "application/json"}]
+
+  #   # Encode the message to JSON
+  #   encoded_message = JSONCodec.encode(message)
+
+  #   # Log the outgoing message
+  #   Logger.info("Sending message to agent #{state.name}: #{inspect(message)}")
+
+  #   # Send an HTTP POST request to the Python agent
+  #   with {:ok, response} <- HTTPClient.post(endpoint, headers, encoded_message) do
+  #     # Process the response
+  #     case process_response(response) do
+  #       {:ok, result} ->
+  #         # Log successful result and usage
+  #         Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+  #         {:reply, {:ok, result}, state}
+
+  #       {:error, reason} ->
+  #         # Log the error
+  #         Logger.error("Agent #{state.name} run failed: #{reason}")
+  #         # Handle error (retry, restart, escalate, etc.)
+  #         handle_error(state, reason, from)
+  #     end
+  #   else
+  #     {:error, reason} ->
+  #       Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+  #       {:reply, {:error, reason}, state}
+  #   end
+  # end
   @impl true
   def handle_call({:send_message, message}, from, state) do
-    # Construct the full endpoint URL for the specific agent
+    # Send an HTTP request to the Python agent
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
 
-    # Encode the message to JSON
-    encoded_message = JSONCodec.encode(message)
+    # Encode the message to JSON and send the request
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
+      # Process the response based on status code
+      case response do
+        %{status_code: 200, body: body} ->
+          # Attempt to decode the response body
+          try do
+            decoded_response = JSONCodec.decode(body)
 
-    # Log the outgoing message
-    Logger.info("Sending message to agent #{state.name}: #{inspect(message)}")
+            # Check for the expected keys in the decoded response
+            case {Map.has_key?(decoded_response, "result"), Map.has_key?(decoded_response, "usage")} do
+              {true, true} ->
+                result = Map.get(decoded_response, "result")
+                usage = Map.get(decoded_response, "usage")
+                # Log successful result and usage
+                Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+                Logger.info("Usage info: #{inspect(usage)}")
+                {:reply, {:ok, result, usage}, state}
 
-    # Send an HTTP POST request to the Python agent
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, encoded_message) do
-      # Process the response
-      case process_response(response) do
-        {:ok, result} ->
-          # Log successful result and usage
-          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
-          {:reply, {:ok, result}, state}
+              _ ->
+                # Handle the case where expected keys are missing
+                Logger.error("Incomplete response data from agent #{state.name}")
+                {:reply, {:error, :incomplete_response}, state}
+            end
+          rescue
+            e in JSON.DecodeError ->
+              # Handle JSON decoding error
+              Logger.error("Failed to decode response from agent #{state.name}: #{inspect(e)}")
+              {:reply, {:error, :decode_error}, state}
+          end
 
-        {:error, reason} ->
-          # Log the error
-          Logger.error("Agent #{state.name} run failed: #{reason}")
-          # Handle error (retry, restart, escalate, etc.)
-          handle_error(state, reason, from)
+        %{status_code: status_code, body: body} ->
+          # Handle error responses
+          Logger.error("Agent #{state.name} run failed with status #{status_code}: #{body}")
+          {:reply, {:error, "Agent run failed with status #{status_code}"}, state}
       end
     else
+      # Handle HTTP request errors
       {:error, reason} ->
         Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
         {:reply, {:error, reason}, state}
     end
   end
-
 
 
   # Example of how to call a tool from handle_call (or another handler)
@@ -396,12 +445,6 @@ end
   end
 
 
-  @doc """
-  Handles incoming messages from the Python agent.
-
-  This is a placeholder for handling different types of messages,
-  including streamed data and log messages.
-  """
   @impl true
   def handle_info({:http_response, request_id, status_code, headers, body}, state) do
     # Find the original request data based on the request_id
@@ -411,8 +454,13 @@ end
           :run_sync ->
             # Handle the response for a synchronous run
             case process_response(response) do
-              {:ok, result} ->
-                GenServer.reply(original_from, {:ok, result})
+              {:ok, result, usage} ->
+                # to do: do we need to process the messages? they're already handled by pydantic-ai
+                # # If there are any messages, you might want to log them or process them
+                # if messages && messages != [] do
+                #   Logger.info("Messages from agent: #{inspect(messages)}")
+                # end
+                GenServer.reply(original_from, {:ok, result, usage})
                 {:noreply, Map.delete(state, :requests)}
 
               {:error, reason} ->
@@ -599,17 +647,43 @@ end
   #       handle_error_response(status_code, body)
   #   end
   # end
+  # defp process_response(response) do
+  #   case response do
+  #     %{status_code: 200, body: body} ->
+  #       try do
+  #         %{
+  #           "result" => result,
+  #           "usage" => usage,
+  #           "messages" => messages
+  #         } = JSONCodec.decode(body)
+
+  #         handle_success(%{result: result, usage: usage, messages: messages})
+  #       rescue
+  #         e in [JSON.DecodeError, KeyError] ->
+  #           {:error, "Error decoding response: #{inspect(e)}"}
+  #       end
+
+  #     %{status_code: status_code, body: body} ->
+  #       handle_error_response(status_code, body)
+  #   end
+  # end
   defp process_response(response) do
     case response do
       %{status_code: 200, body: body} ->
         try do
-          %{
-            "result" => result,
-            "usage" => usage,
-            "messages" => messages
-          } = JSONCodec.decode(body)
+          decoded_response = JSONCodec.decode(body)
 
-          handle_success(%{result: result, usage: usage, messages: messages})
+          # Extract result and usage
+          result = Map.get(decoded_response, "result")
+          usage = Map.get(decoded_response, "usage")
+          messages = Map.get(decoded_response, "messages")
+
+          # Validate result against schema if necessary
+          # if has_result_schema?(state) do
+          #   validate_result(result, state.result_schema)
+          # end
+
+          {:ok, result, usage, messages}
         rescue
           e in [JSON.DecodeError, KeyError] ->
             {:error, "Error decoding response: #{inspect(e)}"}
