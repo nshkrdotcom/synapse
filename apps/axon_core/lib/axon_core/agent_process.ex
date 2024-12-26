@@ -1,17 +1,34 @@
 defmodule AxonCore.AgentProcess do
   use GenServer
 
-  alias AxonCore.HTTPClient
-  alias AxonCore.JSONCodec
+  alias AxonCore.{HTTPClient, JSONCodec, SchemaUtils, ToolUtils}
   alias AxonCore.Types, as: T
 
   @default_timeout 60_000
 
-  def start_link(python_module: python_module, model: model, name: name) do
-    GenServer.start_link(__MODULE__, %{python_module: python_module, model: model, port: get_free_port(), name: name},
+  @doc """
+  Starts an agent process.
+
+  ## Parameters
+
+    - `name`: The name of the agent.
+    - `python_module`: The module where the Python agent is defined.
+    - `model`: The LLM model to use.
+    - `port`: The port number for the agent's HTTP server.
+    - `extra_env`: Extra environment variables.
+  """
+  def start_link(
+        name: name,
+        python_module: python_module,
+        model: model,
+        port: port,
+        extra_env: extra_env \\ []
+      ) do
+    GenServer.start_link(__MODULE__, %{python_module: python_module, model: model, port: port, name: name},
       name: name
     )
   end
+
 
   def get_free_port do
     {:ok, socket} = :gen_tcp.listen(0, [:binary, packet: :raw, reuseaddr: true, active: false])
@@ -20,6 +37,12 @@ defmodule AxonCore.AgentProcess do
     port
   end
 
+
+  @doc """
+  Initializes the agent process.
+
+  Starts the Python agent process using `Port.open/2`.
+  """
   @impl true
   def init(state) do
     # Start the Python agent process using Ports
@@ -28,48 +51,83 @@ defmodule AxonCore.AgentProcess do
       Port.open(
         {:spawn_executable, "./python_agent_runner.sh"},
         [
-          {:args, [state.python_module, Integer.to_string(state.port), state.model]},
-          {:cd, "./python_agents"},
-          {:env, ["OPENAI_API_KEY=#{System.get_env("OPENAI_API_KEY")}"]},
-          :binary,
-          :use_stdio,
-          :exit_status
+          {:args, [state.python_module, Integer.to_string(state.port), state.model |> inspect()]}
+          # this is necessary so that poetry can be found
+          | Enum.into(state.extra_env, [{:cd, "./python_agents"}])
         ]
       )
 
     {:ok, %{state | port: port}}
   end
 
+  @doc """
+  Sends a message to the Python agent and awaits the response.
+
+  ## Parameters
+
+    - `agent_name`: The name of the agent.
+    - `message`: The message to send.
+
+  ## Returns
+
+  Either `{:ok, response}` or `{:error, reason}`.
+  """
   def send_message(agent_name, message) do
     GenServer.call(agent_name, {:send_message, message}, @default_timeout)
   end
 
 
 
+  # @impl true
+  # def init(state) do
+  #   # Start the Python agent process using Ports
+  #   # Pass configuration as environment variables or command-line arguments
+  #   port =
+  #     Port.open(
+  #       {:spawn_executable, "./python_agent_runner.sh"},
+  #       [
+  #         {:args, [state.python_module, Integer.to_string(state.port), state.model]},
+  #         {:cd, "./python_agents"},
+  #         {:env, ["OPENAI_API_KEY=#{System.get_env("OPENAI_API_KEY")}"]},
+  #         :binary,
+  #         :use_stdio,
+  #         :exit_status
+  #       ]
+  #     )
 
-# # ... (other code)
+  #   {:ok, %{state | port: port}}
+  # end
 
-# @impl true
-# def init(state) do
-#   # Start the Python agent process using Ports
-#   # Pass configuration as environment variables or command-line arguments
-#   port =
-#     Port.open(
-#       {:spawn_executable, "./python_agent_runner.sh"},
-#       [
-#         {:args, [state.python_module, Integer.to_string(state.port), state.model]},
-#         {:cd, "./python_agents"},
-#         {:env, ["OPENAI_API_KEY=#{System.get_env("OPENAI_API_KEY")}"]},
-#         :binary,
-#         :use_stdio,
-#         :exit_status
-#       ]
-#     )
+  # def send_message(agent_name, message) do
+  #   GenServer.call(agent_name, {:send_message, message}, @default_timeout)
+  # end
 
-#   {:ok, %{state | port: port}}
-# end
 
-# # ... (other code, including handle_call for sending messages)
+
+
+  # # ... (other code)
+
+  # @impl true
+  # def init(state) do
+  #   # Start the Python agent process using Ports
+  #   # Pass configuration as environment variables or command-line arguments
+  #   port =
+  #     Port.open(
+  #       {:spawn_executable, "./python_agent_runner.sh"},
+  #       [
+  #         {:args, [state.python_module, Integer.to_string(state.port), state.model]},
+  #         {:cd, "./python_agents"},
+  #         {:env, ["OPENAI_API_KEY=#{System.get_env("OPENAI_API_KEY")}"]},
+  #         :binary,
+  #         :use_stdio,
+  #         :exit_status
+  #       ]
+  #     )
+
+  #   {:ok, %{state | port: port}}
+  # end
+
+  # # ... (other code, including handle_call for sending messages)
 
   @impl true
   def handle_call({:send_message, message}, _from, state) do
@@ -77,22 +135,42 @@ defmodule AxonCore.AgentProcess do
     endpoint = "http://localhost:#{state.port}/run"
     headers = [{"Content-Type", "application/json"}]
 
-
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
-      case process_response(response) do
-        {:ok, result} ->
-          # Log successful result
-          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
-          {:reply, {:ok, result}, state}
-        {:error, reason} ->
-          # Log the error
-          Logger.error("Agent #{state.name} run failed: #{reason}")
-          # Handle error (retry, restart, escalate, etc.)
-          handle_error(state, reason, from)
-      end
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
+      # Process the response
+      {:reply, {:ok, JSONCodec.decode(response.body)}, state}
     else
       {:error, reason} ->
-        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+        # Handle error, potentially restart the Python process using the supervisor
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  # @impl true
+  # def handle_call({:send_message, message}, _from, state) do
+  #   # Send an HTTP request to the Python agent
+  #   endpoint = "http://localhost:#{state.port}/run"
+  #   headers = [{"Content-Type", "application/json"}]
+
+
+  #   with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+  #     case process_response(response) do
+  #       {:ok, result} ->
+  #         # Log successful result
+  #         Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+  #         {:reply, {:ok, result}, state}
+  #       {:error, reason} ->
+  #         # Log the error
+  #         Logger.error("Agent #{state.name} run failed: #{reason}")
+  #         # Handle error (retry, restart, escalate, etc.)
+  #         handle_error(state, reason, from)
+  #     end
+  #   else
+  #     {:error, reason} ->
+  #       Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+
+
+
+  # ... (handle_info for receiving streamed data, errors, etc.)
 
   defp process_response(response) do
     case response do
@@ -110,6 +188,7 @@ defmodule AxonCore.AgentProcess do
     end
   end
 
+
   defp handle_success(decoded_response) do
     # Assuming the response contains a "result" key for successful runs
     case Map.fetch(decoded_response, "result") do
@@ -117,6 +196,7 @@ defmodule AxonCore.AgentProcess do
       :error -> {:error, "Missing result in successful response"}
     end
   end
+
 
   defp handle_error_response(status_code, body) do
     try do
@@ -155,6 +235,7 @@ defmodule AxonCore.AgentProcess do
       {:error, "HTTP error: #{status_code}", body}
     end
   end
+
 
   defp handle_error(state, reason, from) do
     # Implement your error handling logic here

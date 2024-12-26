@@ -48,215 +48,65 @@ Here's a proposed approach:
 | State Management (if needed) | Manage any agent-specific state using Elixir data structures (ETS, `GenServer` state).            | `pydantic-ai` agents can be stateless or manage their own internal state if necessary.                                                       | State can be passed between Elixir and Python as part of the request/response if needed.                                  |
 | Concurrency and Fault Tolerance | Supervise agent processes, handle restarts, manage concurrent requests.                         | N/A                                                                                                                                        | Elixir's OTP features handle concurrency and fault tolerance.                                                            |
 | Streaming                   | Receive and process streamed responses from the Python agent.                                     | Stream responses from LLMs using `pydantic-ai`'s `run_stream` and yield chunks of data.                                                       | Python agent sends streamed responses via HTTP (or gRPC in the future).                                                   |
+ 
 
-**Example: Simplified `agent_wrapper.py`**
 
-```python
-from typing import Any, Callable, Dict, List, Optional
-import json
-import os
-import sys
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, ValidationError, create_model
-from pydantic_core import to_jsonable_python
+ Okay, let's review our conversation and create a complete file tree for the Axon project based on our current design parameters, including all necessary files while excluding irrelevant ones.
 
-from pydantic_ai import Agent
-from pydantic_ai.exceptions import UnexpectedModelBehavior
-from pydantic_ai.result import RunResult, Usage
+**Core Principles and Design Choices (Recap):**
 
-app = FastAPI(title='Axon Python Agent Wrapper')
+*   **Elixir as the Orchestrator:** Axon is an Elixir-first framework, leveraging OTP for supervision, concurrency, and fault tolerance.
+*   **`pydantic-ai` Integration:** We're using `pydantic-ai` in Python to handle LLM interactions, structured output generation, and tool calling.
+*   **HTTP Communication:** We've chosen HTTP with JSON for communication between Elixir and Python agents (for now).
+*   **Simplified Python Wrapper:** `agent_wrapper.py` acts as a thin layer between Elixir and `pydantic-ai` agents, handling requests and responses.
+*   **Elixir-Based Configuration:** Agent configurations, including model names, system prompts, tools, and result types, are defined in Elixir.
+*   **Schema Translation:** We'll need a mechanism to translate between Elixir data structures and JSON Schema for data validation.
+*   **Error Handling, Logging, and Monitoring:** Primarily managed by Elixir, with Python agents reporting errors and logs in a structured format.
+*   **Development Environment:**  We're targeting a developer-friendly setup with `venv` for Python and `asdf` for Erlang/Elixir.
 
-# Global dictionary to hold agent instances
-agent_instances: Dict[str, Agent] = {}
+**Talking Through the File Structure:**
 
-# Helper functions
-def _resolve_model_name(model_name: str) -> str:
-    return f"openai:{model_name}"
+1. **Umbrella Structure:** We're following the established pattern from `cf_ex` of using an Elixir umbrella project. This is good for organizing the different components.
 
-def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
-    """
-    Simplified tool resolution. In a real implementation,
-    you'd likely want a more robust mechanism to map tool names
-    to Python functions, potentially using a registry or
-    dynamically loading modules.
-    """
-    tools = []
-    for config in tool_configs:
-        if config["name"] == "some_tool":
-            tools.append(some_tool)
-        # Add more tool mappings as needed
-    return tools
+2. **`apps/axon_core`:** This is the core of the Elixir logic.
+    *   **`supervisor.ex`:**  Supervises agent processes.
+    *   **`agent_registry.ex`:**  Likely using `Registry` to track agent processes.
+    *   **`http_client.ex`:** Handles making HTTP requests to Python agents. We might use `req` or `Finch` here.
+    *   **`json_codec.ex`:**  Handles JSON encoding/decoding, probably using `Jason`.
+    *   **`types.ex`:**  Defines common typespecs for the project.
+    *   **`agent_process.ex`:** The `GenServer` that manages a single Python agent process, handles communication, and implements error handling and logging.
+    *   **`tool_utils.ex`:**  (New) A module to encapsulate logic related to tool definition translation and potentially dynamic function calls for Elixir-based tools.
+    *   **`schema_utils.ex`:** (New) A module to handle schema translation and validation, potentially using `jason_schema` or a custom implementation.
 
-def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
-    """
-    Dynamically creates a Pydantic model from a JSON schema-like definition.
-    This is a placeholder for a more complete schema translation mechanism.
-    """
-    fields = {}
-    for field_name, field_info in result_type_config.items():
-        # Assuming a simple type mapping for now
-        field_type = {
-            "string": str,
-            "integer": int,
-            "boolean": bool,
-            "number": float,
-            "array": list,
-            "object": dict,
-            "null": type(None)
-        }[field_info["type"]]
+3. **`apps/axon`:** A Phoenix application for a web interface and API.
+    *   **`controllers/`, `channels/`, `templates/`, `views/`:**  Standard Phoenix directories for controllers, channels, templates, and views.
+    *   **`axon.ex`, `axon_web.ex`, `router.ex`:** Standard Phoenix application and routing files.
 
-        # Handle nested objects/arrays if necessary
-        # ...
+4. **`apps/axon_python`:**
+    *   **`pyproject.toml`, `poetry.lock`:**  Poetry project files for managing Python dependencies.
+    *   **`src/axon_python/__init__.py`:**  Make `axon_python` a package.
+    *   **`src/axon_python/agent_wrapper.py`:** The FastAPI application that wraps `pydantic-ai` agents. This will include error handling and logging logic to send information back to Elixir.
+    *   **`src/axon_python/agents/`:**  A directory for storing `pydantic-ai` agent code (e.g., `example_agent.py`, `bank_support_agent.py`).
+    *   **`src/axon_python/llm_wrapper.py`:** (New) A module providing a simplified interface for interacting with LLMs, abstracting away some of the `pydantic-ai` and library-specific details.
+    *   **`scripts/start_agent.sh`:**  A shell script to start a Python agent process, activating the virtual environment and setting environment variables.
+    *   **`test/`:** Python tests.
+    *   **`mix.exs`:** While this will be an Elixir umbrella application, it will manage a python project.
 
-        fields[field_name] = (field_type, ...)  # Use ellipsis for required fields
+5. **`lib/axon.ex`:** Main entry point for the Axon application.
 
-    return create_model("ResultModel", **fields)
+6. **`rel/`:** Release configuration (if needed for deployment).
 
-# Placeholder for a tool function
-def some_tool(arg1: str, arg2: int) -> str:
-    return f"Tool executed with {arg1} and {arg2}"
+7. **`config/`:** Elixir configuration files.
 
-@app.post("/agents")
-async def create_agent(request: Request):
-    """
-    Creates a new agent instance.
+8. **`mix.exs`:** Umbrella project definition.
 
-    Expects a JSON payload like:
-    {
-        "agent_id": "my_agent",
-        "model": "gpt-4o",
-        "system_prompt": "You are a helpful assistant.",
-        "tools": [
-            {"name": "some_tool", "description": "Does something", "parameters": {
-                "type": "object",
-                "properties": {
-                    "arg1": {"type": "string"},
-                    "arg2": {"type": "integer"}
-                }
-            }}
-        ],
-        "result_type": {
-            "type": "object",
-            "properties": {
-                "field1": {"type": "string"},
-                "field2": {"type": "integer"}
-            }
-        },
-        "retries": 3,
-        "result_retries": 5,
-        "end_strategy": "early"
-    }
-    """
-    try:
-        data = await request.json()
-        agent_id = data["agent_id"]
+9. **`README.md`:** Project documentation.
 
-        if agent_id in agent_instances:
-            raise HTTPException(status_code=400, detail="Agent with this ID already exists")
+10. **`.gitignore`:**  Ignore virtual environments, build artifacts, etc.
 
-        model = _resolve_model_name(data["model"])
-        system_prompt = data["system_prompt"]
-        tools = _resolve_tools(data.get("tools", []))
-        result_type = _resolve_result_type(data.get("result_type", {}))
-
-        agent = Agent(
-            model=model,
-            system_prompt=system_prompt,
-            tools=tools,
-            result_type=result_type,
-            # Add other agent parameters as needed
-        )
-
-        agent_instances[agent_id] = agent
-
-        return JSONResponse({"status": "success", "agent_id": agent_id})
-
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.errors())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/agents/{agent_id}/run_sync")
-async def run_agent_sync(agent_id: str, request_data: dict):
-    """
-    Executes an agent synchronously.
-
-    Expects a JSON payload like:
-    {
-        "prompt": "What's the weather like?",
-        "message_history": [],  # Optional
-        "model_settings": {},  # Optional
-        "usage_limits": {}  # Optional
-    }
-    """
-    if agent_id not in agent_instances:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    agent = agent_instances[agent_id]
-
-    try:
-        result = agent.run_sync(
-            request_data["prompt"],
-            message_history=request_data.get("message_history"),
-            model_settings=request_data.get("model_settings"),
-            usage_limits=request_data.get("usage_limits"),
-            infer_name=False
-        )
-        return JSONResponse(content={
-            "result": to_jsonable_python(result.data),
-            "usage": to_jsonable_python(result.usage)
-        })
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.errors())
-    except UnexpectedModelBehavior as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected model behavior: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ... (streaming endpoint, etc.)
-
-def start_fastapi(port: int):
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    # Get port from environment variable or default to 8000
-    port = int(os.environ.get("AXON_PYTHON_AGENT_PORT", 8000))
-    start_fastapi(port=port)
-```
-
-**7. Agent Startup (`start_agent.sh`)**
-modify to accomodate the new model option as an env variable
-
-```bash
-#!/bin/bash
-
-# Activate the virtual environment
-# shellcheck disable=SC1091
-source ../../.venv/bin/activate
-
-# Get the agent module from arguments
-AGENT_MODULE="$1"
-PORT="$2"
-MODEL="$3"
-
-# Set environment variables for the agent
-export AXON_PYTHON_AGENT_PORT="$PORT"
-export AXON_PYTHON_AGENT_MODEL="$MODEL" # Set the model here
-
-# Start the FastAPI server
-python -m uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT"
-```
-
-**8. Further Considerations**
-
-*   **Error Handling:** Define a consistent way to handle errors that occur in the Python agent and propagate them back to Elixir.
-*   **Logging and Monitoring:** Integrate with Elixir's logging system to provide visibility into the Python agent's behavior.
-*   **Testing:** Write thorough tests for both the Elixir and Python sides of the integration.
-
-This detailed analysis and proposed integration strategy should provide a solid foundation for building Axon as an Elixir-centric AI agent orchestration framework while effectively leveraging the capabilities of `pydantic-ai`.
+11. **`start.sh`:** Top-level startup script for development.
+ 
 
 
 
@@ -270,21 +120,7 @@ This detailed analysis and proposed integration strategy should provide a solid 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-# Build out Error Handling and Process Managmenent 
-
-You're right, building as much as possible in Elixir, including error handling, logging, monitoring, and testing, is a very compelling approach. It aligns perfectly with the philosophy of leveraging Elixir/OTP's strengths for building robust, fault-tolerant systems. Let's explore how we can achieve this "Elixir-first" approach for Axon, making the Elixir side the supervisor and the primary home for these critical aspects.
+# Error Handling, Logging, Monitoring, Testing
 
 **Core Idea:**
 
@@ -363,298 +199,7 @@ You're right, building as much as possible in Elixir, including error handling, 
 *   **Workflow Orchestration:** Elixir will define and manage the overall workflow, routing messages between agents.
 *   **State Management:** Elixir will be responsible for managing any persistent state (e.g., chat histories).
 *   **Configuration:** Elixir will be the source of truth for all configuration.
-
-**Example Code Modifications:**
-
-**`axon_python/src/axon_python/agent_wrapper.py` (Error Handling and Logging):**
-
-```python
-from typing import Any, Callable, Dict, List, Optional
-import json
-import os
-import sys
-from datetime import datetime
-from json import JSONDecodeError
-
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, ValidationError, create_model
-from pydantic_core import to_jsonable_python
-
-from pydantic_ai import Agent
-from pydantic_ai.exceptions import UnexpectedModelBehavior
-from pydantic_ai.result import RunResult, Usage
-
-from .agents.example_agent import agent as example_agent
-
-app = FastAPI(title='Axon Python Agent Wrapper')
-
-# Global dictionary to hold agent instances
-agent_instances: Dict[str, Agent] = {"example_agent": example_agent}
-# Helper functions
-def _resolve_model_name(model_name: str) -> str:
-    return f"openai:{model_name}"
-
-def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
-    """
-    Simplified tool resolution. In a real implementation,
-    you'd likely want a more robust mechanism to map tool names
-    to Python functions, potentially using a registry or
-    dynamically loading modules.
-    """
-    tools = []
-    for config in tool_configs:
-        if config["name"] == "some_tool":
-            tools.append(some_tool)
-        # Add more tool mappings as needed
-    return tools
-
-def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
-    """
-    Dynamically creates a Pydantic model from a JSON schema-like definition.
-    This is a placeholder for a more complete schema translation mechanism.
-    """
-    fields = {}
-    for field_name, field_info in result_type_config.items():
-        # Assuming a simple type mapping for now
-        field_type = {
-            "string": str,
-            "integer": int,
-            "boolean": bool,
-            "number": float,
-            "array": list,
-            "object": dict,
-            "null": type(None)
-        }[field_info["type"]]
-
-        # Handle nested objects/arrays if necessary
-        # ...
-
-        fields[field_name] = (field_type, ...)  # Use ellipsis for required fields
-
-    return create_model("ResultModel", **fields)
-
-# Placeholder for a tool function
-def some_tool(arg1: str, arg2: int) -> str:
-    return f"Tool executed with {arg1} and {arg2}"
-
-@app.post("/agents")
-async def create_agent(request: Request):
-    """
-    Creates a new agent instance.
-
-    Expects a JSON payload like:
-    {
-        "agent_id": "my_agent",
-        "model": "gpt-4o",
-        "system_prompt": "You are a helpful assistant.",
-        "tools": [
-            {"name": "some_tool", "description": "Does something", "parameters": {
-                "type": "object",
-                "properties": {
-                    "arg1": {"type": "string"},
-                    "arg2": {"type": "integer"}
-                }
-            }}
-        ],
-        "result_type": {
-            "type": "object",
-            "properties": {
-                "field1": {"type": "string"},
-                "field2": {"type": "integer"}
-            }
-        },
-        "retries": 3,
-        "result_retries": 5,
-        "end_strategy": "early"
-    }
-    """
-    try:
-        data = await request.json()
-        agent_id = data["agent_id"]
-
-        if agent_id in agent_instances:
-            raise HTTPException(status_code=400, detail="Agent with this ID already exists")
-
-        model = _resolve_model_name(data["model"])
-        system_prompt = data["system_prompt"]
-        tools = _resolve_tools(data.get("tools", []))
-        result_type = _resolve_result_type(data.get("result_type", {}))
-
-        agent = Agent(
-            model=model,
-            system_prompt=system_prompt,
-            tools=tools,
-            result_type=result_type,
-            # Add other agent parameters as needed
-        )
-
-        agent_instances[agent_id] = agent
-
-        return JSONResponse({"status": "success", "agent_id": agent_id})
-
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.errors())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/agents/{agent_id}/run_sync")
-async def run_agent_sync(agent_id: str, request_data: dict):
-    if agent_id not in agent_instances:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    agent = agent_instances[agent_id]
-
-    try:
-        result = agent.run_sync(
-            request_data["prompt"],
-            message_history=request_data.get("message_history"),
-            model_settings=request_data.get("model_settings"),
-            usage_limits=request_data.get("usage_limits"),
-            infer_name=False
-        )
-        return JSONResponse(content={
-            "result": to_jsonable_python(result.data),
-            "usage": to_jsonable_python(result.usage)
-        })
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.errors())
-    except UnexpectedModelBehavior as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected model behavior: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-class LogEntry(BaseModel):
-    timestamp: datetime
-    level: str
-    message: str
-
-@app.post("/agents/{agent_id}/log")
-async def log_message(agent_id: str, log_entry: LogEntry):
-    # In a real implementation, you might want to use a more robust logging mechanism
-    print(f"[{log_entry.timestamp}] {agent_id} - {log_entry.level}: {log_entry.message}")
-    return JSONResponse({"status": "success"})
-
-def start_fastapi(port: int):
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    port = int(os.environ.get("AXON_PYTHON_AGENT_PORT", 8000))
-    start_fastapi(port=port)
-```
-
-**Elixir `AxonCore.AgentProcess` (Error Handling and Logging):**
-
-```elixir
-defmodule AxonCore.AgentProcess do
-  use GenServer
-
-  # ... (start_link, init, etc.)
-
-  def handle_call({:run_sync, request}, from, state) do
-    # ... (construct HTTP request)
-
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
-      case process_response(response) do
-        {:ok, result} ->
-          # Log successful result
-          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
-          {:reply, {:ok, result}, state}
-        {:error, reason} ->
-          # Log the error
-          Logger.error("Agent #{state.name} run failed: #{reason}")
-          # Handle error (retry, restart, escalate, etc.)
-          handle_error(state, reason, from)
-      end
-    else
-      {:error, reason} ->
-        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
-        {:reply, {:error, reason}, state}
-    end
-  end
-
-  defp process_response(response) do
-    case response do
-      %{status_code: 200, body: body} ->
-        try do
-          decoded_response = JSONCodec.decode(body)
-          handle_success(decoded_response)
-        rescue
-          e in [JSON.DecodeError, KeyError] ->
-            {:error, "Error decoding response: #{inspect(e)}"}
-        end
-
-      %{status_code: status_code, body: body} ->
-        handle_error_response(status_code, body)
-    end
-  end
-
-  defp handle_success(decoded_response) do
-    # Assuming the response contains a "result" key for successful runs
-    case Map.fetch(decoded_response, "result") do
-      {:ok, result} -> {:ok, result}
-      :error -> {:error, "Missing result in successful response"}
-    end
-  end
-
-  defp handle_error_response(status_code, body) do
-    try do
-      # Attempt to decode the body as JSON, expecting error details
-      %{
-        "status" => "error",
-        "error_type" => error_type,
-        "message" => message,
-        "details" => details
-      } = JSONCodec.decode(body)
-
-      # Log the error with details
-      Logger.error("Python agent error: #{error_type} - #{message}", details: details)
-
-      # Here you can pattern match on `error_type` to handle specific errors
-      case error_type do
-        "ValidationError" ->
-          # Handle validation errors, potentially retrying the operation
-          {:error, :validation_error, details}
-
-        "ModelRetry" ->
-          # Handle model retry request
-          {:error, :model_retry, message}
-
-        _ ->
-          # Handle other errors as needed
-          {:error, :unknown_error, message}
-      end
-    rescue
-      # If JSON decoding or key lookup fails, log the raw body
-      e in [JSON.DecodeError, KeyError] ->
-        Logger.error("Error decoding error response: #{inspect(e)}")
-        {:error, :decode_error, body}
-    else
-      # If status code is not 200, treat as a general error
-      {:error, "HTTP error: #{status_code}", body}
-    end
-  end
-
-  defp handle_error(state, reason, from) do
-    # Implement your error handling logic here
-    # For example, retry the operation, restart the agent, or escalate the error
-    case reason do
-      :validation_error ->
-        # Potentially retry with a modified request
-        {:reply, {:error, reason}, state}
-
-      :model_retry ->
-        # Handle model retry request
-        {:reply, {:error, reason}, state}
-
-      _ ->
-        # Escalate the error or handle it according to your application's needs
-        {:reply, {:error, reason}, state}
-    end
-  end
-end
-```
+ 
 
 **Testing:**
 
