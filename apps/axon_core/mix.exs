@@ -10,16 +10,14 @@ defmodule AxonCore.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.14",
-      elixirc_options: [
-        exclude: [
-          ~r/lib\/axon_core\/agent_process\.ex/,
-          ~r/lib\/axon_core\/tool_utils\.ex/,
-        ],
-      ],
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test"]
+  defp elixirc_paths(_), do: ["lib"]
 
   def application do
     [
