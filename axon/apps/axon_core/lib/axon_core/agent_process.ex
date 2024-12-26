@@ -78,23 +78,98 @@ defmodule AxonCore.AgentProcess do
     headers = [{"Content-Type", "application/json"}]
 
 
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(message)) do
-      # Process the response, which could be streamed or a complete response
-      case response do
-        %{status_code: 200, body: body} ->
-            # Decode the JSON response
-            decoded_response = JSONCodec.decode(body)
-
-            # Route the response based on your application logic
-            # ...
-
-            {:reply, {:ok, decoded_response}, state}
-
-        %{status_code: status_code, body: body} -> # we will need custom error handling here
-          {:reply, {:error, "Non-200 response from Python agent: #{status_code}", body}, state}
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+      case process_response(response) do
+        {:ok, result} ->
+          # Log successful result
+          Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+          {:reply, {:ok, result}, state}
+        {:error, reason} ->
+          # Log the error
+          Logger.error("Agent #{state.name} run failed: #{reason}")
+          # Handle error (retry, restart, escalate, etc.)
+          handle_error(state, reason, from)
       end
     else
       {:error, reason} ->
+        Logger.error("HTTP request to agent #{state.name} failed: #{reason}")
+
+  defp process_response(response) do
+    case response do
+      %{status_code: 200, body: body} ->
+        try do
+          decoded_response = JSONCodec.decode(body)
+          handle_success(decoded_response)
+        rescue
+          e in [JSON.DecodeError, KeyError] ->
+            {:error, "Error decoding response: #{inspect(e)}"}
+        end
+
+      %{status_code: status_code, body: body} ->
+        handle_error_response(status_code, body)
+    end
+  end
+
+  defp handle_success(decoded_response) do
+    # Assuming the response contains a "result" key for successful runs
+    case Map.fetch(decoded_response, "result") do
+      {:ok, result} -> {:ok, result}
+      :error -> {:error, "Missing result in successful response"}
+    end
+  end
+
+  defp handle_error_response(status_code, body) do
+    try do
+      # Attempt to decode the body as JSON, expecting error details
+      %{
+        "status" => "error",
+        "error_type" => error_type,
+        "message" => message,
+        "details" => details
+      } = JSONCodec.decode(body)
+
+      # Log the error with details
+      Logger.error("Python agent error: #{error_type} - #{message}", details: details)
+
+      # Here you can pattern match on `error_type` to handle specific errors
+      case error_type do
+        "ValidationError" ->
+          # Handle validation errors, potentially retrying the operation
+          {:error, :validation_error, details}
+
+        "ModelRetry" ->
+          # Handle model retry request
+          {:error, :model_retry, message}
+
+        _ ->
+          # Handle other errors as needed
+          {:error, :unknown_error, message}
+      end
+    rescue
+      # If JSON decoding or key lookup fails, log the raw body
+      e in [JSON.DecodeError, KeyError] ->
+        Logger.error("Error decoding error response: #{inspect(e)}")
+        {:error, :decode_error, body}
+    else
+      # If status code is not 200, treat as a general error
+      {:error, "HTTP error: #{status_code}", body}
+    end
+  end
+
+  defp handle_error(state, reason, from) do
+    # Implement your error handling logic here
+    # For example, retry the operation, restart the agent, or escalate the error
+    case reason do
+      :validation_error ->
+        # Potentially retry with a modified request
+        {:reply, {:error, reason}, state}
+
+      :model_retry ->
+        # Handle model retry request
+        {:reply, {:error, reason}, state}
+
+      _ ->
+        # Escalate the error or handle it according to your application's needs
         {:reply, {:error, reason}, state}
     end
   end
