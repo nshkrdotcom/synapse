@@ -379,6 +379,18 @@ async def run_agent_stream(agent_id: str, request_data: dict):
  
 
 
+# endpoint to simulate a crash
+@app.post("/agents/{agent_id}/crash")
+async def crash_agent(agent_id: str):
+    if agent_id not in agent_instances:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Forcefully exit the process
+    # You might want to make this more sophisticated (e.g., raise an exception)
+    # depending on how you want to simulate the crash
+    os._exit(1)
+
+
 def start_fastapi(port: int):
     uvicorn.run(app, host="0.0.0.0", port=port)
 

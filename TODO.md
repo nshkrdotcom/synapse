@@ -132,3 +132,112 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 For now, we should concentrate on items 1-4 from the "High Priority" list. These are essential for a basic, functional integration. Once these are working, we can move on to streaming, more robust error handling, and then the lower-priority items.
 
 By prioritizing these tasks and taking an iterative approach, we can build a solid foundation for Axon and gradually enhance its capabilities. I'll be here to assist you as we implement each of these features. Let's get started with the `Tool Calling (Python Tools)` since you have done preliminary work on `schema_utils.ex`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Okay, let's review the status of each item on the to-do list:
+
+**High Priority (Must-Have for Basic Functionality):**
+
+**2. Refine Schema Translation (Basic Types):**
+
+*   **Status:** Partially Implemented.
+*   **Details:**
+    *   `elixir_to_json_schema/1` in `schema_utils.ex` handles basic types (`string`, `integer`, `boolean`, `number`, `null`), lists, and maps (nested objects).
+    *   `json_schema_to_elixir_type/1` provides a basic reverse mapping.
+*   **What's Done:**
+    *   Basic type mapping between Elixir and JSON Schema types.
+    *   Recursive handling of lists and maps.
+    *   Support for `required` fields in object schemas.
+*   **What's Missing:**
+    *   Handling of more complex Pydantic/JSON Schema features (e.g., `anyOf`, `allOf`, `oneOf`, `$ref`, regular expressions, numerical constraints).
+    *   Robust error handling for unsupported types or schema constructs.
+    *   Thorough testing for various valid and invalid schema inputs.
+
+**3. Implement Result Validation (Basic):**
+
+*   **Status:** Partially Implemented.
+*   **Details:**
+    *   The `validate/2` function in `schema_utils.ex` provides a basic wrapper around `Jason.Schema.validate`.
+    *   `agent_wrapper.py` has basic try except blocks for handling errors that would come from validation.
+*   **What's Done:**
+    *   Basic structure for validation is in place.
+    *   Placeholder function for using `Jason.Schema` is defined.
+*   **What's Missing:**
+    *   **Integration with Agent Process:** The `AgentProcess` doesn't yet fully utilize this validation function. We need to call `SchemaUtils.validate` after receiving a result from the Python agent and before returning it to the caller.
+    *   **Error Handling:**  We need to define how validation errors are handled. Options include:
+        *   Retrying the request (if appropriate).
+        *   Returning an error to the caller.
+        *   Logging the error and continuing.
+    *   **Configuration:** We might want to make result validation configurable (enable/disable).
+
+**4. Complete `handle_info` for Non-Streaming Responses:**
+
+*   **Status:** Partially Implemented.
+*   **Details:**
+    *   `AgentProcess` has a `handle_info` clause for`:http_response`
+    *   `process_response` attempts to handle success and failure responses.
+    *   `handle_error_response` handles http error responses
+    *   `handle_error` handles errors processing responses.
+*   **What's Done:**
+    *   Basic structure for receiving and processing HTTP responses is in place.
+    *   Error responses are being pattern matched for logging and handling.
+*   **What's Missing:**
+    *   **Handling of the Python agent's response:** We need to add logic to extract the `result` and `usage` data from the successful response.
+    *   **Message Logging:** We need to implement the actual sending of log messages from Python to Elixir (currently, it's just a placeholder in `agent_wrapper.py`).
+
+**Medium Priority (Important for Usability and Robustness):**
+
+**5. Streaming Implementation (Basic Text Streaming):**
+
+*   **Status:** Partially Implemented.
+*   **Details:**
+    *   `agent_wrapper.py` has a `run_agent_stream` function and uses `StreamingResponse` from FastAPI.
+    *   `AgentProcess` has a `handle_info` clause for `:poll_stream`.
+*   **What's Done:**
+    *   Basic structure for streaming is in place on both the Elixir and Python sides.
+    *   Placeholder for polling mechanism in Elixir.
+*   **What's Missing:**
+    *   **Actual Streaming Logic:** We need to implement the actual streaming logic in `run_agent_stream` using async for and yielding `ModelResponse` in some way.
+    *   **Chunking and Buffering:**  We need to decide how to chunk the data and handle buffering on both sides.
+    *   **`pydantic-ai` Streaming:**  Ensure that `pydantic-ai`'s `run_stream` is correctly integrated with the streaming logic in `agent_wrapper.py`.
+    *   **Error Handling:** Handle errors during streaming (e.g., agent crash, network issues).
+    *   **Complete `handle_info` for streaming:** We need to actually process the streamed data in the `:poll_stream` handler.
+
+**In summary, we've made good progress on the basic structure, but we still need to:**
+
+*   **Complete the core message handling logic in Elixir (`AgentProcess`).**
+*   **Flesh out the schema translation and validation.**
+*   **Implement the streaming functionality.**
+*   **Add comprehensive error handling and logging.**
+
+**Next Steps:**
+
+1. **Complete `handle_info` for non-streaming responses:** We should prioritize finishing the non-streaming response handling in `AgentProcess`, including extracting the result and usage data.
+2. **Implement basic result validation:** Integrate `SchemaUtils.validate` into the `AgentProcess` to validate results before returning them.
+3. **Enhance schema translation:** Add support for more basic types to `schema_utils.ex`.
+4. **Implement basic text streaming:** Get a simple text streaming example working end-to-end.
+
+Once these steps are complete, we'll have a more functional system that we can use as a basis for further development and testing.
