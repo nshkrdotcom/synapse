@@ -9,7 +9,10 @@ defmodule AxonCore.Supervisor do
   def init(_init_arg) do
     children = [
       # Supervisor for each agent type
-      {AxonCore.AgentProcess, python_module: "python_agent_1", model: "openai:gpt-4o", name: "python_agent_1"},
+      {AxonCore.AgentProcess,
+       python_module: "example_agent",
+       model: "openai:gpt-4o",
+       name: "python_agent_1"},
       # Potentially other supervisors for different agent types
     ]
 
