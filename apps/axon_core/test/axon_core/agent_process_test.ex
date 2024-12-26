@@ -110,7 +110,17 @@ defmodule AxonCore.AgentProcessTest do
   def setup(_) do
     HTTPClientMock = defmock("AxonCore.HTTPClientMock", for: HTTPClient)
     Mox.stub_with(HTTPClient, HTTPClientMock)
-    :ok
+    # Start the agent process with necessary configuration
+    {:ok, agent_pid} =
+      AgentProcess.start_link(
+        name: "test_agent",
+        python_module: "agents.example_agent",
+        model: "openai:gpt-4o",
+        port: 8089,
+        extra_env: []
+      )
+
+    {:ok, agent_pid: agent_pid}
   end
 
   describe "handle_call/3 :call_tool" do
@@ -137,23 +147,45 @@ defmodule AxonCore.AgentProcessTest do
     #   # Assert the result
     #   assert result == "Tool called successfully"
     # end
-    test "correctly calls a Python tool and returns the result", %{agent_pid: agent_pid} do
-      # Start the agent process with necessary configuration
-      {:ok, agent_pid} =
-        AgentProcess.start_link(
-          name: "test_agent",
-          python_module: "test_agent",
-          model: "test_model",
-          port: 8081,
-          extra_env: []
-        )
+    # test "correctly calls a Python tool and returns the result", %{agent_pid: agent_pid} do
+    #   # Start the agent process with necessary configuration
+    #   {:ok, agent_pid} =
+    #     AgentProcess.start_link(
+    #       name: "test_agent",
+    #       python_module: "test_agent",
+    #       model: "test_model",
+    #       port: 8081,
+    #       extra_env: []
+    #     )
 
+    #   # Define the tool call details
+    #   tool_name = "some_tool"
+    #   tool_args = %{"arg1" => "hello", "arg2" => 123}
+
+    #   # Mock the HTTP POST request to simulate the Python agent's response
+    #   Mox.expect(HTTPClientMock, :post, fn _url, _headers, body ->
+    #     # Assert the structure of the body being sent to the Python agent
+    #     assert Jason.decode!(body) == %{"tool_name" => tool_name, "args" => tool_args}
+
+    #     # Return a successful response with a result
+    #     {:ok, %{status_code: 200, body: Jason.encode!(%{result: "Tool called successfully"})}}
+    #   end)
+
+    #   # Send the call_tool message to the agent process
+    #   assert {:ok, result} = AgentProcess.call_tool(agent_pid, tool_name, tool_args)
+
+    #   # Assert the result
+    #   assert result == "Tool called successfully"
+    #   Mox.verify(HTTPClientMock)
+    # end
+    ## OR:
+    test "correctly calls a Python tool and returns the result", %{agent_pid: agent_pid} do
       # Define the tool call details
       tool_name = "some_tool"
       tool_args = %{"arg1" => "hello", "arg2" => 123}
 
       # Mock the HTTP POST request to simulate the Python agent's response
-      Mox.expect(HTTPClientMock, :post, fn _url, _headers, body ->
+      expect(HTTPClientMock, :post, fn _url, _headers, body ->
         # Assert the structure of the body being sent to the Python agent
         assert Jason.decode!(body) == %{"tool_name" => tool_name, "args" => tool_args}
 
@@ -219,14 +251,14 @@ defmodule AxonCore.AgentProcessTest do
   describe "send_message/2" do
     test "correctly processes request and returns result", %{agent_pid: agent_pid} do
       # Start the agent process with necessary configuration
-      {:ok, agent_pid} =
-        AgentProcess.start_link(
-          name: "test_agent",
-          python_module: "agents.example_agent",
-          model: "openai:gpt-4o",
-          port: 8089,
-          extra_env: []
-        )
+      # {:ok, agent_pid} =
+      #   AgentProcess.start_link(
+      #     name: "test_agent",
+      #     python_module: "agents.example_agent",
+      #     model: "openai:gpt-4o",
+      #     port: 8089,
+      #     extra_env: []
+      #   )
 
       # Mock the HTTP POST request to simulate the Python agent's response
       expected_response =
@@ -236,7 +268,8 @@ defmodule AxonCore.AgentProcessTest do
            body:
              Jason.encode!(%{
                "result" => %{response: "Test response"},
-               "usage" => %{requests: 1, request_tokens: 10, response_tokens: 5, total_tokens: 15}
+               "usage" => %{requests: 1, request_tokens: 10, response_tokens: 5, total_tokens: 15},
+               "messages" => []
              })
          }}
 
@@ -252,6 +285,7 @@ defmodule AxonCore.AgentProcessTest do
       # Assert the result and usage
       assert result == %{"response" => "Test response"}
       assert usage == %{"requests" => 1, "request_tokens" => 10, "response_tokens" => 5, "total_tokens" => 15}
+      Mox.verify(HTTPClientMock)
     end
 
     # Add more test cases for error handling, streaming, etc.

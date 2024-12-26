@@ -62,9 +62,21 @@ defmodule MyApp.AgentWorkflow do
       module: "python_agent_1", 
       model: "openai:gpt-4o",
       system_prompt: "You are a helpful assistant that translates English to French.",
-      tools: [
-        # Define tools here, potentially referencing Elixir functions or Python functions
-      ],
+    tools: [
+        %{
+        name: "some_tool",
+        description: "A simple tool that takes a string and an integer as input.",
+        parameters: %{
+            "type" => "object",
+            "properties" => %{
+            "arg1" => %{"type" => "string"},
+            "arg2" => %{"type" => "integer"}
+            },
+            "required" => ["arg1", "arg2"]  # If both are required
+        },
+        handler: {:python, module: "example_agent", function: "some_tool"}
+        }
+    ],
       result_type: %{
         translation: :string
       },

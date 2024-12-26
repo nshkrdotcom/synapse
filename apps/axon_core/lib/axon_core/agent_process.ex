@@ -146,7 +146,23 @@ defmodule AxonCore.AgentProcess do
         ]
       )
 
-    {:ok, %{state | port: port, python_process: port}}
+      result_schema =
+        case opts[:result_type] do
+          nil ->
+            nil
+
+          result_type ->
+            SchemaUtils.elixir_to_json_schema(result_type)
+        end
+
+      initial_state = %{
+        state
+        | port: port,
+          python_process: python_process,
+          result_schema: result_schema
+      }
+
+      {:ok, initial_state}
   end
 
 
@@ -904,6 +920,22 @@ defmodule AxonCore.AgentProcess do
           :run_sync ->
             # Handle the response for a synchronous run
             case process_response(response) do
+              {:ok, result, usage, messages} ->  # Include 'messages' in the return tuple
+                # Log successful result and usage
+                Logger.info("Agent #{state.name} returned: #{inspect(result)}")
+                Logger.info("Usage info: #{inspect(usage)}")
+
+                # Process and log each message
+                if is_list(messages) do
+                  Enum.each(messages, fn msg ->
+                    Logger.info("Agent Message: #{inspect(msg)}")
+                  end)
+                end
+
+                # Reply to the original caller with the result and usage
+                GenServer.reply(original_from, {:ok, result, usage})
+                {:noreply, Map.delete(state.requests, request_id)}
+
               {:ok, result, usage} ->
                 # to do: do we need to process the messages? they're already handled by pydantic-ai
                 # # If there are any messages, you might want to log them or process them
@@ -913,7 +945,15 @@ defmodule AxonCore.AgentProcess do
                 GenServer.reply(original_from, {:ok, result, usage})
                 {:noreply, Map.delete(state, :requests)}
 
+              {:error, :result_validation_failed, reason} ->
+                # Handle validation failure
+                Logger.error("Result validation failed for agent #{state.name}: #{reason}")
+                # Potentially retry or escalate the error
+                GenServer.reply(original_from, {:error, :result_validation_failed})
+                {:noreply, Map.delete(state, :requests)}
+
               {:error, reason} ->
+                # Handle other errors
                 GenServer.reply(original_from, {:error, reason})
                 {:noreply, Map.delete(state, :requests)}
             end
@@ -931,6 +971,7 @@ defmodule AxonCore.AgentProcess do
                     Process.send_after(self(), {:poll_stream, request_id}, @poll_interval)
                     {:noreply, state}
 
+                  ## NEEDED? Revise?
                   {:ok, %{"status" => "complete"}} ->
                     # Stream has completed, send the final usage info if available
                     usage = Map.get(JSONCodec.decode(body), "usage")
@@ -938,7 +979,7 @@ defmodule AxonCore.AgentProcess do
                     {:noreply, Map.delete(state, :requests)}
 
                   {:error, reason} ->
-                    # Handle decoding error
+                    Logger.error("Agent #{state.name} run failed: #{reason}")
                     GenServer.reply(original_from, {:error, reason})
                     {:noreply, Map.delete(state, :requests)}
                 end
