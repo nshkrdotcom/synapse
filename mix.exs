@@ -28,7 +28,7 @@ defmodule Axon.MixProject do
       # Umbrella apps
       {:axon_core, path: "apps/axon_core"},
       {:axon_python, path: "apps/axon_python"},
-      
+
       # Direct dependencies
       {:phoenix, "~> 1.7.0"},
       {:phoenix_html, "~> 3.3"},
