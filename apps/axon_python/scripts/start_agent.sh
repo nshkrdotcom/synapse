@@ -15,3 +15,6 @@ export AXON_PYTHON_AGENT_MODEL="$MODEL"
 
 # Start the FastAPI server using uvicorn
 poetry run uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT"
+
+
+

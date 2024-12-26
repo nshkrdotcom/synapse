@@ -46,19 +46,20 @@ agent_instances: Dict[str, Agent] = {"example_agent": example_agent}
 def _resolve_model_name(model_name: str) -> str:
     return f"openai:{model_name}"
 
-def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
-    """
-    Simplified tool resolution. In a real implementation,
-    you'd likely want a more robust mechanism to map tool names
-    to Python functions, potentially using a registry or
-    dynamically loading modules.
-    """
-    tools = []
-    for config in tool_configs:
-        if config["name"] == "some_tool":
-            tools.append(some_tool)
-        # Add more tool mappings as needed
-    return tools
+# TODO: Add this to the agent creation endpoint
+# def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
+#     """
+#     Simplified tool resolution. In a real implementation,
+#     you'd likely want a more robust mechanism to map tool names
+#     to Python functions, potentially using a registry or
+#     dynamically loading modules.
+#     """
+#     tools = []
+#     for config in tool_configs:
+#         if config["name"] == "some_tool":
+#             tools.append(some_tool)
+#         # Add more tool mappings as needed
+#     return tools
 
 def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
     """
@@ -75,7 +76,7 @@ def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
             "number": float,
             "array": list,
             "object": dict,
-            "null": type(None)
+            "null": type(None),
         }[field_info["type"]]
 
         # Handle nested objects/arrays if necessary

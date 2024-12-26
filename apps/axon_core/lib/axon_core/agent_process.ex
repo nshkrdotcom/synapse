@@ -196,6 +196,29 @@ defmodule AxonCore.AgentProcess do
   end
 
 
+  # Example of how to call a tool from handle_call (or another handler)
+  def handle_call({:run_sync, request}, from, state) do
+    # ... (previous logic for preparing the request)
+
+    # Assuming the model returns a tool call, you would extract the tool name and arguments
+    # For example:
+    # tool_call = extract_tool_call_from_response(response)
+
+    # Instead of directly executing the tool, send a message to self() to run the tool
+    # Generate a unique request ID to track the request-response cycle
+    request_id = :erlang.unique_integer([:positive])
+
+    send(self(), {:run_tool, tool_call.name, tool_call.args, request_id})
+
+    # Tell the caller we have initiated the action and will send a response later
+    {:noreply, Map.put(state, :requests, Map.put(state.requests, request_id, {:run_sync, from, request}))}
+
+    # ... (rest of your handle_call logic)
+end
+
+
+
+
   @doc """
   Handles incoming messages from the Python agent.
 
@@ -283,6 +306,29 @@ defmodule AxonCore.AgentProcess do
         Logger.error("Error while polling for streamed data: #{reason}")
         {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info({:run_tool, tool_name, tool_args, request_id}, state) do
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+    headers = [{"Content-Type", "application/json"}]
+    body = %{
+      "tool_name" => tool_name,
+      "args" => tool_args
+    } |> JSONCodec.encode!() # Ensure args are encoded as JSON
+
+    case HTTPClient.post(endpoint, headers, body) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        # Send the tool result back to the agent process that initiated the tool call
+        send(state.caller, {:tool_result, request_id, response_body})
+
+      {:error, reason} ->
+        # Handle the error, potentially log it or send an error message back to the agent
+        Logger.error("Error calling tool #{tool_name} on agent #{state.name}: #{reason}")
+        send(state.caller, {:tool_error, request_id, reason})
+    end
+
+    {:noreply, state}
   end
 
   def handle_info(_msg, state) do

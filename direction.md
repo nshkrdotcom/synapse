@@ -120,6 +120,56 @@ Here's a proposed approach:
 
 
 
+
+
+
+
+
+
+
+# Example Elixir data structure (representing a tool parameter schema)
+elixir_schema = %{
+  name: :string,
+  age: :integer,
+  is_active: :boolean,
+  coordinates: [:number],
+  address: %{
+    street: :string,
+    city: :string,
+    zip: {:integer, :required}
+  }
+}
+
+# Convert to JSON Schema
+json_schema = AxonCore.SchemaUtils.elixir_to_json_schema(elixir_schema)
+
+# Convert back to Elixir type (basic representation)
+elixir_type = AxonCore.SchemaUtils.json_schema_to_elixir_type(json_schema)
+
+# Validate some data
+data = %{
+  "name" => "John Doe",
+  "age" => 30,
+  "is_active" => true,
+  "coordinates" => [37.7749, -122.4194],
+  "address" => %{"street" => "123 Main St", "city" => "San Francisco", "zip" => 94105}
+}
+
+validation_result = AxonCore.SchemaUtils.validate(json_schema, data)
+
+IO.inspect(json_schema)
+IO.inspect(elixir_type)
+IO.inspect(validation_result)
+
+
+
+
+
+
+
+
+
+
 # Error Handling, Logging, Monitoring, Testing
 
 **Core Idea:**

@@ -1,11 +1,15 @@
 defmodule AxonCore.SchemaUtils do
   @moduledoc """
   Utilities for handling JSON Schema translation and validation in Axon.
+
+ This module provides functions for converting Elixir data structures to JSON
+  Schema and vice-versa. It also includes a function for validating data against
+  a JSON Schema.
   """
 
   @type json_schema :: map()
 
-  @doc """
+ @doc """
   Converts an Elixir data structure (representing a type) to a JSON Schema.
 
   Handles basic types, lists, maps, and nested structures.
@@ -24,7 +28,7 @@ defmodule AxonCore.SchemaUtils do
         :boolean -> "boolean"
         :number -> "number"
         :null -> "null"
-        _ -> "string" # Default to string if type is unknown or a binary
+        _ -> "string"  # Default to string if type is unknown or a binary
       end
 
     %{"type" => json_type}
@@ -52,11 +56,20 @@ defmodule AxonCore.SchemaUtils do
 
     schema = %{
       "type" => "object",
-      "properties" => properties
+      "properties" => properties,
+      "required" => required_keys
     }
 
-    # Remove "required" key if it's empty, otherwise add it
-    if required_keys == [], do: schema, else: Map.put(schema, "required", required_keys)
+    # Remove "required" key if it's empty
+    if required_keys == [] do
+      Map.delete(schema, "required")
+    else
+      schema
+    end
+
+
+    ## Remove "required" key if it's empty, otherwise add it
+    #if required_keys == [], do: schema, else: Map.put(schema, "required", required_keys)
   end
 
   def elixir_to_json_schema(type) do
