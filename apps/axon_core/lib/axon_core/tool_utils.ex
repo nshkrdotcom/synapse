@@ -75,7 +75,43 @@ defmodule AxonCore.ToolUtils do
     end)
   end
 
+  @doc """
+  Serializes the arguments of a tool call to JSON, based on the tool definition.
+
+  ## Parameters
+
+  - `tool_def`: The tool definition map.
+  - `args`: The arguments to serialize.
+
+  ## Returns
+
+  A JSON string representing the serialized arguments, or an error tuple if serialization fails.
+  """
+  @spec serialize_tool_args(tool_definition(), map()) :: {:ok, binary()} | {:error, any()}
+  def serialize_tool_args(tool_def, args) do
+    try do
+      # Validate the arguments against the schema
+      case SchemaUtils.validate(tool_def.parameters, args) do
+        :ok ->
+          # Encode the arguments to JSON
+          {:ok, Jason.encode!(args)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    catch
+      e ->
+        {:error, {:serialization_error, e}}
+    end
+  end
+
   # Add more functions as needed for:
   # - Validating tool definitions
   # - Generating Python stubs for Elixir tools (if needed)
+
+
+
+
+
+
 end

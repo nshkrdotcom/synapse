@@ -44,9 +44,7 @@ from pydantic_ai.message import (
 )
 from pydantic_ai.result import RunResult, Usage
 
-
-
-
+ 
 
 
 # Assuming all agents are defined in the .agents module.
@@ -70,7 +68,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global dictionary to hold agent instances
-agent_instances: dict[str, Agent] = {"example_agent": example_agent, "bank_support_agent": support_agent}
+#agent_instances: dict[str, Agent] = {"example_agent": example_agent, "bank_support_agent": support_agent}
+agent_instances: Dict[str, Agent] = {}
+agent_configs: Dict[str, Dict[str, Any]] = {}
 
 # Helper functions
 def _resolve_model_name(model_name: str) -> str:
@@ -131,6 +131,38 @@ def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
 def some_tool(arg1: str, arg2: int) -> str:
     return f"Tool executed with {arg1} and {arg2}"
 
+
+
+
+# Here's a more concise example to illustrate the concept:
+# 
+# from pydantic_ai import Agent
+# from pydantic import BaseModel
+# 
+# # Define your tool function
+# def my_tool(x: int, y: str) -> str:
+#     """This tool takes an integer 'x' and a string 'y' and returns a string 
+#     indicating the received values."""
+#     return f"Received: x={x}, y={y}"
+# 
+# # Create an agent, passing the tool function in the `tools` list
+# agent = Agent(
+#     model="openai:gpt-4o",
+#     system_prompt="You are a helpful assistant.",
+#     tools=[my_tool],  # Register the tool here
+#     result_type=BaseModel,  # You need to define a result type, even if simple
+# ) 
+# 
+# # In essence, you register tools with pydantic-ai by passing the actual 
+# # Python function objects (not just their names as strings) to the 
+# # Agent constructor's tools argument.
+
+
+
+
+
+    
+
 @app.post("/agents")
 async def create_agent(request: Request):
     """
@@ -181,6 +213,13 @@ async def create_agent(request: Request):
         #     result_type=result_type,
         #     # Add other agent parameters as needed
         # )
+        agent = Agent(
+            model=model,
+            system_prompt=system_prompt,
+            tools=[some_tool],  # Pass the tool function here
+            result_type=result_type,
+            # ... other agent parameters
+        )
 
         # Dynamically import the agent module based on the provided name
         module_name = f"axon_python.agents.{data['agent_module']}"
@@ -281,6 +320,89 @@ async def call_tool(agent_id: str, tool_name: str, request_data: dict):
     except Exception as e:
         logger.exception(f"Error calling tool '{tool_name}' for agent '{agent_id}': {e}")
         raise HTTPException(status_code=500, detail=f"Error calling tool: {e}")
+
+# Tool registry
+tool_registry: Dict[str, Callable] = {}
+
+def register_tool(name: str, func: Callable):
+    tool_registry[name] = func
+
+def _resolve_tools(tool_configs: List[Dict[str, Any]]) -> List[Callable]:
+    """
+    Resolves tool names to their corresponding functions using a registry.
+    """
+    tools = []
+    for config in tool_configs:
+        tool_name = config["name"]
+        if tool_name in tool_registry:
+            tools.append(tool_registry[tool_name])
+        else:
+            logger.warning(f"Tool '{tool_name}' not found in registry.")
+    return tools
+
+def _resolve_result_type(result_type_config: Dict[str, Any]) -> BaseModel:
+    """
+    Dynamically creates a Pydantic model from a JSON schema-like definition.
+    """
+    fields = {}
+    for field_name, field_info in result_type_config.items():
+        field_type = {
+            "string": str,
+            "integer": int,
+            "boolean": bool,
+            "number": float,
+            "array": list,
+            "object": dict,
+            "null": type(None),
+        }[field_info["type"]]
+
+        fields[field_name] = (field_type, ...)
+
+    return create_model("ResultModel", **fields)
+
+# Example tool functions
+def some_tool(arg1: str, arg2: int) -> str:
+    return f"Tool executed with {arg1} and {arg2}"
+
+def another_tool(data: dict) -> list:
+    return list(data.values())
+
+# Register tools
+register_tool("some_tool", some_tool)
+register_tool("another_tool", another_tool)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -559,6 +681,15 @@ async def crash_agent(agent_id: str):
 #     server.add_insecure_port('[::]:50051')  # Specify the port your agent should listen on
 #     server.start()
 #     server.wait_for_termination()
+
+
+
+# ... (other imports and helper functions)
+
+
+
+
+
 
 
 

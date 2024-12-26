@@ -312,30 +312,84 @@ defmodule AxonCore.AgentProcess do
     end
   end
 
+  @impl true
   def handle_call({:call_tool, tool_name, args}, from, state) do
-    # Similar to send_message, but constructs a request to the /tool_call endpoint
-    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
-    headers = [{"Content-Type", "application/json"}]
-    body = %{
-      "tool_name" => tool_name,
-      "args" => args
-    }
-    |> JSONCodec.encode!()
+    # Assuming tool definitions are stored in the state under the :tools key
+    case Map.fetch(state.tools, tool_name) do
+      {:ok, tool_def} ->
+        # Serialize the arguments to JSON
+        with {:ok, json_args} <- ToolUtils.serialize_tool_args(tool_def, args) do
+          # Construct the request to be sent to the Python agent
+          endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+          headers = [{"Content-Type", "application/json"}]
+          body = %{
+            "tool_name" => tool_name,
+            "args" => json_args
+          }
+          |> JSONCodec.encode!()
 
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
-      # Process the tool call response
-      case process_tool_response(response) do
-        {:ok, result} ->
-          {:reply, {:ok, result}, state}
+          # Send an HTTP POST request to call the tool
+          with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+            # Process the tool call response
+            case process_tool_response(response) do
+              {:ok, result} ->
+                # Reply to the caller with the tool result
+                GenServer.reply(from, {:ok, result})
+                {:noreply, state}
 
-        {:error, reason} ->
-          {:reply, {:error, reason}, state}
-      end
-    else
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
+              {:error, reason} ->
+                # Handle the error, potentially log it
+                Logger.error("Tool call to #{tool_name} failed: #{reason}")
+                GenServer.reply(from, {:error, reason})
+                {:noreply, state}
+            end
+          else
+            {:error, reason} ->
+              # Handle HTTP request errors
+              Logger.error("HTTP request to agent #{state.name} for tool #{tool_name} failed: #{reason}")
+              GenServer.reply(from, {:error, reason})
+              {:noreply, state}
+          end
+        else
+          {:error, reason} ->
+            # Handle errors during argument serialization
+            Logger.error("Failed to serialize arguments for tool #{tool_name}: #{reason}")
+            GenServer.reply(from, {:error, reason})
+            {:noreply, state}
+        end
+
+      :error ->
+        # Handle the case where the tool is not found
+        Logger.error("Tool not found: #{tool_name}")
+        GenServer.reply(from, {:error, "Tool not found: #{tool_name}"})
+        {:noreply, state}
     end
   end
+
+  # def handle_call({:call_tool, tool_name, args}, from, state) do
+  #   # Similar to send_message, but constructs a request to the /tool_call endpoint
+  #   endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+  #   headers = [{"Content-Type", "application/json"}]
+  #   body = %{
+  #     "tool_name" => tool_name,
+  #     "args" => args
+  #   }
+  #   |> JSONCodec.encode!()
+
+  #   with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+  #     # Process the tool call response
+  #     case process_tool_response(response) do
+  #       {:ok, result} ->
+  #         {:reply, {:ok, result}, state}
+
+  #       {:error, reason} ->
+  #         {:reply, {:error, reason}, state}
+  #     end
+  #   else
+  #     {:error, reason} ->
+  #       {:reply, {:error, reason}, state}
+  #   end
+  # end
 
   # def handle_call({:call_tool, tool_name, args}, from, state) do
   #   # Assuming tool definitions are stored in the state
@@ -397,21 +451,56 @@ defmodule AxonCore.AgentProcess do
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
 
-    send(self(), {:execute_run_sync, request_id, from, request})
+    # For demonstration, let's assume the agent decides to call a tool here
+    # In a real scenario, this would be based on the LLM's response
+    tool_call_needed = true # Simulate a condition where a tool call is needed
 
-    with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
-      # Process the response
-      {:noreply,
-      Map.put(
-        state,
-        :requests,
-        Map.put(state.requests, request_id, {:run_sync, from, request, response})
-      )}
+    if tool_call_needed do
+      # Simulate tool call details (replace with actual logic to determine tool name and arguments)
+      tool_name = "some_tool"  # Replace with the actual tool name from the agent's response
+      tool_args = %{"arg1" => "value1", "arg2" => 2} # Replace with actual arguments
+
+      # Store the caller's `from` tag along with the request ID to handle the tool call result later
+      new_state = Map.put(state, :requests, Map.put(state.requests, request_id, {:tool_call, from, request}))
+
+      # Send a message to self to call the tool
+      send(self(), {:call_tool, tool_name, tool_args, request_id})
+
+      # Indicate to the caller that the request is being processed
+      {:noreply, new_state}
     else
-      {:error, reason} ->
-        # Handle error, potentially restart the Python process using the supervisor
-        {:reply, {:error, reason}, state}
+      # Proceed with the existing logic if no tool call is needed
+      send(self(), {:execute_run_sync, request_id, from, request})
+
+      with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+        # Process the response
+        {:noreply,
+        Map.put(
+          state,
+          :requests,
+          Map.put(state.requests, request_id, {:run_sync, from, request, response})
+        )}
+      else
+        {:error, reason} ->
+          # Handle error, potentially restart the Python process using the supervisor
+          {:reply, {:error, reason}, state}
+      end
     end
+    # send(self(), {:execute_run_sync, request_id, from, request})
+
+    # with {:ok, response} <- HTTPClient.post(endpoint, headers, JSONCodec.encode(request)) do
+    #   # Process the response
+    #   {:noreply,
+    #   Map.put(
+    #     state,
+    #     :requests,
+    #     Map.put(state.requests, request_id, {:run_sync, from, request, response})
+    #   )}
+    # else
+    #   {:error, reason} ->
+    #     # Handle error, potentially restart the Python process using the supervisor
+    #     {:reply, {:error, reason}, state}
+    # end
   end
 
 
@@ -513,6 +602,56 @@ defmodule AxonCore.AgentProcess do
     end
   end
 
+  @impl true
+  def handle_call({:call_tool, tool_name, args}, from, state) do
+    # Construct the request to be sent to the Python agent
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/tool_call"
+    headers = [{"Content-Type", "application/json"}]
+    body = %{
+      "tool_name" => tool_name,
+      "args" => args
+    }
+    |> JSONCodec.encode!()
+
+    # Send an HTTP POST request to call the tool
+    with {:ok, response} <- HTTPClient.post(endpoint, headers, body) do
+      # Process the tool call response
+      case process_tool_response(response) do
+        {:ok, result} ->
+          # Reply to the caller with the tool result
+          GenServer.reply(from, {:ok, result})
+          {:noreply, state}
+
+        {:error, reason} ->
+          # Handle the error, potentially log it
+          Logger.error("Tool call to #{tool_name} failed: #{reason}")
+          GenServer.reply(from, {:error, reason})
+          {:noreply, state}
+      end
+    else
+      {:error, reason} ->
+        # Handle HTTP request errors
+        Logger.error("HTTP request to agent #{state.name} for tool #{tool_name} failed: #{reason}")
+        GenServer.reply(from, {:error, reason})
+        {:noreply, state}
+    end
+  end
+
+  defp process_tool_response(response) do
+    case response do
+      %{status_code: 200, body: body} ->
+        try do
+          decoded_response = JSONCodec.decode(body)
+          {:ok, Map.get(decoded_response, "result")}
+        rescue
+          e in [JSON.DecodeError, KeyError] ->
+            {:error, "Error decoding tool response: #{inspect(e)}"}
+        end
+
+      %{status_code: status_code} ->
+        {:error, "Tool call failed with status code: #{status_code}"}
+    end
+  end
 
   @impl true
   def handle_info({:stream_chunk, request_id, chunk}, state) do
@@ -651,6 +790,26 @@ defmodule AxonCore.AgentProcess do
     end
   end
 
+  @impl true
+  def handle_info({:tool_result, request_id, result}, state) do
+    # Find the original request data based on the request_id
+    case Map.fetch(state.requests, request_id) do
+      {:ok, {:tool_call, original_from, original_request}} ->
+        # Here you would process the tool result
+        # For example, you could send a new message to the agent with the tool result
+        # and then wait for the agent's response
+
+        # Assuming you want to send the tool result back to the original caller
+        send(original_from, {:ok, result})
+
+        # Remove the request from the state
+        {:noreply, Map.delete(state.requests, request_id)}
+
+      :error ->
+        Logger.error("Received tool result for unknown request ID: #{request_id}")
+        {:noreply, state}
+    end
+  end
 
 
   @impl true
@@ -925,7 +1084,18 @@ defmodule AxonCore.AgentProcess do
           #   validate_result(result, state.result_schema)
           # end
 
-          {:ok, result, usage, messages}
+          # Validate result if schema is available
+          if state.result_schema do
+            case SchemaUtils.validate(state.result_schema, result) do
+              :ok ->
+                {:ok, result, usage, messages}
+
+              {:error, reason} ->
+                Logger.error("Result validation failed: #{inspect(reason)}")
+                {:error, :result_validation_failed, reason}
+            end
+          else
+            {:ok, result, usage, messages}
         rescue
           e in [JSON.DecodeError, KeyError] ->
             {:error, "Error decoding response: #{inspect(e)}"}

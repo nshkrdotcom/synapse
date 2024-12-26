@@ -20,15 +20,28 @@ defmodule Axon do
       # {Axon.Worker, arg}
       # {Axon.Agent, python_module: "location_agent", model: "openai:gpt-4o", name: "python_agent_1"},
       # {Axon.Agent, python_module: "example_agent", model: "openai:gpt-4o", name: "python_agent_2"}
-      {Axon.Agent,
+      # {Axon.Agent,
+      #   python_module: "agents.example_agent",
+      #   model: "openai:gpt-4o",
+      #   name: "example_agent"},
+      # {Axon.Agent,
+      #  python_module: "agents.bank_support_agent",
+      #  model: "openai:gpt-4o",
+      #  name: "bank_support_agent"}
+      supervisor(Axon.Agent, [[
+        name: "python_agent_1",
         python_module: "agents.example_agent",
         model: "openai:gpt-4o",
-        name: "example_agent"},
-      {Axon.Agent,
-       python_module: "agents.bank_support_agent",
-       model: "openai:gpt-4o",
-       name: "bank_support_agent"}
-
+        port: 5001,
+        extra_env: [{"PYTHONPATH", "./apps/axon_python/src"}]
+      ]]),
+      supervisor(Axon.Agent, [[
+        name: "python_agent_2",
+        python_module: "agents.bank_support_agent",
+        model: "openai:gpt-4o",
+        port: 5002,
+        extra_env: [{"PYTHONPATH", "./apps/axon_python/src"}]
+      ]]),
 
     ]
 
