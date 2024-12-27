@@ -193,7 +193,7 @@ defmodule Axon.Agent.Server do
 
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
-    :ok = AxonCore.PythonEnvManager.ensure_env!()
+    #:ok = AxonCore.PythonEnvManager.ensure_env!()
     GenServer.start_link(__MODULE__, opts, name: via_tuple(name))
   end
 
@@ -286,7 +286,7 @@ defmodule Axon.Agent.Server do
     name: agent_id
   }) do
     # python_cmd = AxonCore.PythonEnvManager.python_path()
-    working_dir = Path.absname("apps/axon_python/src")
+    #working_dir = Path.absname("apps/axon_python/src")
 
     # Use a relative path to find the start_agent.sh script
     start_agent_script_path =
@@ -301,8 +301,17 @@ defmodule Axon.Agent.Server do
     )
 
     # Pass agent_id to the start_agent.sh script
-    full_cmd =
-    "#{start_agent_script_path} #{module} #{port} #{model} #{Atom.to_string(agent_id)}"
+    # full_cmd_params =
+    # "#{start_agent_script_path} #{module} #{port} #{model} #{Atom.to_string(agent_id)}"
+
+
+    #cmd_params = "\"#{module}\" #{port} \"#{model}\" \"#{Atom.to_string(agent_id)}\""
+    # module_p = "\"#{module}\""
+
+
+    # model_p = "\"#{model}\""
+
+    # agent_id_p = "\"#{Atom.to_string(agent_id)}\""
 
     # port_opts = [
     #   :binary,
@@ -311,94 +320,64 @@ defmodule Axon.Agent.Server do
     #   {:env, PythonEnvManager.env_vars()}
     # ]
 
-    Logger.info("""
-      Starting Python agent with:
-      Command: #{full_cmd}
-      Working directory: #{working_dir}
-      Environment: #{inspect(PythonEnvManager.env_vars())}
-    """)
+    # Logger.info("""
+    #   Starting Python agent with:
+    #   Command: #{full_cmd}
+    #   Working directory: #{working_dir}
+    #   Environment: #{inspect(PythonEnvManager.env_vars())}
+    # """)
 
-    try do
-      port_ref = Port.open({:spawn_executable, "/bin/bash"}, args: ["-c", full_cmd])
-      Logger.info("Started Python agent on port: #{inspect(port_ref)}")
-      {port_ref, port}
-      rescue
-      e ->
-        Logger.error("""
-        Failed to start Python agent:
-          Command: #{full_cmd}
-          Error: #{inspect(e)}
-        """)
 
-        raise e
-    end
+    #module_quoted = "\"" <> module <> "\""
+    env_vars = PythonEnvManager.env_vars()
+
+    port_p = "#{inspect(port)}"
+    agent_id_p = "#{inspect(agent_id)}"
+
+    # keyword_env_vars = Keyword.new(env_vars) # Convert to keyword list
+
+    # virtual_env_path = Keyword.get(keyword_env_vars, "VIRTUAL_ENV")
+
+    # # Handle the case where the key might not be present (recommended)
+    # virtual_env_path = Keyword.get(Keyword.new(PythonEnvManager.env_vars()), "VIRTUAL_ENV", nil)
+
+    # _virtual_env_path = Enum.find_value(env_vars, fn {key, value} ->
+    #   if key == "VIRTUAL_ENV" do
+    #     # Logger.info("""
+    #     #   ###########################################
+    #     #   VPath: #{inspect(value)}
+    #     # """)
+
+
+
+
+
+    _virtual_env_path = Enum.find_value(env_vars, fn {key, venv_path} ->
+      if key == "VIRTUAL_ENV" do
+
+        #port = 5258
+        # try do
+        Logger.info("Executing command: /bin/bash #{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}")
+        port_ref = Port.open({:spawn_executable, "/bin/bash"}, args: ["-c", start_agent_script_path, venv_path, module, port_p, model, agent_id_p])
+        Logger.info("Started Python agent on port: #{inspect(port_ref)}")
+        {port_ref, port}
+        # rescue
+        #   e ->
+        #     Logger.error("""
+        #     Failed to start Python agent:
+        #       Command: #{full_cmd}
+        #       Error: #{inspect(e)}
+        #     """)
+        #     raise e
+        #value
+      else
+        nil
+      end
+    end)
+
+
+
   end
-  # defp start_python_agent(%{
-  #        python_module: module,
-  #        model: model,
-  #        port: port,
-  #        name: agent_id,
-  #      }) do
-  #   # Use the venv's python executable
-  #   python_cmd = AxonCore.PythonEnvManager.python_path()
-  #   working_dir = Path.absname("apps/axon_python/src")
 
-  #   # # Pass agent ID, module, port, and model as command-line arguments
-  #   # args = [
-  #   #   "-u",
-  #   #   "-m",
-  #   #   "axon_python.agent_wrapper",
-  #   #   module,
-  #   #   Integer.to_string(port),
-  #   #   model,
-  #   #   Atom.to_string(@name)
-  #   # ]
 
-  #   # Use a relative path to find the start_agent.sh script
-  #   start_agent_script_path =
-  #     Path.absname(
-  #       Path.join([
-  #         File.cwd!(),
-  #         "apps",
-  #         "axon_python",
-  #         "scripts",
-  #         "start_agent.sh"
-  #       ])
-  #     )
-
-  #   # Activate the venv and run the agent wrapper
-  #   full_cmd =
-  #     "#{start_agent_script_path} #{module} #{port} #{model} #{Atom.to_string(@name)}"
-
-  #   port_opts = [
-  #     :binary,
-  #     :exit_status,
-  #     {:cd, working_dir},
-  #     {:env, PythonEnvManager.env_vars()},
-  #     # {:args, args},
-  #   ]
-
-  #   Logger.info("""
-  #   Starting Python agent with:
-  #     Command: #{full_cmd}
-  #     Working directory: #{working_dir}
-  #     Environment: #{inspect(PythonEnvManager.env_vars())}
-  #   """)
-
-  #   # Spawn the Python process using the full command
-  #   try do
-  #     port = Port.open({:spawn_executable, "/bin/bash"}, [{:args, ["-c", full_cmd]} | port_opts])
-  #     Logger.info("Started Python agent on port: #{port}")
-  #     port
-  #   rescue
-  #     e ->
-  #       Logger.error("""
-  #       Failed to start Python agent:
-  #         Command: #{full_cmd}
-  #         Error: #{inspect(e)}
-  #       """)
-
-  #       raise e
-  #   end
-  # end
 end
