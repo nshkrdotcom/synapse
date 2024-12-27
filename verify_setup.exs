@@ -61,35 +61,52 @@ Mix.Project.in_project(:axon, ".", fn _module ->
     end
 
     defp verify_python_env(build_path) do
-      IO.puts("\nVerifying Python environment...")
+      IO.puts("\nVerifying Python environment with Poetry...")
+      path = System.get_env("HOME") <> "/.local/bin:" <> System.get_env("PATH")
+      System.put_env("PATH", path)
 
-      venv_path = Path.join([build_path, "axon_core", "priv", "python", ".venv"])
-      python_cmd = Path.join([venv_path, "bin", "python3"])
 
-      # Install the local package in development mode
-      IO.puts("Installing axon_python package...")
-      python_src = Path.join([File.cwd!(), "apps", "axon_python", "src"])
+      # Check if Poetry is installed
+      case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
+        {_, 0} ->
+          IO.puts("✓ Poetry is installed")
 
-      case System.cmd(python_cmd, ["-m", "pip", "install", "-e", python_src], stderr_to_stdout: true) do
-        {output, 0} ->
-          IO.puts("✓ Installed axon_python package")
-          IO.puts(output)
+          python_project_path = Path.join([File.cwd!(), "apps", "axon_python"])
 
-          # Verify we can import the module
-          case System.cmd(python_cmd, ["-c", "import axon_python.agent_wrapper"],
+          # Use Poetry to run pip and install the package in editable mode
+          IO.puts("Installing axon_python package using Poetry...")
+
+          # Use poetry run to execute pip install within the virtual environment
+          case System.cmd("poetry", ["run", "python", "-m", "pip", "install", "-e", "."],
+             cd: Path.join(python_project_path, "src"),
              stderr_to_stdout: true
            ) do
-            {_, 0} ->
-              IO.puts("✓ Successfully imported axon_python.agent_wrapper")
-              start_axon_core(build_path)
+            {output, 0} ->
+              IO.puts("✓ Installed axon_python package using Poetry")
+              IO.puts(output)
+
+              # Verify we can import the module using Poetry
+              case System.cmd("poetry", ["run", "python", "-c", "import axon_python.agent_wrapper"],
+                 cd: python_project_path,
+                 stderr_to_stdout: true
+               ) do
+                {_, 0} ->
+                  IO.puts("✓ Successfully imported axon_python.agent_wrapper using Poetry")
+                  start_axon_core(build_path)
+                {error, _} ->
+                  IO.puts("\n❌ Failed to import axon_python.agent_wrapper using Poetry")
+                  IO.puts("Error: #{error}")
+                  System.halt(1)
+              end
             {error, _} ->
-              IO.puts("\n❌ Failed to import axon_python.agent_wrapper")
+              IO.puts("\n❌ Failed to install axon_python package using Poetry")
               IO.puts("Error: #{error}")
               System.halt(1)
           end
         {error, _} ->
-          IO.puts("\n❌ Failed to install axon_python package")
+          IO.puts("\n❌ Poetry is not installed or not in the PATH")
           IO.puts("Error: #{error}")
+          IO.puts("Please install Poetry: https://python-poetry.org/docs/#installation")
           System.halt(1)
       end
     end
@@ -112,16 +129,16 @@ Mix.Project.in_project(:axon, ".", fn _module ->
 
     defp verify_python_env_final(build_path) do
       IO.puts("\nVerifying Python environment...")
+      IO.puts("\nBuild path: #{inspect(build_path)}")
       case AxonCore.PythonEnvManager.ensure_env!() do
         :ok ->
           venv_path = AxonCore.PythonEnvManager.venv_path()
           IO.puts("✓ Python environment verified at #{venv_path}")
 
-          # Install the package in development mode
+          # Use Poetry to run the Python script
           python_package_dir = Path.join([File.cwd!(), "apps", "axon_core", "priv", "python"])
-          venv_python = Path.join(venv_path, "bin/python")
 
-          # Verify Python modules can be imported
+          # Verify Python modules can be imported using Poetry
           test_import_cmd = """
           import sys
           import agents.example_agent
@@ -130,10 +147,9 @@ Mix.Project.in_project(:axon, ".", fn _module ->
           print('✓ All required Python modules can be imported')
           """
 
-          case System.cmd(venv_python, ["-c", test_import_cmd],
-                 cd: python_package_dir,
-                 env: AxonCore.PythonEnvManager.get_venv_env()
-               ) do
+          case System.cmd("poetry", ["run", "python", "-c", test_import_cmd],
+            cd: python_package_dir
+          ) do
             {output, 0} ->
               IO.puts(output)
               IO.puts("\n=== Setup Complete! ===")

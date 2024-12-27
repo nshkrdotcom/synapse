@@ -5,20 +5,29 @@ Mix.shell(Mix.Shell.IO)
 
 defmodule Axon.Setup.Error do
   defexception [:message, :reason, :context]
-  
+
   def new(reason, context \\ %{}) do
-    message = case reason do
-      :python_not_found ->
-        "Python interpreter not found. Please ensure Python 3.10 or higher is installed."
-      :version_mismatch ->
-        "Python version mismatch. Found: #{context[:found]}, Required: #{context[:required]}"
-      :venv_creation_failed ->
-        "Failed to create virtual environment: #{context[:error]}"
-      :dependency_install_failed ->
-        "Failed to install dependencies: #{context[:error]}"
-      _ ->
-        "Unknown error: #{inspect(reason)}"
-    end
+    message =
+      case reason do
+        :python_not_found ->
+          "Python interpreter not found. Please ensure Python 3.10 or higher is installed."
+        :version_mismatch ->
+          "Python version mismatch. Found: #{context[:found]}, Required: #{context[:required]}"
+        :poetry_not_found ->
+          "Poetry not found. Attempting to install Poetry."
+        :poetry_install_failed ->
+          "Failed to install Poetry: #{context[:error]}"
+        :venv_creation_failed ->
+          "Failed to create virtual environment with Poetry: #{context[:error]}"
+        :dependency_install_failed ->
+          "Failed to install Python dependencies with Poetry: #{context[:error]}"
+        :elixir_deps_failed ->
+          "Failed to fetch Elixir dependencies: #{context[:error]}"
+        :compile_failed ->
+          "Failed to compile project: #{context[:error]}"
+        _ ->
+          "Unknown error: #{inspect(reason)}"
+      end
 
     %__MODULE__{
       message: message,
@@ -42,13 +51,13 @@ defmodule Axon.Setup do
 
     with :ok <- check_elixir_version(),
          :ok <- check_python(),
-         :ok <- ensure_python_venv(),
+         :ok <- ensure_poetry_installed(),
+         :ok <- setup_python_environment(),
          :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
-      
       IO.puts("""
       \n#{color("✓ Setup completed successfully!", :green)}
-      
+
       Run 'iex -S mix' to start the application.
       """)
     else
@@ -56,7 +65,11 @@ defmodule Axon.Setup do
         IO.puts("\n#{color("❌ Setup failed at stage: #{stage}", :red)}")
         IO.puts("#{color("Error: #{message}", :red)}")
         System.halt(1)
-      {:error, error} when is_exception(error) ->
+      {:error, stage, message}  ->
+        IO.puts("\n#{color("❌ Setup failed at stage: #{stage}", :red)}")
+        IO.puts("#{color("Error: #{message}", :red)}")
+        System.halt(1)
+        {:error, error} when is_exception(error) ->
         print_error(error)
         System.halt(1)
       {:error, message} ->
@@ -91,34 +104,79 @@ defmodule Axon.Setup do
           {:error, :python_version, "Python version #{version} is below minimum required version #{min_version}"}
         end
       _ ->
-        {:error, :python_missing, "Python 3 not found. Please install Python 3.10 or higher"}
+        {:error, :python_not_found, "Python 3 not found. Please install Python 3.10 or higher"}
     end
   end
 
-  defp ensure_python_venv do
-    IO.puts("\nEnsuring Python venv module is available...")
-    
-    case System.cmd("python3", ["-c", "import venv"], stderr_to_stdout: true) do
-      {_, 0} ->
-        IO.puts("#{color("✓", :green)} Python venv module OK")
+  defp ensure_poetry_installed do
+    IO.puts("\nEnsuring Poetry is installed...")
+    try do
+      case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
+        {_, 0} ->
+          IO.puts("#{color("✓", :green)} Poetry is already installed")
+          :ok
+        _ ->
+          install_poetry()
+      end
+    rescue
+      e in ErlangError ->
+        case e do
+          %ErlangError{original: :enoent} ->
+            IO.puts(
+              "#{color("!", :yellow)} Poetry not found. Attempting to install Poetry automatically..."
+            )
+            install_poetry()
+          _ ->
+            {:error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
+        end
+    end
+  end
+
+  defp install_poetry do
+    # Install Poetry using the recommended method
+    case System.cmd("python3", ["-c", "import requests; exec(requests.get('https://install.python-poetry.org').text)"], stderr_to_stdout: true) do
+      {output, 0} ->
+        IO.puts("#{color("✓", :green)} Poetry installed successfully")
+        IO.puts(output)
+        # Add Poetry to PATH for the current process
+        path = System.get_env("HOME") <> "/.local/bin:" <> System.get_env("PATH")
+        System.put_env("PATH", path)
         :ok
-      _ ->
-        # Try to install python3-venv using apt
-        IO.puts("Installing Python venv module...")
-        case System.cmd("sudo", ["apt", "install", "-y", "python3-venv"], stderr_to_stdout: true) do
-          {_output, 0} ->
-            IO.puts("#{color("✓", :green)} Python venv module installed")
+      {error, _} ->
+        {:error, :poetry_install_failed, error}
+    end
+  end
+
+  defp setup_python_environment do
+    IO.puts("\nSetting up Python environment with Poetry...")
+    python_project_path = Path.join(File.cwd!(), "apps/axon_python")
+    #IO.puts("\nt #{python_project_path}"))
+
+    # Remove the existing virtual environment and poetry.lock file if they exist
+    File.rm_rf!(Path.join([python_project_path, ".venv"]))
+    File.rm(Path.join([python_project_path, "poetry.lock"]))
+
+    # Use the current python3 interpreter for the Poetry environment
+    case System.cmd("poetry", ["env", "use", "python3"],
+       cd: python_project_path,
+       stderr_to_stdout: true
+     ) do
+      {_, 0} ->
+        # Install dependencies without installing the root project
+        case System.cmd("poetry", ["install", "--no-root"],
+             cd: python_project_path,
+             stderr_to_stdout: true
+           ) do
+          {_, 0} ->
+            IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
             :ok
           {error, _} ->
-            {:error, :venv_install, """
-            Failed to install python3-venv package.
-            This project requires the Python venv module for development.
-            On Ubuntu systems, you can install it manually with:
-                sudo apt install python3-venv
-            
-            Error: #{error}
-            """}
+            {:error,
+             :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
         end
+      {error, _} ->
+        {:error,
+         :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
     end
   end
 
@@ -144,15 +202,16 @@ defmodule Axon.Setup do
     end
   end
 
+
   defp print_error(%Axon.Setup.Error{} = error) do
     IO.puts("""
-    
+
     #{color("╔══ Error ══╗", :red)}
     #{error.message}
-    
+
     #{color("Context:", :yellow)}
     #{format_context(error.context)}
-    
+
     #{color("Need help?", :blue)}
     - Check the error message and context above
     - Ensure all system requirements are met

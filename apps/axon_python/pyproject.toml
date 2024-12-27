@@ -9,14 +9,14 @@ packages = [{ include = "axon_python", from = "src" }]
 python = "^3.9"
 fastapi = "^0.109.0"
 uvicorn = "^0.27.0"
-pydantic-ai-slim = {git = "https://github.com/pydantic/pydantic-ai.git", rev = "main"}
+pydantic-ai = "^0.0.15" 
 httpx = "^0.27.0"
 openai = "^1.12.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0"
 pytest-asyncio = "^0.23.5"
-pytest-httpx = "^0.31.0"
+pytest-httpx = "^0.30.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
