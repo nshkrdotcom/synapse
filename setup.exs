@@ -41,7 +41,8 @@ defmodule Axon.Setup do
     IO.puts("\n#{color("=== Setting up Axon development environment ===", :blue)}\n")
 
     with :ok <- check_elixir_version(),
-         :ok <- check_python_version(),
+         :ok <- check_python(),
+         :ok <- ensure_python_venv(),
          :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
       
@@ -51,6 +52,10 @@ defmodule Axon.Setup do
       Run 'iex -S mix' to start the application.
       """)
     else
+      {:error, stage, message} when is_binary(stage) and is_binary(message) ->
+        IO.puts("\n#{color("❌ Setup failed at stage: #{stage}", :red)}")
+        IO.puts("#{color("Error: #{message}", :red)}")
+        System.halt(1)
       {:error, error} when is_exception(error) ->
         print_error(error)
         System.halt(1)
@@ -68,56 +73,51 @@ defmodule Axon.Setup do
       IO.puts("#{color("✓", :green)} Elixir version #{version} OK")
       :ok
     else
-      {:error, "Elixir version must be >= #{min_version} (found: #{version})"}
+      {:error, :elixir_version, "Elixir version must be >= #{min_version} (found: #{version})"}
     end
   end
 
-  defp check_python_version do
+  defp check_python do
     IO.puts("\nChecking Python installation...")
-    
+    min_version = "3.10.0"
+
     case System.cmd("python3", ["--version"]) do
       {version, 0} ->
         version = version |> String.trim() |> String.split(" ") |> List.last()
-        min_version = "3.10.0"
-
         if Version.match?(version, ">= #{min_version}") do
           IO.puts("#{color("✓", :green)} Python version #{version} OK")
-          check_venv_module()
+          :ok
         else
-          {:error, Axon.Setup.Error.new(:version_mismatch, %{
-            found: version,
-            required: min_version
-          })}
+          {:error, :python_version, "Python version #{version} is below minimum required version #{min_version}"}
         end
-      {_, _} ->
-        {:error, Axon.Setup.Error.new(:python_not_found)}
+      _ ->
+        {:error, :python_missing, "Python 3 not found. Please install Python 3.10 or higher"}
     end
   end
 
-  defp check_venv_module do
-    case System.cmd("python3", ["-c", "import venv"]) do
+  defp ensure_python_venv do
+    IO.puts("\nEnsuring Python venv module is available...")
+    
+    case System.cmd("python3", ["-c", "import venv"], stderr_to_stdout: true) do
       {_, 0} ->
         IO.puts("#{color("✓", :green)} Python venv module OK")
         :ok
-      {_, _} ->
-        IO.puts("\nℹ️  Installing Python venv module...")
-        case System.cmd("sudo", ["apt-get", "update"]) do
-          {_, 0} ->
-            case System.cmd("sudo", ["apt-get", "install", "-y", "python3-venv"]) do
-              {_, 0} -> 
-                IO.puts("#{color("✓", :green)} Python venv module installed")
-                :ok
-              {error, _} ->
-                {:error, Axon.Setup.Error.new(:dependency_install_failed, %{
-                  error: error,
-                  package: "python3-venv"
-                })}
-            end
+      _ ->
+        # Try to install python3-venv using apt
+        IO.puts("Installing Python venv module...")
+        case System.cmd("sudo", ["apt", "install", "-y", "python3-venv"], stderr_to_stdout: true) do
+          {_output, 0} ->
+            IO.puts("#{color("✓", :green)} Python venv module installed")
+            :ok
           {error, _} ->
-            {:error, Axon.Setup.Error.new(:dependency_install_failed, %{
-              error: error,
-              command: "apt-get update"
-            })}
+            {:error, :venv_install, """
+            Failed to install python3-venv package.
+            This project requires the Python venv module for development.
+            On Ubuntu systems, you can install it manually with:
+                sudo apt install python3-venv
+            
+            Error: #{error}
+            """}
         end
     end
   end
@@ -129,10 +129,7 @@ defmodule Axon.Setup do
         IO.puts("#{color("✓", :green)} Dependencies fetched")
         :ok
       {error, _} ->
-        {:error, Axon.Setup.Error.new(:dependency_install_failed, %{
-          error: error,
-          command: "mix deps.get"
-        })}
+        {:error, :deps_fetch, "Failed to fetch dependencies: #{error}"}
     end
   end
 
@@ -143,10 +140,7 @@ defmodule Axon.Setup do
         IO.puts("#{color("✓", :green)} Project compiled")
         :ok
       {error, _} ->
-        {:error, Axon.Setup.Error.new(:dependency_install_failed, %{
-          error: error,
-          command: "mix compile"
-        })}
+        {:error, :compile, "Failed to compile project: #{error}"}
     end
   end
 

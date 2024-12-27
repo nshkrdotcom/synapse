@@ -2,12 +2,13 @@ defmodule AxonCore.PythonEnvManager do
   @moduledoc """
   Manages Python virtual environments for Axon agents.
   Handles creation, activation, and cleanup of venvs.
+  Assumes Python venv module is available (installed during project setup).
   """
   
   require Logger
   alias AxonCore.Error.PythonEnvError
 
-  @python_min_version "3.10"
+  @python_min_version "3.10.0"
 
   def min_version, do: @python_min_version
 
@@ -46,6 +47,13 @@ defmodule AxonCore.PythonEnvManager do
     ]
   end
 
+  @doc """
+  Returns the path to the Python virtual environment.
+  """
+  def venv_path do
+    Path.join(project_root(), ".venv")
+  end
+
   # Private Functions
 
   defp ensure_project_structure do
@@ -66,25 +74,129 @@ defmodule AxonCore.PythonEnvManager do
     case System.cmd("python3", ["--version"]) do
       {version, 0} ->
         version = version |> String.trim() |> String.split(" ") |> List.last()
-        if Version.match?(version, ">= #{@python_min_version}") do
-          :ok
-        else
-          {:error, :version_mismatch, %{found: version, required: @python_min_version}}
+        # Clean up version string to ensure it's in proper semver format
+        version = case String.split(version, ".") do
+          [major, minor] -> "#{major}.#{minor}.0"
+          [major, minor, patch | _] -> "#{major}.#{minor}.#{patch}"
+          _ -> version
+        end
+        
+        case Version.compare(version, @python_min_version) do
+          :lt -> 
+            {:error, :version_mismatch, %{found: version, required: @python_min_version}}
+          _ -> 
+            :ok
         end
       {_, _} ->
         {:error, :python_not_found, %{}}
     end
+  rescue
+    error -> {:error, :version_check_failed, %{error: inspect(error)}}
   end
 
   defp ensure_venv do
-    if File.exists?(venv_path()) do
+    venv = venv_path()
+    Logger.info("Checking virtual environment at #{venv}...")
+
+    # Always verify/fix the venv, even if it exists
+    with :ok <- ensure_system_pip(),
+         :ok <- setup_venv(venv),
+         :ok <- verify_venv_pip() do
       :ok
-    else
-      Logger.info("Creating Python virtual environment...")
-      case System.cmd("python3", ["-m", "venv", venv_path()]) do
-        {_, 0} -> :ok
-        {error, _} -> {:error, :venv_creation_failed, %{error: error}}
-      end
+    end
+  end
+
+  defp ensure_system_pip do
+    case System.cmd("python3", ["-m", "pip", "--version"], stderr_to_stdout: true) do
+      {version, 0} -> 
+        Logger.info("System pip found: #{version}")
+        ensure_venv_package()
+      {_error, _} ->
+        Logger.info("System pip not found, installing via apt...")
+        # If pip is not available, install it via apt
+        case System.cmd("sudo", ["apt", "install", "-y", "python3-pip"], stderr_to_stdout: true) do
+          {output, 0} -> 
+            Logger.info("Successfully installed python3-pip: #{output}")
+            ensure_venv_package()
+          {error, _} -> 
+            Logger.error("Failed to install python3-pip: #{error}")
+            {:error, :pip_install_failed, %{error: error}}
+        end
+    end
+  end
+
+  defp ensure_venv_package do
+    Logger.info("Ensuring python3-venv is installed...")
+    case System.cmd("python3", ["--version"], stderr_to_stdout: true) do
+      {version, 0} ->
+        # Extract major.minor version (e.g., "3.12" from "Python 3.12.3")
+        [major, minor | _] = version 
+          |> String.trim()
+          |> String.split(" ") 
+          |> List.last() 
+          |> String.split(".")
+        
+        venv_package = "python#{major}.#{minor}-venv"
+        Logger.info("Installing #{venv_package}...")
+        
+        case System.cmd("sudo", ["apt", "install", "-y", venv_package], stderr_to_stdout: true) do
+          {output, 0} ->
+            Logger.info("Successfully installed #{venv_package}: #{output}")
+            :ok
+          {error, _} ->
+            Logger.error("Failed to install #{venv_package}: #{error}")
+            {:error, :venv_install_failed, %{error: error}}
+        end
+      {error, _} ->
+        Logger.error("Failed to get Python version: #{error}")
+        {:error, :python_version_check_failed, %{error: error}}
+    end
+  end
+
+  defp setup_venv(venv) do
+    if File.exists?(venv) do
+      Logger.info("Removing existing venv...")
+      File.rm_rf!(venv)
+    end
+
+    Logger.info("Creating fresh venv...")
+    case System.cmd("python3", ["-m", "venv", venv], stderr_to_stdout: true) do
+      {output, 0} -> 
+        Logger.info("Successfully created venv: #{output}")
+        :ok
+      {error, _} -> 
+        Logger.error("Failed to create venv: #{error}")
+        {:error, :venv_creation_failed, %{error: error}}
+    end
+  end
+
+  defp verify_venv_pip do
+    Logger.info("Verifying pip in venv...")
+    venv_python = python_path()
+    Logger.info("Using Python at: #{venv_python}")
+    
+    case System.cmd(venv_python, ["-m", "pip", "--version"],
+           env: env_vars(),
+           stderr_to_stdout: true
+         ) do
+      {version, 0} -> 
+        Logger.info("Venv pip found: #{version}")
+        :ok
+      {error, _} -> 
+        Logger.error("Pip not found in venv: #{error}")
+        # Try to bootstrap pip in the venv
+        Logger.info("Attempting to bootstrap pip in venv...")
+        case System.cmd(venv_python, ["-m", "ensurepip", "--default-pip"],
+               env: env_vars(),
+               stderr_to_stdout: true
+             ) do
+          {output, 0} -> 
+            Logger.info("Successfully bootstrapped pip: #{output}")
+            :ok
+          {error, _} -> 
+            Logger.error("Failed to bootstrap pip: #{error}")
+            {:error, :venv_pip_failed, %{error: error}}
+        end
     end
   end
 
@@ -100,37 +212,51 @@ defmodule AxonCore.PythonEnvManager do
   end
 
   defp upgrade_pip do
+    Logger.info("Upgrading pip...")
     case System.cmd(python_path(), ["-m", "pip", "install", "--upgrade", "pip"],
            env: env_vars(),
-           cd: project_root()
+           cd: project_root(),
+           stderr_to_stdout: true
          ) do
-      {_, 0} -> :ok
-      {error, _} -> {:error, :pip_upgrade_failed, %{error: error}}
+      {output, 0} -> 
+        Logger.info("Successfully upgraded pip: #{output}")
+        :ok
+      {error, _} -> 
+        Logger.error("Failed to upgrade pip: #{error}")
+        {:error, :pip_upgrade_failed, %{error: error}}
     end
   end
 
   defp install_poetry do
+    Logger.info("Installing poetry...")
     case System.cmd(python_path(), ["-m", "pip", "install", "poetry"],
            env: env_vars(),
-           cd: project_root()
+           cd: project_root(),
+           stderr_to_stdout: true
          ) do
-      {_, 0} -> :ok
-      {error, _} -> {:error, :poetry_install_failed, %{error: error}}
+      {output, 0} -> 
+        Logger.info("Successfully installed poetry: #{output}")
+        :ok
+      {error, _} -> 
+        Logger.error("Failed to install poetry: #{error}")
+        {:error, :poetry_install_failed, %{error: error}}
     end
   end
 
   defp install_project_deps do
+    Logger.info("Installing project dependencies...")
     case System.cmd(Path.join([venv_path(), "bin", "poetry"]), ["install"],
            env: env_vars(),
-           cd: project_root()
+           cd: project_root(),
+           stderr_to_stdout: true
          ) do
-      {_, 0} -> :ok
-      {error, _} -> {:error, :dependency_install_failed, %{error: error}}
+      {output, 0} -> 
+        Logger.info("Successfully installed dependencies: #{output}")
+        :ok
+      {error, _} -> 
+        Logger.error("Failed to install dependencies: #{error}")
+        {:error, :dependency_install_failed, %{error: error}}
     end
-  end
-
-  defp venv_path do
-    Path.join(project_root(), ".venv")
   end
 
   defp project_root do

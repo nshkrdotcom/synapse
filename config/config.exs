@@ -6,6 +6,13 @@ config :grpc,
     AxonCore.AgentGrpcServer
   ]
 
+# Configure Finch
+config :axon_core, :finch,
+  name: AxonFinch,
+  pools: %{
+    :default => [size: 10]
+  }
+
 # ... other configurations ...
 
 config :axon_core,

@@ -1,4 +1,4 @@
-defmodule Axon.Application do
+defmodule Axon.Web.Application do
   @moduledoc false
   use Application
 
@@ -12,7 +12,7 @@ defmodule Axon.Application do
       {Axon.Web.Endpoint, []}
     ]
 
-    opts = [strategy: :one_for_one, name: Axon.Supervisor]
+    opts = [strategy: :one_for_one, name: Axon.Web.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end

@@ -30,6 +30,31 @@ Axon follows an umbrella project structure, similar in style to `cf_ex`, with th
     *   Example `pydantic-ai` agent implementations.
     *   Elixir modules for spawning and communicating with Python processes.
 
+## Getting Started
+
+### Prerequisites
+
+- Elixir 1.14 or higher
+- Python 3.10 or higher
+- Git
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/nshkrdotcom/axon.git
+cd axon
+```
+2. Run the verification script to check your environment and install dependencies:
+```bash
+./verify_setup.exs
+```
+3. Start the Elixir shell:
+```bash
+iex -S mix
+```
+Now you're ready to start using Axon! See the examples below to get started.
+
 ## Installation
 
 ```elixir
