@@ -53,10 +53,17 @@ echo "AXON_PYTHON_AGENT_ID: $AXON_PYTHON_AGENT_ID"
 # Start the FastAPI server using uvicorn with verbose logging
 #eval "$POETRY_COMMAND"
 
+#echo "python path: $PYTHONPATH"
 
 echo "Starting FastAPI server..."
-python -v 
-python ../src/axon_python/agent_wrapper.py # axon_python.agent_wrapper "$AGENT_MODULE"
+#python -v 
+python apps/axon_python/src/axon_python/agent_wrapper.py  "axon_python.agent_wrapper" "$AGENT_MODULE"
+#python -m axon_python.agent_wrapper "$AGENT_MODULE"
+
+
+echo "Agent Wrapper Started."
+
+
 
 # # Start the FastAPI server using uvicorn with verbose logging
 # poetry run uvicorn "axon_python.agent_wrapper:app" --agent-module "$AGENT_MODULE" --host "0.0.0.0" --port "$PORT" --log-level debug
