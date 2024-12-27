@@ -15,6 +15,7 @@ defmodule Axon.Agent.Server do
   @default_python_module "agents.example_agent"
 
   def start_link(opts) do
+    Logger.info("#{inspect(opts)}")
     name = Keyword.fetch!(opts, :name)
     #:ok = AxonCore.PythonEnvManager.ensure_env!()
     GenServer.start_link(__MODULE__, opts, name: via_tuple(name))
@@ -133,27 +134,25 @@ defmodule Axon.Agent.Server do
     )
     #listen_for_output(ext)
     Logger.info("Started Python agent on ext: #{inspect(ext)} port:#{inspect(port_number)}")
-    Logger.info("Sleeping for 2000 ms...")
-    Process.sleep(2000)  # Allow the Python agent to start up
-    Logger.info("\n\nDone sleeping...")
+    #Logger.info("Sleeping for 2000 ms...")
+    #Process.sleep(2000)  # Allow the Python agent to start up
+    #Logger.info("\n\nDone sleeping...")
     {:ok, ext}
   end
 
-  defp listen_for_output(port) do
-    # Continuously listen for data or other messages from the port
-    receive do
-      {^port, {:data, data}} ->
-        Logger.info("Port Output: #{data}")
-        listen_for_output(port)
-      {^port, {_, data}} ->
-        Logger.info("unexpected Port Output: #{data}")
-        listen_for_output(port)
+  # defp listen_for_output(port) do
+  #   # Continuously listen for data or other messages from the port
+  #   receive do
+  #     {^port, {:data, data}} ->
+  #       Logger.info("Port Output: #{data}")
+  #       listen_for_output(port)
+  #     {^port, {_, data}} ->
+  #       Logger.info("unexpected Port Output: #{data}")
+  #       listen_for_output(port)
 
-      {^port, :closed} ->
-        IO.puts("Port closed")
-        {:noreply, nil}
-    end
-  end
-
-
+  #     {^port, :closed} ->
+  #       IO.puts("Port closed")
+  #       {:noreply, nil}
+  #   end
+  # end
 end
