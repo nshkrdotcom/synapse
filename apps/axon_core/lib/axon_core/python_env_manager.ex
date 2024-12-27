@@ -54,6 +54,17 @@ defmodule AxonCore.PythonEnvManager do
     Path.join(project_root(), ".venv")
   end
 
+  @doc """
+  Returns virtualenv environment variables.
+  """
+  def get_venv_env do
+    venv_path = venv_path()
+    [
+      {"VIRTUAL_ENV", venv_path},
+      {"PATH", "#{venv_path}/bin:#{System.get_env("PATH")}"}
+    ]
+  end
+
   # Private Functions
 
   defp ensure_project_structure do
@@ -201,61 +212,50 @@ defmodule AxonCore.PythonEnvManager do
   end
 
   defp install_dependencies do
-    Logger.info("Installing Python dependencies...")
-    
-    # First, ensure pip is up to date
-    with :ok <- upgrade_pip(),
-         :ok <- install_poetry(),
-         :ok <- install_project_deps() do
-      :ok
-    end
-  end
-
-  defp upgrade_pip do
-    Logger.info("Upgrading pip...")
-    case System.cmd(python_path(), ["-m", "pip", "install", "--upgrade", "pip"],
-           env: env_vars(),
-           cd: project_root(),
-           stderr_to_stdout: true
-         ) do
-      {output, 0} -> 
-        Logger.info("Successfully upgraded pip: #{output}")
-        :ok
-      {error, _} -> 
-        Logger.error("Failed to upgrade pip: #{error}")
-        {:error, :pip_upgrade_failed, %{error: error}}
-    end
-  end
-
-  defp install_poetry do
-    Logger.info("Installing poetry...")
-    case System.cmd(python_path(), ["-m", "pip", "install", "poetry"],
-           env: env_vars(),
-           cd: project_root(),
-           stderr_to_stdout: true
-         ) do
-      {output, 0} -> 
-        Logger.info("Successfully installed poetry: #{output}")
-        :ok
-      {error, _} -> 
-        Logger.error("Failed to install poetry: #{error}")
-        {:error, :poetry_install_failed, %{error: error}}
-    end
-  end
-
-  defp install_project_deps do
     Logger.info("Installing project dependencies...")
-    case System.cmd(Path.join([venv_path(), "bin", "poetry"]), ["install"],
-           env: env_vars(),
-           cd: project_root(),
-           stderr_to_stdout: true
-         ) do
-      {output, 0} -> 
-        Logger.info("Successfully installed dependencies: #{output}")
-        :ok
-      {error, _} -> 
-        Logger.error("Failed to install dependencies: #{error}")
-        {:error, :dependency_install_failed, %{error: error}}
+    python_package_dir = Path.join([File.cwd!(), "apps", "axon_core", "priv", "python"])
+    venv_python = python_path()
+    
+    # First install Poetry
+    case System.cmd(venv_python, ["-m", "pip", "install", "poetry"],
+      env: env_vars(),
+      cd: python_package_dir,
+      stderr_to_stdout: true
+    ) do
+      {output, 0} ->
+        Logger.info("Successfully installed Poetry: #{output}")
+        venv_poetry = Path.join([venv_path(), "bin", "poetry"])
+        
+        # Then use Poetry to install dependencies
+        case System.cmd(venv_poetry, ["install", "--no-root"],
+          env: env_vars(),
+          cd: python_package_dir,
+          stderr_to_stdout: true
+        ) do
+          {output, 0} ->
+            Logger.info("Successfully installed dependencies: #{output}")
+            
+            # Finally install the local package in development mode
+            case System.cmd(venv_python, ["-m", "pip", "install", "-e", "."],
+              env: env_vars(),
+              cd: python_package_dir,
+              stderr_to_stdout: true
+            ) do
+              {output, 0} ->
+                Logger.info("Successfully installed local package: #{output}")
+                :ok
+              {error, _} ->
+                Logger.error("Failed to install local package: #{error}")
+                {:error, :local_package_install_failed, %{error: error}}
+            end
+            
+          {error, _} ->
+            Logger.error("Failed to install dependencies: #{error}")
+            {:error, :dependency_install_failed, %{error: error}}
+        end
+      {error, _} ->
+        Logger.error("Failed to install Poetry: #{error}")
+        {:error, :poetry_install_failed, %{error: error}}
     end
   end
 

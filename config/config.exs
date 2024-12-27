@@ -23,9 +23,10 @@ config :axon_core,
   python_module_path: "apps/axon_python/src"
 
 config :logger,
-  level: :info,
+  level: :debug,
+  truncate: :infinity,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :trace_id],
+  metadata: [request_id: nil, trace_id: nil],
   backends: [:console],
   compile_time_purge_matching: [
     [level_lower_than: :info]
@@ -33,4 +34,4 @@ config :logger,
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :trace_id]
+  metadata: [request_id: nil, trace_id: nil]

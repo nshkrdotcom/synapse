@@ -3,6 +3,9 @@ name = "axon-core"
 version = "0.1.0"
 description = "Python core functionality for Axon"
 authors = ["Your Name <your.email@example.com>"]
+packages = [
+    { include = "agents", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"

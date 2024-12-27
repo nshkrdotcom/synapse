@@ -1,4 +1,4 @@
-defmodule Axon do
+defmodule Axon.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -7,25 +7,22 @@ defmodule Axon do
 
   @impl true
   def start(_type, _args) do
+    python_path = Path.join(File.cwd!(), "apps/axon_python/src")
+
     children = [
+      # Start the Registry for agent processes
+      {Registry, keys: :unique, name: Axon.AgentRegistry},
       # Start the Telemetry supervisor
       Axon.Telemetry,
       # Start the PubSub system
       {Phoenix.PubSub, name: Axon.PubSub},
-      # Start the agents
-      {Axon.Agent, 
-        name: "python_agent_1",
+      # Start a single test agent
+      {Axon.Agent.Server, 
+        name: :example_agent,
         python_module: "agents.example_agent",
-        model: "openai:gpt-4o",
-        port: 5001,
-        extra_env: [{"PYTHONPATH", "./apps/axon_python/src"}]
-      },
-      {Axon.Agent,
-        name: "python_agent_2",
-        python_module: "agents.bank_support_agent",
-        model: "openai:gpt-4o",
-        port: 5002,
-        extra_env: [{"PYTHONPATH", "./apps/axon_python/src"}]
+        model: "default",
+        port: 8000,
+        extra_env: [{"PYTHONPATH", python_path}]
       }
     ]
 

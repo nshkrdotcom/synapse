@@ -15,22 +15,41 @@ defmodule Axon.Agent.Server do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(name))
   end
 
+  def via_tuple(name) do
+    {:via, Registry, {Axon.AgentRegistry, name}}
+  end
+
   @impl true
   def init(opts) do
+    Logger.info("Initializing agent server with options: #{inspect(opts)}")
+    
     state =
       opts
       |> Enum.into(%{})
       |> Map.put_new(:port, opts[:port] || get_free_port())
 
-    # Start Python agent if port wasn't provided
-    if !opts[:port] do
-      start_python_agent(state)
+    Logger.info("Agent server state: #{inspect(state)}")
+
+    # Start Python agent
+    port = start_python_agent(state)
+    state = Map.put(state, :port_ref, port)
+
+    # Give the Python process a moment to start and check its output
+    Process.sleep(2000)
+
+    # Try to ping the agent to verify it's running
+    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+    headers = [{"Content-Type", "application/json"}]
+    
+    case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
+      {:ok, _} ->
+        Logger.info("Successfully connected to Python agent")
+        {:ok, state}
+      {:error, reason} ->
+        Logger.error("Failed to connect to Python agent: #{inspect(reason)}")
+        Port.close(port)
+        {:stop, :python_agent_not_responding}
     end
-
-    # Create a process group for the agent
-    :ok = :pg.join(state.name, self())
-
-    {:ok, state}
   end
 
   @impl true
@@ -47,32 +66,82 @@ defmodule Axon.Agent.Server do
     end
   end
 
-  defp start_python_agent(%{python_module: module, model: model, port: port} = state) do
-    python_cmd = System.get_env("PYTHON_EXEC", "python")
-    spawn_cmd = "#{python_cmd} -u -m axon_python.agent_wrapper"
-
-    env = [
-      {"PYTHONPATH", "./"},
-      {"AXON_PYTHON_AGENT_MODEL", model} | 
-      (state[:extra_env] || [])
-    ]
-
-    Port.open(
-      {:spawn_executable, spawn_cmd},
-      [
-        {:args, [module, Integer.to_string(port), model]},
-        {:cd, "apps/axon_python/src"},
-        {:env, env},
-        :binary,
-        :use_stdio,
-        :stderr_to_stdout,
-        :hide
-      ]
-    )
+  @impl true
+  def handle_info({port, {:data, data}}, %{port_ref: port} = state) when is_port(port) do
+    # Split data into lines and log each one
+    String.split(data, "\n")
+    |> Enum.each(fn line ->
+      unless line == "", do: Logger.info("Python: #{line}")
+    end)
+    {:noreply, state}
   end
 
-  defp via_tuple(agent_name) when is_binary(agent_name) do
-    {:via, :pg, agent_name}
+  @impl true
+  def handle_info({port, {:exit_status, status}}, %{port_ref: port} = state) when is_port(port) do
+    Logger.error("Python process exited with status #{status}")
+    {:stop, :python_process_exited, state}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.info("Unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
+  defp start_python_agent(%{python_module: module, model: model, port: port} = state) do
+    python_cmd = System.find_executable("python3") || System.find_executable("python")
+    unless python_cmd, do: raise "Python executable not found"
+
+    working_dir = Path.absname("apps/axon_python/src")
+    module_path = module
+
+    # Merge extra_env with our base env, ensuring no duplicates
+    base_env = [
+      {"PYTHONPATH", working_dir},
+      {"AXON_PYTHON_AGENT_MODEL", model},
+      {"AXON_PYTHON_AGENT_PORT", Integer.to_string(port)}
+    ]
+    
+    env = case state[:extra_env] do
+      nil -> base_env
+      extra -> Enum.uniq_by(extra ++ base_env, fn {k, _} -> k end)
+    end
+
+    Logger.info("""
+    Starting Python agent:
+      Port: #{port}
+      Python cmd: #{python_cmd}
+      Working dir: #{working_dir}
+      Module path: #{module_path}
+      Environment:
+    #{Enum.map_join(env, "\n", fn {k, v} -> "        #{k}=#{v}" end)}
+    """)
+
+    # Construct port options
+    port_opts = [
+      :binary,
+      :exit_status,
+      {:args, ["-u", "-m", "axon_python.agent_wrapper", module_path]},
+      {:cd, working_dir},
+      {:env, env}
+    ]
+
+    Logger.debug("Port options: #{inspect(port_opts, pretty: true)}")
+
+    try do
+      port = Port.open({:spawn_executable, python_cmd}, port_opts)
+      Logger.info("Successfully opened port: #{inspect(port)}")
+      port
+    rescue
+      e ->
+        Logger.error("""
+        Failed to open port with options:
+          Command: #{python_cmd}
+          Options: #{inspect(port_opts, pretty: true)}
+          Error: #{inspect(e, pretty: true)}
+        """)
+        reraise e, __STACKTRACE__
+    end
   end
 
   defp get_free_port do
