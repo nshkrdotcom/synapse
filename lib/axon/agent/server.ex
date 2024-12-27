@@ -33,81 +33,74 @@ defmodule Axon.Agent.Server do
       |> Enum.into(%{})
       |> Map.put_new(:model, @default_model)
       |> Map.put_new(:python_module, @default_python_module)
-     # |> Map.put_new(:port, 5427)
 
     Logger.info("Agent server state: #{inspect(state)}")
 
     case start_python_agent(state) do
-      {port_ref, _port} when is_port(port_ref) ->
-        state = Map.put(state, :port_ref, port_ref)
-
-        # Give the Python process a moment to start
-        Logger.info("sleeping for 2000 here...")
-        Process.sleep(2000)
-        Logger.info("Done sleep...")
-
-        # Try to ping the agent
+      {:ok, ext} ->
+        #Task.start_link(fn -> listen_for_output(ext) end)
         endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
         headers = [{"Content-Type", "application/json"}]
-
-        case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
-          {:ok, _} ->
-            Logger.info("Successfully connected to Python agent")
-            {:ok, state}
-          {:error, reason} ->
-            Logger.error("Failed to connect to Python agent: #{inspect(reason)}")
-            Port.close(port_ref)
-            {:stop, :python_agent_not_responding}
-        end
+        {:ok, ext}
+        # case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
+        #   {:ok, _} ->
+        #     Logger.info("Successfully connected to Python agent")
+        #     {:ok, ext}
+        #   {:error, reason} ->
+        #     Logger.error("Failed to connect to Python agent: #{inspect(reason)}")
+        #     Port.close(ext)
+        #     {:stop, :python_agent_not_responding}
+        # end
       _ ->
         {:stop, :python_agent_start_failed}
     end
   end
 
   @impl true
-  def handle_call({:send_message, message}, _from, state) do
-    endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+  def handle_call({:send_message, message}, _from, ext) do
+    endpoint = "http://localhost:#{ext.port}/agents/#{ext.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
 
     case HTTPClient.post(endpoint, headers, JSONCodec.encode!(message)) do
       {:ok, response} ->
-        {:reply, {:ok, JSONCodec.decode!(response.body)}, state}
+        {:reply, {:ok, JSONCodec.decode!(response.body)}, ext}
       {:error, reason} ->
         Logger.error("Failed to send message to agent: #{inspect(reason)}")
-        {:reply, {:error, reason}, state}
+        {:reply, {:error, reason}, ext}
     end
   end
 
   @impl true
-  def handle_info({port, {:data, data}}, %{port_ref: port_ref} = state) when port == port_ref do
-    Logger.info("Received data from Python process")
+  #def handle_info({port, {:data, data}}, %{port_ref: port_ref} = ext) when port == port_ref do
+  def handle_info({msg, {:data, data}}, ext) when msg == ext do
+      #Logger.info("")
     String.split(data, "\n")
     |> Enum.each(fn line ->
-      unless line == "", do: Logger.info("Python: #{line}")
+      unless line == "", do: Logger.info("Received data from Python process: #{line}")
     end)
-    {:noreply, state}
+    {:noreply, ext}
   end
 
   # Handle Port exit
   @impl true
-  def handle_info({port, {:exit_status, status}}, %{port_ref: port_ref} = state) when port == port_ref do
-    Logger.error("Python process exited with status #{status}")
-    {:stop, :python_process_exited, state}
+  def handle_info({msg, {:exit_status, status}}, ext) when msg == ext do
+    Logger.error("Python process exited with status: [#{status}]")
+    {:stop, :python_process_exited, ext}
   end
 
   @impl true
-  def handle_info(msg, state) do
+  def handle_info(msg, ext) do
     Logger.info("Unexpected message: #{inspect(msg)}")
-    {:noreply, state}
+    {:noreply, ext}
   end
 
   defp start_python_agent(%{
     python_module: module,
     model: model,
-    port: port,
+    port: port_number,
     name: agent_id
   }) do
-    Logger.info("Starting Python agent with module: #{inspect(module)}, model: #{inspect(model)}, port: #{inspect(port)}, agent_id: #{inspect(agent_id)}")
+    Logger.info("Starting Python agent with module: #{inspect(module)}, model: #{inspect(model)}, port: #{inspect(port_number)}, agent_id: #{inspect(agent_id)}")
     # python_cmd = AxonCore.PythonEnvManager.python_path()
     #working_dir = Path.absname("apps/axon_python/src")
     start_agent_script_path =
@@ -121,32 +114,29 @@ defmodule Axon.Agent.Server do
       ])
     )
     env_vars = PythonEnvManager.env_vars()
-    port_p = "#{inspect(port)}"
+    port_p = "#{inspect(port_number)}"
     agent_id_p = "#{inspect(agent_id)}"
-    _virtual_env_path = Enum.find_value(env_vars, fn {key, venv_path} ->
-      if key == "VIRTUAL_ENV" do
-        Logger.info("Executing command: /bin/bash #{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}")
-        port_ref = Port.open(
-          {:spawn_executable, "/bin/bash"},
-          [
-            :binary,
-            :exit_status,
-            :stderr_to_stdout,
-            :hide,
-            :use_stdio,
-            args: [start_agent_script_path, venv_path, module, port_p, model, agent_id_p]
-          ]
-        )
-        listen_for_output(port_ref)
-        Logger.info("Started Python agent on port_ref: #{inspect(port_ref)} port:#{inspect(port)}")
-        Logger.info("Sleeping for 2000 ms...")
-        Process.sleep(2000)  # Allow the Python agent to start up
-        Logger.info("\n\nDone sleeping...")
-        {port_ref, port}
-      else
-        nil
-      end
-    end)
+    {_, venv_path} = List.first(env_vars) ##TODO: cleanup
+    #Logger.info("#{inspect(venv_path)}")
+    Logger.info("Executing command: /bin/bash #{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}")
+    command = "#{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}"
+    #ext = Exile.stream!(["/bin/bash", command], stderr: :consume)
+    ext = Port.open(
+      {:spawn_executable, "/bin/bash"},
+      [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        :hide,
+        args: [start_agent_script_path, venv_path, module, port_p, model, agent_id_p]
+      ]
+    )
+    #listen_for_output(ext)
+    Logger.info("Started Python agent on ext: #{inspect(ext)} port:#{inspect(port_number)}")
+    Logger.info("Sleeping for 2000 ms...")
+    Process.sleep(2000)  # Allow the Python agent to start up
+    Logger.info("\n\nDone sleeping...")
+    {:ok, ext}
   end
 
   defp listen_for_output(port) do
@@ -154,6 +144,9 @@ defmodule Axon.Agent.Server do
     receive do
       {^port, {:data, data}} ->
         Logger.info("Port Output: #{data}")
+        listen_for_output(port)
+      {^port, {_, data}} ->
+        Logger.info("unexpected Port Output: #{data}")
         listen_for_output(port)
 
       {^port, :closed} ->

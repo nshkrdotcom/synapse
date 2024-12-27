@@ -34,7 +34,8 @@ defmodule AxonCore.MixProject do
       {:jason, "~> 1.4"},
       {:tesla, "~> 1.7"},
       {:hackney, "~> 1.18"},
-      {:finch, "~> 0.16"}
+      {:finch, "~> 0.16"},
+      {:exile, "~> 0.12.0"},
     ]
   end
 end
