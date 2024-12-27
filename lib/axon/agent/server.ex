@@ -22,7 +22,7 @@ defmodule Axon.Agent.Server do
   @impl true
   def init(opts) do
     Logger.info("Initializing agent server with options: #{inspect(opts)}")
-    
+
     state =
       opts
       |> Enum.into(%{})
@@ -40,7 +40,7 @@ defmodule Axon.Agent.Server do
     # Try to ping the agent to verify it's running
     endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
     headers = [{"Content-Type", "application/json"}]
-    
+
     case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
       {:ok, _} ->
         Logger.info("Successfully connected to Python agent")
@@ -95,43 +95,60 @@ defmodule Axon.Agent.Server do
     working_dir = Path.absname("apps/axon_python/src")
     module_path = module
 
+    # Ensure extra_env is a list of string tuples
+    extra_env =
+      case state[:extra_env] do
+        nil -> []
+        extra when is_list(extra) ->
+          Enum.map(extra, fn
+            {k, v} when is_atom(k) -> {Atom.to_string(k), to_string(v)}
+            {k, v} when is_binary(k) -> {k, to_string(v)}
+          end)
+        _ ->
+          raise ArgumentError,
+                "extra_env must be a keyword list or a list of two-element tuples"
+      end
+
     # Merge extra_env with our base env, ensuring no duplicates
     base_env = [
       {"PYTHONPATH", working_dir},
       {"AXON_PYTHON_AGENT_MODEL", model},
       {"AXON_PYTHON_AGENT_PORT", Integer.to_string(port)}
     ]
-    
-    env = case state[:extra_env] do
-      nil -> base_env
-      extra -> Enum.uniq_by(extra ++ base_env, fn {k, _} -> k end)
-    end
+
+    env = Enum.uniq_by(extra_env ++ base_env, fn {k, _} -> k end)
 
     Logger.info("""
     Starting Python agent:
-      Port: #{port}
-      Python cmd: #{python_cmd}
-      Working dir: #{working_dir}
-      Module path: #{module_path}
-      Environment:
+    Port: #{port}
+    Python cmd: #{python_cmd}
+    Working dir: #{working_dir}
+    Module path: #{module_path}
+    Environment:
     #{Enum.map_join(env, "\n", fn {k, v} -> "        #{k}=#{v}" end)}
     """)
 
-    # Construct port options
+    full_path = working_dir <> "/axon_python/agent_wrapper.py"
+    Logger.info("Port options 1: #{inspect(module_path, pretty: true)}")
+    args_1 = [full_path, "-u", "-m"]
+
     port_opts = [
       :binary,
       :exit_status,
-      {:args, ["-u", "-m", "axon_python.agent_wrapper", module_path]},
       {:cd, working_dir},
-      {:env, env}
-    ]
-
-    Logger.debug("Port options: #{inspect(port_opts, pretty: true)}")
-
+      {:env, env},
+      args: args_1
+    ]    # Add args: separately
+    #Logger.info("Port options 1: #{inspect(port_opts_1, pretty: true)}")
     try do
-      port = Port.open({:spawn_executable, python_cmd}, port_opts)
-      Logger.info("Successfully opened port: #{inspect(port)}")
+      Logger.info("Attempting to open port with test script...")
+      port = Port.open({:spawn_executable, python_cmd}, args: args_1)
+      Logger.info("Successfully opened port with test script: #{inspect(port)}")
+
+      # If successful, proceed with the actual agent
+      Port.close(port)  # Close the test port
       port
+
     rescue
       e ->
         Logger.error("""
@@ -145,12 +162,14 @@ defmodule Axon.Agent.Server do
   end
 
   defp get_free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [
-      :binary, 
-      packet: :raw, 
-      reuseaddr: true, 
-      active: false
-    ])
+    {:ok, socket} =
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        reuseaddr: true,
+        active: false
+      ])
+
     {:ok, {_, port}} = :inet.sockname(socket)
     :gen_tcp.close(socket)
     port
