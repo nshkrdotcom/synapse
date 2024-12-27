@@ -1,81 +1,41 @@
-# #!/bin/bash
-
-# # Activate the virtual environment using Poetry
-# # shellcheck disable=SC1091
-# source $(poetry env info --path)/bin/activate
-
-# # Get the agent module from arguments
-# AGENT_MODULE="$1"
-# PORT="$2"
-# MODEL="$3"
-
-# # Set environment variables for the agent
-# export AXON_PYTHON_AGENT_PORT="$PORT"
-# export AXON_PYTHON_AGENT_MODEL="$MODEL"
-
-# # Start the FastAPI server using uvicorn
-# poetry run uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT"
-
-
-
-# #!/bin/bash
-
-# # Activate the virtual environment using Poetry
-# # shellcheck disable=SC1091
-# source $(poetry env info --path)/bin/activate
-
-# # Get the agent module from arguments
-# AGENT_MODULE="$1"
-# PORT="$2" # gRPC port
-# MODEL="$3"
-
-# # Set environment variables for the agent
-# export AXON_PYTHON_AGENT_PORT="$PORT"
-# export AXON_PYTHON_AGENT_MODEL="$MODEL"
-
-# # Start the gRPC server
-# python -m axon_python.agent_wrapper
-
-
-
 #!/bin/bash
 
-# Activate the virtual environment using Poetry
-# # shellcheck disable=SC1091
-# source $(poetry env info --path)/bin/activate
+set -e  # Exit immediately if a command exits with a non-zero status.
+set -u  # Treat unset variables as an error.
+set -o pipefail # Exit if any command in a pipeline fails.
 
-# # Get the agent module from arguments, along with a new argument for the agent ID
-# AGENT_MODULE="$1"
-# PORT="$2"
-# MODEL="$3"
-# AGENT_ID="$4"
+# Get the path to the poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+echo "Poetry Environment Path: $POETRY_ENV_PATH"
 
-# # Set environment variables for the agent
-# export AXON_PYTHON_AGENT_PORT="$PORT"
-# export AXON_PYTHON_AGENT_MODEL="$MODEL"
-# export AXON_PYTHON_AGENT_ID="$AGENT_ID" # Set the agent ID
+# Construct the full path to the activate script
+ACTIVATE_SCRIPT="$POETRY_ENV_PATH/bin/activate"
+echo "Activate Script Path: $ACTIVATE_SCRIPT"
 
-# # Start the FastAPI server using uvicorn
-# poetry run uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT"
+# Source the activate script
+source "$ACTIVATE_SCRIPT"
 
-
-
-#!/bin/bash
-
-# Activate the virtual environment using Poetry
-# shellcheck disable=SC1091
-source $(poetry env info --path)/bin/activate
-
-# Get the agent module from arguments, along with a new argument for the agent ID
+# Get the agent module from arguments
 AGENT_MODULE="$1"
 PORT="$2"
 MODEL="$3"
 AGENT_ID="$4"
 
+# Print the received arguments
+echo "Agent Module: $AGENT_MODULE"
+echo "Port: $PORT"
+echo "Model: $MODEL"
+echo "Agent ID: $AGENT_ID"
+
 # Set environment variables for the agent
 export AXON_PYTHON_AGENT_PORT="$PORT"
 export AXON_PYTHON_AGENT_MODEL="$MODEL"
-export AXON_PYTHON_AGENT_ID="$AGENT_ID" # Set the agent ID
+export AXON_PYTHON_AGENT_ID="$AGENT_ID"
 
-# Start the FastAPI server using uvicorn
-poetry run uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT"
+# Print the environment variables
+echo "AXON_PYTHON_AGENT_PORT: $AXON_PYTHON_AGENT_PORT"
+echo "AXON_PYTHON_AGENT_MODEL: $AXON_PYTHON_AGENT_MODEL"
+echo "AXON_PYTHON_AGENT_ID: $AXON_PYTHON_AGENT_ID"
+
+# Start the FastAPI server using uvicorn with verbose logging
+poetry run uvicorn "axon_python.agent_wrapper:app" --host 0.0.0.0 --port "$PORT" --log-level debug

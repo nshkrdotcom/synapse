@@ -4,7 +4,7 @@ defmodule AxonCore.PythonEnvManager do
   Handles creation, activation, and cleanup of venvs.
   Assumes Python venv module is available (installed during project setup).
   """
-  
+
   require Logger
   alias AxonCore.Error.PythonEnvError
 
@@ -86,18 +86,21 @@ defmodule AxonCore.PythonEnvManager do
       {version, 0} ->
         version = version |> String.trim() |> String.split(" ") |> List.last()
         # Clean up version string to ensure it's in proper semver format
-        version = case String.split(version, ".") do
-          [major, minor] -> "#{major}.#{minor}.0"
-          [major, minor, patch | _] -> "#{major}.#{minor}.#{patch}"
-          _ -> version
-        end
-        
+        version =
+          case String.split(version, ".") do
+            [major, minor] -> "#{major}.#{minor}.0"
+            [major, minor, patch | _] -> "#{major}.#{minor}.#{patch}"
+            _ -> version
+          end
+
         case Version.compare(version, @python_min_version) do
-          :lt -> 
+          :lt ->
             {:error, :version_mismatch, %{found: version, required: @python_min_version}}
-          _ -> 
+
+          _ ->
             :ok
         end
+
       {_, _} ->
         {:error, :python_not_found, %{}}
     end
@@ -119,17 +122,22 @@ defmodule AxonCore.PythonEnvManager do
 
   defp ensure_system_pip do
     case System.cmd("python3", ["-m", "pip", "--version"], stderr_to_stdout: true) do
-      {version, 0} -> 
+      {version, 0} ->
         Logger.info("System pip found: #{version}")
         ensure_venv_package()
+
       {_error, _} ->
         Logger.info("System pip not found, installing via apt...")
+
         # If pip is not available, install it via apt
-        case System.cmd("sudo", ["apt", "install", "-y", "python3-pip"], stderr_to_stdout: true) do
-          {output, 0} -> 
+        case System.cmd("sudo", ["apt", "install", "-y", "python3-pip"],
+               stderr_to_stdout: true
+             ) do
+          {output, 0} ->
             Logger.info("Successfully installed python3-pip: #{output}")
             ensure_venv_package()
-          {error, _} -> 
+
+          {error, _} ->
             Logger.error("Failed to install python3-pip: #{error}")
             {:error, :pip_install_failed, %{error: error}}
         end
@@ -138,26 +146,30 @@ defmodule AxonCore.PythonEnvManager do
 
   defp ensure_venv_package do
     Logger.info("Ensuring python3-venv is installed...")
+
     case System.cmd("python3", ["--version"], stderr_to_stdout: true) do
       {version, 0} ->
         # Extract major.minor version (e.g., "3.12" from "Python 3.12.3")
-        [major, minor | _] = version 
+        [major, minor | _] =
+          version
           |> String.trim()
-          |> String.split(" ") 
-          |> List.last() 
+          |> String.split(" ")
+          |> List.last()
           |> String.split(".")
-        
+
         venv_package = "python#{major}.#{minor}-venv"
         Logger.info("Installing #{venv_package}...")
-        
+
         case System.cmd("sudo", ["apt", "install", "-y", venv_package], stderr_to_stdout: true) do
           {output, 0} ->
             Logger.info("Successfully installed #{venv_package}: #{output}")
             :ok
+
           {error, _} ->
             Logger.error("Failed to install #{venv_package}: #{error}")
             {:error, :venv_install_failed, %{error: error}}
         end
+
       {error, _} ->
         Logger.error("Failed to get Python version: #{error}")
         {:error, :python_version_check_failed, %{error: error}}
@@ -171,11 +183,13 @@ defmodule AxonCore.PythonEnvManager do
     end
 
     Logger.info("Creating fresh venv...")
+
     case System.cmd("python3", ["-m", "venv", venv], stderr_to_stdout: true) do
-      {output, 0} -> 
+      {output, 0} ->
         Logger.info("Successfully created venv: #{output}")
         :ok
-      {error, _} -> 
+
+      {error, _} ->
         Logger.error("Failed to create venv: #{error}")
         {:error, :venv_creation_failed, %{error: error}}
     end
@@ -185,26 +199,30 @@ defmodule AxonCore.PythonEnvManager do
     Logger.info("Verifying pip in venv...")
     venv_python = python_path()
     Logger.info("Using Python at: #{venv_python}")
-    
+
     case System.cmd(venv_python, ["-m", "pip", "--version"],
            env: env_vars(),
            stderr_to_stdout: true
          ) do
-      {version, 0} -> 
+      {version, 0} ->
         Logger.info("Venv pip found: #{version}")
         :ok
-      {error, _} -> 
+
+      {error, _} ->
         Logger.error("Pip not found in venv: #{error}")
+
         # Try to bootstrap pip in the venv
         Logger.info("Attempting to bootstrap pip in venv...")
+
         case System.cmd(venv_python, ["-m", "ensurepip", "--default-pip"],
                env: env_vars(),
                stderr_to_stdout: true
              ) do
-          {output, 0} -> 
+          {output, 0} ->
             Logger.info("Successfully bootstrapped pip: #{output}")
             :ok
-          {error, _} -> 
+
+          {error, _} ->
             Logger.error("Failed to bootstrap pip: #{error}")
             {:error, :venv_pip_failed, %{error: error}}
         end
@@ -215,44 +233,46 @@ defmodule AxonCore.PythonEnvManager do
     Logger.info("Installing project dependencies...")
     python_package_dir = Path.join([File.cwd!(), "apps", "axon_core", "priv", "python"])
     venv_python = python_path()
-    
+
     # First install Poetry
     case System.cmd(venv_python, ["-m", "pip", "install", "poetry"],
-      env: env_vars(),
-      cd: python_package_dir,
-      stderr_to_stdout: true
-    ) do
+           env: env_vars(),
+           cd: python_package_dir,
+           stderr_to_stdout: true
+         ) do
       {output, 0} ->
         Logger.info("Successfully installed Poetry: #{output}")
         venv_poetry = Path.join([venv_path(), "bin", "poetry"])
-        
+
         # Then use Poetry to install dependencies
         case System.cmd(venv_poetry, ["install", "--no-root"],
-          env: env_vars(),
-          cd: python_package_dir,
-          stderr_to_stdout: true
-        ) do
+               env: env_vars(),
+               cd: python_package_dir,
+               stderr_to_stdout: true
+             ) do
           {output, 0} ->
             Logger.info("Successfully installed dependencies: #{output}")
-            
+
             # Finally install the local package in development mode
             case System.cmd(venv_python, ["-m", "pip", "install", "-e", "."],
-              env: env_vars(),
-              cd: python_package_dir,
-              stderr_to_stdout: true
-            ) do
+                   env: env_vars(),
+                   cd: python_package_dir,
+                   stderr_to_stdout: true
+                 ) do
               {output, 0} ->
                 Logger.info("Successfully installed local package: #{output}")
                 :ok
+
               {error, _} ->
                 Logger.error("Failed to install local package: #{error}")
                 {:error, :local_package_install_failed, %{error: error}}
             end
-            
+
           {error, _} ->
             Logger.error("Failed to install dependencies: #{error}")
             {:error, :dependency_install_failed, %{error: error}}
         end
+
       {error, _} ->
         Logger.error("Failed to install Poetry: #{error}")
         {:error, :poetry_install_failed, %{error: error}}
