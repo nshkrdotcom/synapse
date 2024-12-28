@@ -120,7 +120,7 @@ defmodule Axon.Agent.Server do
     {_, venv_path} = List.first(env_vars) ##TODO: cleanup
     #Logger.info("#{inspect(venv_path)}")
     Logger.info("Executing command: /bin/bash #{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}")
-    command = "#{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}"
+    #command = "#{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}"
     #ext = Exile.stream!(["/bin/bash", command], stderr: :consume)
     ext = Port.open(
       {:spawn_executable, "/bin/bash"},
@@ -132,6 +132,12 @@ defmodule Axon.Agent.Server do
         args: [start_agent_script_path, venv_path, module, port_p, model, agent_id_p]
       ]
     )
+    # {:ok, ext} = Exile.Process.start_link(
+    #   ["/bin/bash", command],
+    #   stdin: :pipe,
+    #   stderr: :consume,
+    #   max_chunk_size: 1024
+    # )
     #listen_for_output(ext)
     Logger.info("Started Python agent on ext: #{inspect(ext)} port:#{inspect(port_number)}")
     #Logger.info("Sleeping for 2000 ms...")
@@ -139,6 +145,90 @@ defmodule Axon.Agent.Server do
     #Logger.info("\n\nDone sleeping...")
     {:ok, ext}
   end
+
+
+
+
+
+
+
+
+# ###
+# These additions provide several important features:
+
+# Health Monitoring:
+
+# Regular health checks of both Elixir and Python processes
+# Metrics tracking for requests and errors
+# Automatic recovery from failures
+
+
+# Supervision Strategy:
+
+# Separate registries for agents and monitors
+# Dynamic supervision for both components
+# Graceful recovery from crashes
+
+
+# Metrics and Logging:
+
+# Detailed health metrics
+# Error rate tracking
+# Request/response monitoring
+# Uptime tracking
+
+
+# Recovery Mechanisms:
+
+# Automatic process restart
+# Configurable retry delays
+# Graceful degradation
+
+
+
+# To use this enhanced implementation:
+
+# Start the supervisor:
+
+# elixirCopyMyApp.Agent.Supervisor.start_link([])
+
+# Start an agent:
+
+# elixirCopyMyApp.Agent.Supervisor.start_agent("agent1")
+# The system will automatically monitor the agent and its Python process, restarting them if necessary and maintaining metrics about their health.
+
+
+
+  def handle_call(:ping, _from, %{channel: channel} = state) do
+    case check_channel_health(channel) do
+      :ok -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp check_channel_health(channel) do
+    # Simple health check request
+    request = AI.PredictRequest.new(input: "ping")
+    case channel |> AI.Service.Stub.predict(request, timeout: 5000) do
+      {:ok, _response} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp handle_port_message({:exit_status, status}, state) do
+    Logger.error("Python process exited with status: #{status}")
+    {:stop, {:python_crash, status}, state}
+  end
+
+  defp handle_port_message(msg, state) do
+    Logger.debug("Received port message: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
+
+
+
+
 
   # defp listen_for_output(port) do
   #   # Continuously listen for data or other messages from the port

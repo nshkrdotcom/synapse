@@ -42,7 +42,7 @@ defmodule Axon.AgentSupervisor do
       # },
 
 
-    DynamicSupervisor.init(max_restarts: 2, max_children: 42, strategy: :one_for_one)
+    DynamicSupervisor.init(max_restarts: 1, max_children: 42, strategy: :one_for_one)
   end
 
   @doc """
