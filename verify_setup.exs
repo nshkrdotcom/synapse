@@ -65,6 +65,7 @@ defmodule Axon.VerifySetup do
          :ok <- ensure_poetry_installed(),
          :ok <- setup_python_environment(),
          :ok <- ensure_executable(),
+         :ok <- install_protoc(),
          :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
       IO.puts("""
@@ -191,12 +192,13 @@ defmodule Axon.VerifySetup do
       {_, 0} ->
         # Install dependencies without installing the root project
         case System.cmd("poetry", ["install", "--no-root"],
-               cd: python_project_path,
-               stderr_to_stdout: true
-             ) do
+             cd: python_project_path,
+             stderr_to_stdout: true
+           ) do
           {_, 0} ->
             IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
             :ok
+            |> install_grpc_dependencies()
 
           {error, _} ->
             {Axon.Setup.Error,
@@ -206,6 +208,54 @@ defmodule Axon.VerifySetup do
       {error, _} ->
         {Axon.Setup.Error,
          :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
+    end
+  end
+
+  defp install_grpc_dependencies(:ok) do
+    IO.puts("\nInstalling grpcio and protobuf...")
+    python_project_path = Path.join(File.cwd!(), "apps/axon_python")
+
+    case System.cmd("poetry", ["add", "grpcio", "protobuf"],
+         cd: python_project_path,
+         stderr_to_stdout: true
+       ) do
+      {_, 0} ->
+        IO.puts("#{color("✓", :green)} grpcio and protobuf installed")
+        :ok
+      {error, _} ->
+        {Axon.Setup.Error,
+         :dependency_install_failed, "Failed to install grpcio and protobuf: #{error}"}
+    end
+  end
+
+  defp install_grpc_dependencies(error) do
+    error
+  end
+
+  defp install_protoc do
+    IO.puts("\nEnsuring protoc is installed...")
+    try do
+      case System.cmd("protoc", ["--version"], stderr_to_stdout: true) do
+        {_, 0} ->
+          IO.puts("#{color("✓", :green)} protoc is already installed")
+          :ok
+        _ ->
+          install_protoc_package()
+      end
+    rescue
+      _ in ErlangError ->
+        IO.puts("#{color("!", :yellow)} protoc not found. Attempting to install...")
+        install_protoc_package()
+    end
+  end
+
+  defp install_protoc_package do
+    case System.cmd("sudo", ["apt", "install", "-y", "protobuf-compiler"], stderr_to_stdout: true) do
+      {_, 0} ->
+        IO.puts("#{color("✓", :green)} protoc installed successfully")
+        :ok
+      {error, _} ->
+        {:error, :protoc_install_failed, "Failed to install protoc: #{error}"}
     end
   end
 
@@ -235,36 +285,6 @@ defmodule Axon.VerifySetup do
       end
    # end
   end
-  # defp setup_python_environment do
-  #   IO.puts("\nSetting up Python environment with Poetry...")
-  #   python_project_path = Path.join(File.cwd!(), "apps/axon_python")
-  #   IO.puts("\n #{python_project_path}")
-
-  #   # Use the current python3 interpreter for the Poetry environment
-  #   case System.cmd("poetry", ["env", "use", "python3"],
-  #          cd: python_project_path,
-  #          stderr_to_stdout: true
-  #        ) do
-  #     {_, 0} ->
-  #       # Install dependencies without installing the root project
-  #       case System.cmd("poetry", ["install", "--no-root"],
-  #              cd: python_project_path,
-  #              stderr_to_stdout: true
-  #            ) do
-  #         {_, 0} ->
-  #           IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
-  #           :ok
-
-  #         {error, _} ->
-  #           {Axon.Setup.Error,
-  #            :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
-  #       end
-
-  #     {error, _} ->
-  #       {Axon.Setup.Error,
-  #        :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
-  #   end
-  # end
 
   defp fetch_elixir_deps do
     IO.puts("\nFetching Elixir dependencies...")

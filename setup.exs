@@ -150,7 +150,6 @@ defmodule Axon.Setup do
   defp setup_python_environment do
     IO.puts("\nSetting up Python environment with Poetry...")
     python_project_path = Path.join(File.cwd!(), "apps/axon_python")
-    #IO.puts("\nt #{python_project_path}"))
 
     # Remove the existing virtual environment and poetry.lock file if they exist
     File.rm_rf!(Path.join([python_project_path, ".venv"]))
@@ -158,9 +157,9 @@ defmodule Axon.Setup do
 
     # Use the current python3 interpreter for the Poetry environment
     case System.cmd("poetry", ["env", "use", "python3"],
-       cd: python_project_path,
-       stderr_to_stdout: true
-     ) do
+           cd: python_project_path,
+           stderr_to_stdout: true
+         ) do
       {_, 0} ->
         # Install dependencies without installing the root project
         case System.cmd("poetry", ["install", "--no-root"],
@@ -171,13 +170,31 @@ defmodule Axon.Setup do
             IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
             :ok
           {error, _} ->
-            {:error,
-             :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
+            {:error, :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
         end
+        |> install_grpc_dependencies()
       {error, _} ->
-        {:error,
-         :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
+        {:error, :venv_creation_failed, "Failed to set up virtual environment: #{error}"}
     end
+  end
+
+  def install_grpc_dependencies(:ok) do
+    IO.puts("\nInstalling grpcio and protobuf...")
+    python_project_path = Path.join(File.cwd!(), "apps/axon_python")
+
+    case System.cmd("poetry", ["add", "grpcio", "protobuf"],
+         cd: python_project_path,
+         stderr_to_stdout: true) do
+      {_, 0} ->
+        IO.puts("#{color("✓", :green)} grpcio and protobuf installed")
+        :ok
+      {error, _} ->
+        {:error, :dependency_install_failed, "Failed to install grpcio and protobuf: #{error}"}
+    end
+  end
+
+  def install_grpc_dependencies(:error, error) do
+    {:error, :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
   end
 
   defp fetch_elixir_deps do
