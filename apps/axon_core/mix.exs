@@ -28,14 +28,15 @@ defmodule AxonCore.MixProject do
 
   defp deps do
     [
-      {:grpc, "~> 0.7.0"},
-      {:protobuf, "~> 0.11.0"},
-      {:google_protos, "~> 0.3.0"},
+      #{:grpc, "~> 0.9.0"},
+      #{:protobuf, "~> 0.13.0"},
+      # {:google_protos, "~> 0.3.0"},
       {:jason, "~> 1.4"},
       {:tesla, "~> 1.7"},
       {:hackney, "~> 1.18"},
       {:finch, "~> 0.16"},
-      {:exile, "~> 0.12.0"},
+
+      #{:exile, "~> 0.12.0"},
     ]
   end
 end

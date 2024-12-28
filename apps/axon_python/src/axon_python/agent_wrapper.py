@@ -1019,3 +1019,91 @@ if __name__ == "__main__":
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################### LATEST FOR GRPC
+
+# import asyncio
+# import grpc
+# from concurrent import futures
+# import ai_pb2
+# import ai_pb2_grpc
+# from pydantic import BaseModel
+# from typing import List
+
+# class PredictInput(BaseModel):
+#     text: str
+#     parameters: dict = {}
+
+# class PredictOutput(BaseModel):
+#     result: str
+#     confidence: float
+
+# class AIServicer(ai_pb2_grpc.AIServiceServicer):
+#     async def Predict(self, request, context):
+#         input_data = PredictInput(
+#             text=request.input,
+#             parameters=request.parameters
+#         )
+        
+#         # Your AI logic here
+#         result = await self.process_prediction(input_data)
+        
+#         return ai_pb2.PredictResponse(
+#             output=result.result,
+#             confidence=result.confidence
+#         )
+
+#     async def StreamPredict(self, request_iterator, context):
+#         async for request in request_iterator:
+#             input_data = PredictInput(
+#                 text=request.input,
+#                 parameters=request.parameters
+#             )
+            
+#             result = await self.process_prediction(input_data)
+            
+#             yield ai_pb2.PredictResponse(
+#                 output=result.result,
+#                 confidence=result.confidence
+#             )
+
+#     async def process_prediction(self, input_data: PredictInput) -> PredictOutput:
+#         # Simulate AI processing
+#         await asyncio.sleep(0.1)
+#         return PredictOutput(
+#             result=f"Processed: {input_data.text}",
+#             confidence=0.95
+#         )
+
+# async def serve():
+#     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
+#     ai_pb2_grpc.add_AIServiceServicer_to_server(AIServicer(), server)
+#     server.add_insecure_port('[::]:50051')
+#     await server.start()
+#     await server.wait_for_termination()
+
+# if __name__ == '__main__':
+#     asyncio.run(serve())
+
+

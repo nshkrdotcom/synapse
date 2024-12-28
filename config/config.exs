@@ -1,10 +1,10 @@
 import Config
 
-config :grpc,
-  start_server: true,
-  services: [
-    AxonCore.AgentGrpcServer
-  ]
+# config :grpc,
+#   start_server: true,
+#   services: [
+#     AxonCore.AgentGrpcServer
+#   ]
 
 config :axon,
   # Add any necessary configuration here for your application
