@@ -1,15 +1,15 @@
-defmodule Axon.AgentSupervisor do
+defmodule AxonCore.AgentSupervisor do
   use DynamicSupervisor
 
   def start_link(init_arg) do
-      # {Axon.Agent.Server,
+      # {AxonCore.Agent.Server,
       #   name: :example_agent,
       #   python_module: "agents.example_agent",
       #   model: "default",
       #   port: 8000,
       #   extra_env: [{"PYTHONPATH", python_path}]
       # },
-    python_path = Path.join(File.cwd!(), "apps/axon_python/src")
+    python_path = Path.join(File.cwd!(), "script/src")
     config = [
       name: :example_agent,
       python_module: "agents.example_agent",
@@ -33,7 +33,7 @@ defmodule Axon.AgentSupervisor do
 
   @impl true
   def init(_init_arg) do
-      # {Axon.Agent.Server,
+      # {AxonCore.Agent.Server,
       #   name: :example_agent,
       #   python_module: "agents.example_agent",
       #   model: "default",
@@ -50,8 +50,8 @@ defmodule Axon.AgentSupervisor do
   """
   def start_agent(config) do
     child_spec = %{
-      id: Axon.Agent.Server,
-      start: {Axon.Agent.Server, :start_link, [config]},
+      id: AxonCore.Agent.Server,
+      start: {AxonCore.Agent.Server, :start_link, [config]},
       restart: :permanent,
       type: :worker
     }
@@ -63,7 +63,7 @@ defmodule Axon.AgentSupervisor do
   Stops an agent by its ID
   """
   def stop_agent(agent_id) do
-    case Registry.lookup(Axon.AgentRegistry, agent_id) do
+    case Registry.lookup(AxonCore.AgentRegistry, agent_id) do
       [{pid, _}] -> DynamicSupervisor.terminate_child(__MODULE__, pid)
       [] -> {:error, :not_found}
     end

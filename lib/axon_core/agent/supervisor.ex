@@ -1,4 +1,4 @@
-defmodule MyApp.Agent.Supervisor do
+defmodule AxonCore.Agent.Supervisor do
   use Supervisor
 
   def start_link(opts) do

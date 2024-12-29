@@ -1,12 +1,12 @@
 # axon/test/axon/fault_tolerance_test.exs
 
-defmodule Axon.FaultToleranceTest do
+defmodule AxonCore.FaultToleranceTest do
   use ExUnit.Case, async: true
 
   setup do
     # Start your application or necessary supervisors
     # You might need to adjust this depending on your application's setup
-    start_supervised(Axon.Application)
+    start_supervised(AxonCore.Application)
 
     :ok
   end
@@ -20,12 +20,12 @@ defmodule Axon.FaultToleranceTest do
     # agent_pid = get_agent_pid(agent_id)
 
     # Ensure agent process exists before attempting to send a message
-    assert Process.alive?(Axon.Agent.Server.pid(agent_id))
+    assert Process.alive?(AxonCore.Agent.Server.pid(agent_id))
 
     send_message(agent_id, %{prompt: "crash"})
 
     # Wait for the agent to crash and be restarted
-    ref = Process.monitor(Axon.Agent.Server.pid(agent_id))
+    ref = Process.monitor(AxonCore.Agent.Server.pid(agent_id))
 
     receive do
       {:DOWN, ^ref, :process, _pid, _reason} ->
@@ -40,7 +40,7 @@ defmodule Axon.FaultToleranceTest do
     Process.sleep(1000)
 
     # Assert the new process is alive
-    assert Process.alive?(Axon.Agent.Server.pid(agent_id))
+    assert Process.alive?(AxonCore.Agent.Server.pid(agent_id))
 
     # Send another request to ensure the agent is functioning again
     {:ok, result} = send_message(agent_id, %{prompt: "hello"})

@@ -1,4 +1,4 @@
-defmodule Axon.Agent.JSONCodec do
+defmodule AxonCore.Agent.JSONCodec do
   @moduledoc """
   JSON encoding/decoding utilities using Jason.
   """

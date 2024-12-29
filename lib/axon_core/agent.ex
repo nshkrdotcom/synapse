@@ -1,4 +1,4 @@
-defmodule Axon.Agent do
+defmodule AxonCore.Agent do
   @moduledoc """
   Agent is a module that acts as a supervisor for the Agent children.
   It also defines the `child_spec/1` function which returns the specification
@@ -6,7 +6,7 @@ defmodule Axon.Agent do
   """
   use Supervisor
 
-  alias Axon.Agent.Server
+  alias AxonCore.Agent.Server
 
   @doc """
   Starts the Agent supervisor.
@@ -19,7 +19,7 @@ defmodule Axon.Agent do
   @impl true
   def init(opts) do
     children = [
-      {Task.Supervisor, name: String.to_atom("Axon.TaskSupervisor.#{opts[:name]}")},
+      {Task.Supervisor, name: String.to_atom("AxonCore.TaskSupervisor.#{opts[:name]}")},
       {Server, opts}
     ]
 

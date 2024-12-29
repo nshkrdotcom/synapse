@@ -3,7 +3,10 @@
 Mix.start()
 Mix.shell(Mix.Shell.IO)
 
-defmodule Axon.Setup.Error do
+# Change the current directory to the root of the project
+#File.cd!(Path.join([__DIR__, ".."]))
+
+defmodule AxonCore.Setup.Error do
   defexception [:message, :reason, :context]
 
   def new(reason, context \\ %{}) do
@@ -11,20 +14,28 @@ defmodule Axon.Setup.Error do
       case reason do
         :python_not_found ->
           "Python interpreter not found. Please ensure Python 3.10 or higher is installed."
+
         :version_mismatch ->
           "Python version mismatch. Found: #{context[:found]}, Required: #{context[:required]}"
+
         :poetry_not_found ->
           "Poetry not found. Attempting to install Poetry."
+
         :poetry_install_failed ->
           "Failed to install Poetry: #{context[:error]}"
+
         :venv_creation_failed ->
           "Failed to create virtual environment with Poetry: #{context[:error]}"
+
         :dependency_install_failed ->
           "Failed to install Python dependencies with Poetry: #{context[:error]}"
+
         :elixir_deps_failed ->
           "Failed to fetch Elixir dependencies: #{context[:error]}"
+
         :compile_failed ->
           "Failed to compile project: #{context[:error]}"
+
         _ ->
           "Unknown error: #{inspect(reason)}"
       end
@@ -37,7 +48,7 @@ defmodule Axon.Setup.Error do
   end
 end
 
-defmodule Axon.Setup do
+defmodule AxonCore.VerifySetup do
   @colors %{
     red: "\e[31m",
     green: "\e[32m",
@@ -53,6 +64,8 @@ defmodule Axon.Setup do
          :ok <- check_python(),
          :ok <- ensure_poetry_installed(),
          :ok <- setup_python_environment(),
+         :ok <- ensure_executable(),
+         :ok <- install_protoc(),
          :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
       IO.puts("""
@@ -65,13 +78,16 @@ defmodule Axon.Setup do
         IO.puts("\n#{color("❌ Setup failed at stage: #{stage}", :red)}")
         IO.puts("#{color("Error: #{message}", :red)}")
         System.halt(1)
-      {:error, stage, message}  ->
+
+      {:error, stage, message} ->
         IO.puts("\n#{color("❌ Setup failed at stage: #{stage}", :red)}")
         IO.puts("#{color("Error: #{message}", :red)}")
         System.halt(1)
-        {:error, error} when is_exception(error) ->
+
+      {:error, error} when is_exception(error) ->
         print_error(error)
         System.halt(1)
+
       {:error, message} ->
         IO.puts("\n#{color("✗ Error:", :red)} #{message}")
         System.halt(1)
@@ -86,7 +102,8 @@ defmodule Axon.Setup do
       IO.puts("#{color("✓", :green)} Elixir version #{version} OK")
       :ok
     else
-      {:error, :elixir_version, "Elixir version must be >= #{min_version} (found: #{version})"}
+      {:error,
+       :elixir_version, "Elixir version must be >= #{min_version} (found: #{version})"}
     end
   end
 
@@ -97,24 +114,31 @@ defmodule Axon.Setup do
     case System.cmd("python3", ["--version"]) do
       {version, 0} ->
         version = version |> String.trim() |> String.split(" ") |> List.last()
+
         if Version.match?(version, ">= #{min_version}") do
           IO.puts("#{color("✓", :green)} Python version #{version} OK")
           :ok
         else
-          {:error, :python_version, "Python version #{version} is below minimum required version #{min_version}"}
+          {AxonCore.Setup.Error,
+           :version_mismatch,
+           "Python version #{version} is below minimum required version #{min_version}"}
         end
+
       _ ->
-        {:error, :python_not_found, "Python 3 not found. Please install Python 3.10 or higher"}
+        {AxonCore.Setup.Error, :python_not_found,
+         "Python 3 not found. Please install Python 3.10 or higher"}
     end
   end
 
   defp ensure_poetry_installed do
     IO.puts("\nEnsuring Poetry is installed...")
+
     try do
       case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
         {_, 0} ->
           IO.puts("#{color("✓", :green)} Poetry is already installed")
           :ok
+
         _ ->
           install_poetry()
       end
@@ -125,35 +149,44 @@ defmodule Axon.Setup do
             IO.puts(
               "#{color("!", :yellow)} Poetry not found. Attempting to install Poetry automatically..."
             )
+
             install_poetry()
+
           _ ->
-            {:error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
+            {AxonCore.Setup.Error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
         end
     end
   end
 
   defp install_poetry do
     # Install Poetry using the recommended method
-    case System.cmd("python3", ["-c", "import requests; exec(requests.get('https://install.python-poetry.org').text)"], stderr_to_stdout: true) do
+    case System.cmd("python3", [
+           "-c",
+           "import requests; exec(requests.get('https://install.python-poetry.org').text)"
+         ],
+           stderr_to_stdout: true
+         ) do
       {output, 0} ->
         IO.puts("#{color("✓", :green)} Poetry installed successfully")
         IO.puts(output)
+
         # Add Poetry to PATH for the current process
         path = System.get_env("HOME") <> "/.local/bin:" <> System.get_env("PATH")
         System.put_env("PATH", path)
         :ok
+
       {error, _} ->
-        {:error, :poetry_install_failed, error}
+        {AxonCore.Setup.Error, :poetry_install_failed, error}
     end
   end
 
   defp setup_python_environment do
     IO.puts("\nSetting up Python environment with Poetry...")
-    python_project_path = Path.join(File.cwd!(), "apps/axon_python")
+    python_project_path = Path.join(File.cwd!(), "script")
 
     # Remove the existing virtual environment and poetry.lock file if they exist
-    File.rm_rf!(Path.join([python_project_path, ".venv"]))
-    File.rm(Path.join([python_project_path, "poetry.lock"]))
+    File.rm_rf!(Path.join(python_project_path, ".venv"))
+    File.rm(Path.join(python_project_path, "poetry.lock"))
 
     # Use the current python3 interpreter for the Poetry environment
     case System.cmd("poetry", ["env", "use", "python3"],
@@ -169,58 +202,99 @@ defmodule Axon.Setup do
           {_, 0} ->
             IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
             :ok
+
           {error, _} ->
-            {:error, :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
+            {AxonCore.Setup.Error,
+             :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
         end
-        |> install_grpc_dependencies()
+
       {error, _} ->
-        {:error, :venv_creation_failed, "Failed to set up virtual environment: #{error}"}
+        {AxonCore.Setup.Error,
+         :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
     end
   end
 
-  def install_grpc_dependencies(:ok) do
-    IO.puts("\nInstalling grpcio and protobuf...")
-    python_project_path = Path.join(File.cwd!(), "apps/axon_python")
+  defp install_protoc do
+    IO.puts("\nEnsuring protoc is installed...")
+    try do
+      case System.cmd("protoc", ["--version"], stderr_to_stdout: true) do
+        {_, 0} ->
+          IO.puts("#{color("✓", :green)} protoc is already installed")
+          :ok
+        _ ->
+          install_protoc_package()
+      end
+    rescue
+      _ in ErlangError ->
+        IO.puts("#{color("!", :yellow)} protoc not found. Attempting to install...")
+        install_protoc_package()
+    end
+  end
 
-    case System.cmd("poetry", ["add", "grpcio", "protobuf"],
-         cd: python_project_path,
-         stderr_to_stdout: true) do
+  defp install_protoc_package do
+    case System.cmd("sudo", ["apt", "install", "-y", "protobuf-compiler"], stderr_to_stdout: true) do
       {_, 0} ->
-        IO.puts("#{color("✓", :green)} grpcio and protobuf installed")
+        IO.puts("#{color("✓", :green)} protoc installed successfully")
         :ok
       {error, _} ->
-        {:error, :dependency_install_failed, "Failed to install grpcio and protobuf: #{error}"}
+        {:error, :protoc_install_failed, "Failed to install protoc: #{error}"}
     end
   end
 
-  def install_grpc_dependencies(:error, error) do
-    {:error, :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
+  defp ensure_executable do
+    #python_project_path = Path.join(File.cwd!(), "script")
+    script_path = Path.join(File.cwd!(), "script/start_agent.sh")
+
+    IO.puts("\nEnsuring #{script_path} is executable...")
+
+    unless File.exists?(script_path) do
+      {:error, :executable_not_found, "Could not find start_agent.sh at #{script_path}"}
+    end
+
+    # Check if the file is executable by the owner
+    #if :file.read_file_info(script_path) == {:ok, %{mode: mode}} and (mode & 8) == 8 do
+    #  IO.puts("#{color("✓", :green)} #{script_path} is executable")
+    #  :ok
+    #else
+      # Make the file executable
+      case System.cmd("chmod", ["+x", script_path]) do
+        {_, 0} ->
+          IO.puts("#{color("✓", :green)} Successfully made #{script_path} executable")
+          :ok
+
+        {error, _} ->
+          {:error, :chmod_failed, "Failed to make #{script_path} executable: #{error}"}
+      end
+   # end
   end
 
   defp fetch_elixir_deps do
     IO.puts("\nFetching Elixir dependencies...")
+
     case System.cmd("mix", ["deps.get"]) do
       {_, 0} ->
         IO.puts("#{color("✓", :green)} Dependencies fetched")
         :ok
+
       {error, _} ->
-        {:error, :deps_fetch, "Failed to fetch dependencies: #{error}"}
+        {AxonCore.Setup.Error, :deps_fetch, "Failed to fetch dependencies: #{error}"}
     end
   end
 
   defp compile_project do
     IO.puts("\nCompiling project...")
+
     case System.cmd("mix", ["compile"]) do
       {_, 0} ->
         IO.puts("#{color("✓", :green)} Project compiled")
         :ok
+
       {error, _} ->
-        {:error, :compile, "Failed to compile project: #{error}"}
+        {AxonCore.Setup.Error, :compile, "Failed to compile project: #{error}"}
     end
   end
 
-
-  defp print_error(%Axon.Setup.Error{} = error) do
+  defp print_error(%AxonCore.Setup.Error{} = error) do
     IO.puts("""
 
     #{color("╔══ Error ══╗", :red)}
@@ -242,6 +316,7 @@ defmodule Axon.Setup do
   end
 
   defp format_context(context) when context == %{}, do: "  No additional context"
+
   defp format_context(context) do
     context
     |> Enum.map(fn {key, value} -> "  #{key}: #{inspect(value)}" end)
@@ -253,4 +328,4 @@ defmodule Axon.Setup do
   end
 end
 
-Axon.Setup.run()
+AxonCore.VerifySetup.run()

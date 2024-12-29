@@ -1,4 +1,4 @@
-defmodule MyApp.Agent.Monitor do
+defmodule AxonCore.Agent.Monitor do
   use GenServer
   require Logger
 

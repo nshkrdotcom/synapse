@@ -1,4 +1,4 @@
-defmodule Axon.Agent.Server do
+defmodule AxonCore.Agent.Server do
   @moduledoc """
   Agent.Server is the GenServer responsible for managing the state of a
   single agent. It handles the communication with the agent and keeps
@@ -7,8 +7,8 @@ defmodule Axon.Agent.Server do
   use GenServer
   require Logger
 
-  alias Axon.Agent.HTTPClient
-  alias Axon.Agent.JSONCodec
+  alias AxonCore.Agent.HTTPClient
+  alias AxonCore.Agent.JSONCodec
   alias AxonCore.PythonEnvManager
 
   @default_model "default"
@@ -22,7 +22,7 @@ defmodule Axon.Agent.Server do
   end
 
   def via_tuple(name) do
-    {:via, Registry, {Axon.AgentRegistry, name}}
+    {:via, Registry, {AxonCore.AgentRegistry, name}}
   end
 
   @impl true
@@ -103,14 +103,12 @@ defmodule Axon.Agent.Server do
   }) do
     Logger.info("Starting Python agent with module: #{inspect(module)}, model: #{inspect(model)}, port: #{inspect(port_number)}, agent_id: #{inspect(agent_id)}")
     # python_cmd = AxonCore.PythonEnvManager.python_path()
-    #working_dir = Path.absname("apps/axon_python/src")
+    #working_dir = Path.absname("script/src")
     start_agent_script_path =
     Path.absname(
       Path.join([
         File.cwd!(),
-        "apps",
-        "axon_python",
-        "scripts",
+        "script",
         "start_agent.sh"
       ])
     )

@@ -1,17 +1,17 @@
 # axon/test/axon/concurrency_test.exs
 
-defmodule Axon.ConcurrencyTest do
+defmodule AxonCore.ConcurrencyTest do
   use ExUnit.Case, async: true
   # Use a different alias if you're not using HTTPClient directly in your tests
-  # alias Axon.Agent.HTTPClient, as: TestHTTPClient
-  import Axon.Agent, only: [send_message: 2]
+  # alias AxonCore.Agent.HTTPClient, as: TestHTTPClient
+  import AxonCore.Agent, only: [send_message: 2]
   # doctest Axon
 
   setup do
     # Start your application or necessary supervisors
     # You might need to adjust this depending on your application's setup
     # :ok = Application.ensure_all_started(:axon)
-    start_supervised(Axon.Application)
+    start_supervised(AxonCore.Application)
 
     # If you have any setup to do before tests, like starting agents, do it here
     # For example, if you need to register agents or set up some initial state:

@@ -6,26 +6,26 @@ import Config
 #     AxonCore.AgentGrpcServer
 #   ]
 
-config :axon,
+config :axon_core,
   # Add any necessary configuration here for your application
   # For example, you can define the default port for your Phoenix application
-  http: [port: 4000]
+  #http: [port: 49949],
 
 # Configure Finch
-config :axon_core, :finch,
-  name: AxonFinch,
-  pools: %{
-    :default => [size: 10]
-  }
+# config :axon_core, :finch,
+#   name: AxonFinch,
+#   pools: %{
+#     :default => [size: 10]
+#   }
 
 # ... other configurations ...
 
-config :axon_core,
+#config :axon_core,
   python_min_version: "3.10.0",
   python_max_version: "3.13.0",
   python_venv_path: ".venv",
   python_requirements_path: "requirements.txt",
-  python_module_path: "apps/axon_python/src",
+  python_module_path: "script/src",
   python_env: %{
     # Path to the Python executable, using the virtual environment's Python
     python_path: Path.join([System.get_env("HOME"), ".cache", "axon", ".venv", "bin", "python"])

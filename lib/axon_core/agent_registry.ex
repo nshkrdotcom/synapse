@@ -15,7 +15,7 @@ defmodule AxonCore.AgentRegistry do
   end
 
   # def stop_agent(agent_id) do
-  #   case Registry.lookup(Axon.AgentRegistry, agent_id) do
+  #   case Registry.lookup(AxonCore.AgentRegistry, agent_id) do
   #     [{pid, _}] -> DynamicSupervisor.terminate_child(__MODULE__, pid)
   #     [] -> {:error, :not_found}
   #   end

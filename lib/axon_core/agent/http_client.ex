@@ -1,4 +1,4 @@
-defmodule Axon.Agent.HTTPClient do
+defmodule AxonCore.Agent.HTTPClient do
   @moduledoc """
   HTTP client for making requests to Python agents.
   """
@@ -10,11 +10,11 @@ defmodule Axon.Agent.HTTPClient do
          |> Finch.request(AxonFinch) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, %{status: status, body: body}}
-      
+
       {:ok, %{status: status, body: body}} ->
         Logger.error("HTTP request failed with status #{status}: #{body}")
         {:error, {:http_error, status, body}}
-      
+
       {:error, reason} ->
         Logger.error("HTTP request failed: #{inspect(reason)}")
         {:error, reason}
