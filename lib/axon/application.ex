@@ -8,7 +8,6 @@ defmodule Axon.Application do
   @impl true
   def start(_type, _args) do
 
-    python_path = Path.join(File.cwd!(), "apps/axon_python/src")
     children = [
       # Start the Registry for agent processes
       {Registry, keys: :unique, name: Axon.AgentRegistry},

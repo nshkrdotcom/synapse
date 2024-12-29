@@ -7,8 +7,7 @@ defmodule Axon.Agent.Server do
   use GenServer
   require Logger
 
-  alias Axon.Agent.HTTPClient
-  alias Axon.Agent.JSONCodec
+  alias AxonCore.AxonBridge.Client
   alias AxonCore.PythonEnvManager
 
   @default_model "default"
@@ -40,18 +39,7 @@ defmodule Axon.Agent.Server do
     case start_python_agent(state) do
       {:ok, ext} ->
         #Task.start_link(fn -> listen_for_output(ext) end)
-        endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
-        headers = [{"Content-Type", "application/json"}]
         {:ok, ext}
-        # case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
-        #   {:ok, _} ->
-        #     Logger.info("Successfully connected to Python agent")
-        #     {:ok, ext}
-        #   {:error, reason} ->
-        #     Logger.error("Failed to connect to Python agent: #{inspect(reason)}")
-        #     Port.close(ext)
-        #     {:stop, :python_agent_not_responding}
-        # end
       _ ->
         {:stop, :python_agent_start_failed}
     end
@@ -59,12 +47,9 @@ defmodule Axon.Agent.Server do
 
   @impl true
   def handle_call({:send_message, message}, _from, ext) do
-    endpoint = "http://localhost:#{ext.port}/agents/#{ext.name}/run_sync"
-    headers = [{"Content-Type", "application/json"}]
-
-    case HTTPClient.post(endpoint, headers, JSONCodec.encode!(message)) do
+    case Client.process_data(message) do
       {:ok, response} ->
-        {:reply, {:ok, JSONCodec.decode!(response.body)}, ext}
+        {:reply, {:ok, response.result}, ext}
       {:error, reason} ->
         Logger.error("Failed to send message to agent: #{inspect(reason)}")
         {:reply, {:error, reason}, ext}
@@ -102,47 +87,29 @@ defmodule Axon.Agent.Server do
     name: agent_id
   }) do
     Logger.info("Starting Python agent with module: #{inspect(module)}, model: #{inspect(model)}, port: #{inspect(port_number)}, agent_id: #{inspect(agent_id)}")
-    # python_cmd = AxonCore.PythonEnvManager.python_path()
-    #working_dir = Path.absname("apps/axon_python/src")
-    start_agent_script_path =
-    Path.absname(
-      Path.join([
-        File.cwd!(),
-        "apps",
-        "axon_python",
-        "scripts",
-        "start_agent.sh"
-      ])
-    )
+
+    python_cmd = AxonCore.PythonEnvManager.python_path()
+    working_dir = Path.absname("apps/axon_python/src")
+
+
     env_vars = PythonEnvManager.env_vars()
-    port_p = "#{inspect(port_number)}"
-    agent_id_p = "#{inspect(agent_id)}"
-    {_, venv_path} = List.first(env_vars) ##TODO: cleanup
-    #Logger.info("#{inspect(venv_path)}")
-    Logger.info("Executing command: /bin/bash #{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}")
-    #command = "#{inspect(start_agent_script_path)} #{inspect(venv_path)} #{inspect(module)} #{inspect(port_p)} #{inspect(model)} #{inspect(agent_id_p)}"
-    #ext = Exile.stream!(["/bin/bash", command], stderr: :consume)
+    {_, _} = List.first(env_vars) ##TODO: cleanup
+
+
+
     ext = Port.open(
-      {:spawn_executable, "/bin/bash"},
+      {:spawn_executable, python_cmd},
       [
         :binary,
         :exit_status,
         :stderr_to_stdout,
         :hide,
-        args: [start_agent_script_path, venv_path, module, port_p, model, agent_id_p]
+        args: [Path.join(working_dir, "agent_server.py")],
+        env: %{"PYTHONPATH" => working_dir}
       ]
     )
-    # {:ok, ext} = Exile.Process.start_link(
-    #   ["/bin/bash", command],
-    #   stdin: :pipe,
-    #   stderr: :consume,
-    #   max_chunk_size: 1024
-    # )
-    #listen_for_output(ext)
+
     Logger.info("Started Python agent on ext: #{inspect(ext)} port:#{inspect(port_number)}")
-    #Logger.info("Sleeping for 2000 ms...")
-    #Process.sleep(2000)  # Allow the Python agent to start up
-    #Logger.info("\n\nDone sleeping...")
     {:ok, ext}
   end
 
@@ -198,6 +165,16 @@ defmodule Axon.Agent.Server do
 # The system will automatically monitor the agent and its Python process, restarting them if necessary and maintaining metrics about their health.
 
 
+
+  def handle_call({:send_message, message}, _from, ext) do
+    case Client.process_data(message) do
+      {:ok, response} ->
+        {:reply, {:ok, response.result}, ext}
+      {:error, reason} ->
+        Logger.error("Failed to send message to agent: #{inspect(reason)}")
+        {:reply, {:error, reason}, ext}
+    end
+  end
 
   def handle_call(:ping, _from, %{channel: channel} = state) do
     case check_channel_health(channel) do

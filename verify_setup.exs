@@ -212,19 +212,19 @@ defmodule Axon.VerifySetup do
   end
 
   defp install_grpc_dependencies(:ok) do
-    IO.puts("\nInstalling grpcio and protobuf...")
+    IO.puts("\nInstalling grpcio, protobuf, and grpcio-tools...")
     python_project_path = Path.join(File.cwd!(), "apps/axon_python")
 
-    case System.cmd("poetry", ["add", "grpcio", "protobuf"],
+    case System.cmd("poetry", ["add", "grpcio", "protobuf", "grpcio-tools"],
          cd: python_project_path,
          stderr_to_stdout: true
        ) do
       {_, 0} ->
-        IO.puts("#{color("✓", :green)} grpcio and protobuf installed")
+        IO.puts("#{color("✓", :green)} grpcio, protobuf, and grpcio-tools installed")
         :ok
       {error, _} ->
         {Axon.Setup.Error,
-         :dependency_install_failed, "Failed to install grpcio and protobuf: #{error}"}
+         :dependency_install_failed, "Failed to install grpcio, protobuf, and grpcio-tools: #{error}"}
     end
   end
 

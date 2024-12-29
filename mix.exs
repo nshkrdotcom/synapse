@@ -20,7 +20,6 @@ defmodule Axon.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
@@ -40,6 +39,8 @@ defmodule Axon.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:plug_cowboy, "~> 2.5"},
+      {:grpc, "~> 0.9"},
+      {:protobuf, "~> 0.11"}
     ]
   end
 

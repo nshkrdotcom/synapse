@@ -16,8 +16,8 @@ defmodule AxonCore.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test"]
-  defp elixirc_paths(_), do: ["lib"]
+  defp elixirc_paths(:test), do: ["../lib", "lib", "test"]
+  defp elixirc_paths(_), do: ["../lib", "lib"]
 
   def application do
     [
@@ -28,9 +28,9 @@ defmodule AxonCore.MixProject do
 
   defp deps do
     [
-      #{:grpc, "~> 0.9.0"},
-      #{:protobuf, "~> 0.13.0"},
-      # {:google_protos, "~> 0.3.0"},
+      {:grpc, "~> 0.9.0"},
+      {:protobuf, "~> 0.13.0"},
+      {:google_protos, "~> 0.3.0"},
       {:jason, "~> 1.4"},
       {:tesla, "~> 1.7"},
       {:hackney, "~> 1.18"},

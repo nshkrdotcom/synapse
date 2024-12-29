@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package axon;
+
+message InputData {
+  map<string, string> data = 1;
+}
+
+message OutputData {
+  string result = 1;
+}
+
+service AgentService {
+  rpc ProcessData (InputData) returns (OutputData);
+}

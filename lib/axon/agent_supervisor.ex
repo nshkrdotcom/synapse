@@ -2,31 +2,16 @@ defmodule Axon.AgentSupervisor do
   use DynamicSupervisor
 
   def start_link(init_arg) do
-      # {Axon.Agent.Server,
-      #   name: :example_agent,
-      #   python_module: "agents.example_agent",
-      #   model: "default",
-      #   port: 8000,
-      #   extra_env: [{"PYTHONPATH", python_path}]
-      # },
     python_path = Path.join(File.cwd!(), "apps/axon_python/src")
+
     config = [
       name: :example_agent,
       python_module: "agents.example_agent",
       model: "default",
-      port: 8000,
-      extra_env: [{"PYTHONPATH", python_path}]
-
-      # id: "agent_1",
-      # script: "agent.py",
-      # env: [{"SOME_ENV", "value"}]
+      port: 50051,
+      extra_env: %{"PYTHONPATH" => python_path}
     ]
 
-    # config = %{
-    #   id: "agent_1",
-    #   script: "agent.py",
-    #   env: [{"SOME_ENV", "value"}]
-    # }
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
     start_agent(config)
   end
