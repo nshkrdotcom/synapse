@@ -33,7 +33,7 @@ defmodule AxonCore.Agent.Monitor do
       :ok ->
         %{state | status: :ok}
       {:error, reason} ->
-        Logger.warn("Agent #{state.name} health check failed: #{inspect(reason)}")
+        Logger.info("Agent #{state.name} health check failed: #{inspect(reason)}")
         handle_unhealthy_agent(state)
     end
   end

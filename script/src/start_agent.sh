@@ -57,7 +57,7 @@ echo "AXON_PYTHON_AGENT_ID: $AXON_PYTHON_AGENT_ID"
 
 echo "Starting FastAPI server..."
 #python -v 
-python apps/axon_python/src/axon_python/agent_wrapper.py  "axon_python.agent_wrapper" "$AGENT_MODULE"
+python src/axon_python/agent_wrapper.py  "axon_python.agent_wrapper" "$AGENT_MODULE"
 #python -m axon_python.agent_wrapper "$AGENT_MODULE"
 
 

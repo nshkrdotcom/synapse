@@ -7,8 +7,6 @@ defmodule AxonCore.PythonEnvManager do
 
   require Logger
 
-  alias AxonCore.PythonEnvManager
-
   alias AxonCore.Error.PythonEnvError
 
   @python_min_version "3.10.0"
@@ -96,17 +94,17 @@ defmodule AxonCore.PythonEnvManager do
     end
   end
 
-  defp ensure_directory(path) do
-    Logger.info("Ensuring directory exists: #{path}")
-    case File.mkdir_p(path) do
-      :ok ->
-        Logger.info("Directory exists or was created: #{path}")
-        :ok
-      {:error, reason} = error ->
-        Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
-        error
-    end
-  end
+  # defp ensure_directory(path) do
+  #   Logger.info("Ensuring directory exists: #{path}")
+  #   case File.mkdir_p(path) do
+  #     :ok ->
+  #       Logger.info("Directory exists or was created: #{path}")
+  #       :ok
+  #     {:error, reason} = error ->
+  #       Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
+  #       error
+  #   end
+  # end
 
   defp ensure_directory(path) do
     Logger.info("Ensuring directory exists: #{path}")

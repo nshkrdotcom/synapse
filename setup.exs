@@ -10,6 +10,7 @@ Mix.shell(Mix.Shell.IO)
 # Load the project configuration
 Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
   # Load all compilation paths
+ # IO.puts("Start...")
   Mix.Task.run("loadpaths")
 
   # Load all dependencies
@@ -23,15 +24,17 @@ Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
     _ ->
       :ok
   end
+  #IO.puts("Compile complete...")
 
   # Start all applications
-  Mix.Task.run("app.start")
+  #Mix.Task.run("app.start")
 
   # Now load your application specifically
-  Application.load(:axon_core)
+  #Application.load(:axon_core)
 
   # Ensure all code paths are available
   Code.append_path("_build/dev/lib/axon_core/ebin")
+ # IO.puts("Mix.Project.in_project done...")
 end)
 
 defmodule AxonCore.Setup.Error do
@@ -94,10 +97,10 @@ defmodule AxonCore.VerifySetup do
 
     with :ok <- check_elixir_version(),
          :ok <- check_python(),
-         :ok <- create_priv_python_dir(),
-         :ok <- ensure_poetry_installed(),
-         :ok <- setup_python_environment(),
-         :ok <- ensure_executable(),
+         #:ok <- create_priv_python_dir(),
+         #:ok <- ensure_poetry_installed(),
+         #:ok <- setup_python_environment(),
+         #:ok <- ensure_executable(),
          :ok <- setup_venv(),
          :ok <- install_protoc(),
          :ok <- fetch_elixir_deps(),
@@ -164,88 +167,88 @@ defmodule AxonCore.VerifySetup do
     end
   end
 
-  defp ensure_poetry_installed do
-    IO.puts("\nEnsuring Poetry is installed...")
-    try do
-      case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
-        {_, 0} ->
-          IO.puts("#{color("✓", :green)} Poetry is already installed")
-          :ok
+  # defp ensure_poetry_installed do
+  #   IO.puts("\nEnsuring Poetry is installed...")
+  #   try do
+  #     case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
+  #       {_, 0} ->
+  #         IO.puts("#{color("✓", :green)} Poetry is already installed")
+  #         :ok
 
-        _ ->
-          install_poetry()
-      end
-    rescue
-      e in ErlangError ->
-        case e do
-          %ErlangError{original: :enoent} ->
-            IO.puts(
-              "#{color("!", :yellow)} Poetry not found. Attempting to install Poetry automatically..."
-            )
+  #       _ ->
+  #         install_poetry()
+  #     end
+  #   rescue
+  #     e in ErlangError ->
+  #       case e do
+  #         %ErlangError{original: :enoent} ->
+  #           IO.puts(
+  #             "#{color("!", :yellow)} Poetry not found. Attempting to install Poetry automatically..."
+  #           )
 
-            install_poetry()
+  #           install_poetry()
 
-          _ ->
-            {AxonCore.Setup.Error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
-        end
-    end
-  end
+  #         _ ->
+  #           {AxonCore.Setup.Error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
+  #       end
+  #   end
+  # end
 
-  defp install_poetry do
-    # Install Poetry using the recommended method
-    case System.cmd("python3", [
-           "-c",
-           "import requests; exec(requests.get('https://install.python-poetry.org').text)"
-         ],
-           stderr_to_stdout: true
-         ) do
-      {output, 0} ->
-        IO.puts("#{color("✓", :green)} Poetry installed successfully")
-        IO.puts(output)
+  # defp install_poetry do
+  #   # Install Poetry using the recommended method
+  #   case System.cmd("python3", [
+  #          "-c",
+  #          "import requests; exec(requests.get('https://install.python-poetry.org').text)"
+  #        ],
+  #          stderr_to_stdout: true
+  #        ) do
+  #     {output, 0} ->
+  #       IO.puts("#{color("✓", :green)} Poetry installed successfully")
+  #       IO.puts(output)
 
-        # Add Poetry to PATH for the current process
-        path = System.get_env("HOME") <> "/.local/bin:" <> System.get_env("PATH")
-        System.put_env("PATH", path)
-        :ok
+  #       # Add Poetry to PATH for the current process
+  #       path = System.get_env("HOME") <> "/.local/bin:" <> System.get_env("PATH")
+  #       System.put_env("PATH", path)
+  #       :ok
 
-      {error, _} ->
-        {AxonCore.Setup.Error, :poetry_install_failed, error}
-    end
-  end
+  #     {error, _} ->
+  #       {AxonCore.Setup.Error, :poetry_install_failed, error}
+  #   end
+  # end
 
-  defp setup_python_environment do
-    IO.puts("\nSetting up Python environment with Poetry...")
-    python_project_path = Path.join(File.cwd!(), "script")
+  # defp setup_python_environment do
+  #   IO.puts("\nSetting up Python environment with Poetry...")
+  #   python_project_path = Path.join(File.cwd!(), "script")
+  #   IO.puts("\nPath: #{python_project_path}")
+  #   # Remove the existing virtual environment and poetry.lock file if they exist
+  #   File.rm_rf!(Path.join(python_project_path, ".venv"))
+  #   File.rm(Path.join(python_project_path, "poetry.lock"))
 
-    # Remove the existing virtual environment and poetry.lock file if they exist
-    File.rm_rf!(Path.join(python_project_path, ".venv"))
-    File.rm(Path.join(python_project_path, "poetry.lock"))
+  #   # Use the current python3 interpreter for the Poetry environment
+  #   case System.cmd("poetry", ["env", "use", "python3"],
+  #          cd: python_project_path,
+  #          stderr_to_stdout: true
+  #        ) do
+  #     {_, 0} ->
+  #       # Install dependencies without installing the root project
+  #       case System.cmd("poetry", ["install", "--no-root"],
+  #            cd: python_project_path,
+  #            stderr_to_stdout: true
+  #          ) do
+  #         {_, 0} ->
+  #           IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
+  #           :ok
 
-    # Use the current python3 interpreter for the Poetry environment
-    case System.cmd("poetry", ["env", "use", "python3"],
-           cd: python_project_path,
-           stderr_to_stdout: true
-         ) do
-      {_, 0} ->
-        # Install dependencies without installing the root project
-        case System.cmd("poetry", ["install", "--no-root"],
-             cd: python_project_path,
-             stderr_to_stdout: true
-           ) do
-          {_, 0} ->
-            IO.puts("#{color("✓", :green)} Python environment set up with Poetry")
-            :ok
+  #         {error, _} ->
+  #           {AxonCore.Setup.Error,
+  #            :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
+  #       end
 
-          {error, _} ->
-            {AxonCore.Setup.Error,
-             :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
-        end
-
-      {error, _} ->
-        {AxonCore.Setup.Error,
-         :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
-    end
-  end
+  #     {error, _} ->
+  #       {AxonCore.Setup.Error,
+  #        :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
+  #   end
+  # end
 
   defp install_protoc do
     IO.puts("\nEnsuring protoc is installed...")
@@ -274,32 +277,32 @@ defmodule AxonCore.VerifySetup do
     end
   end
 
-  defp ensure_executable do
-    #python_project_path = Path.join(File.cwd!(), "script")
-    script_path = Path.join(File.cwd!(), "script/start_agent.sh")
+  # defp ensure_executable do
+  #   #python_project_path = Path.join(File.cwd!(), "script")
+  #   script_path = Path.join(File.cwd!(), "script/start_agent.sh")
 
-    IO.puts("\nEnsuring #{script_path} is executable...")
+  #   IO.puts("\nEnsuring #{script_path} is executable...")
 
-    unless File.exists?(script_path) do
-      {:error, :executable_not_found, "Could not find start_agent.sh at #{script_path}"}
-    end
+  #   unless File.exists?(script_path) do
+  #     {:error, :executable_not_found, "Could not find start_agent.sh at #{script_path}"}
+  #   end
 
-    # Check if the file is executable by the owner
-    #if :file.read_file_info(script_path) == {:ok, %{mode: mode}} and (mode & 8) == 8 do
-    #  IO.puts("#{color("✓", :green)} #{script_path} is executable")
-    #  :ok
-    #else
-      # Make the file executable
-      case System.cmd("chmod", ["+x", script_path]) do
-        {_, 0} ->
-          IO.puts("#{color("✓", :green)} Successfully made #{script_path} executable")
-          :ok
+  #   # Check if the file is executable by the owner
+  #   #if :file.read_file_info(script_path) == {:ok, %{mode: mode}} and (mode & 8) == 8 do
+  #   #  IO.puts("#{color("✓", :green)} #{script_path} is executable")
+  #   #  :ok
+  #   #else
+  #     # Make the file executable
+  #     case System.cmd("chmod", ["+x", script_path]) do
+  #       {_, 0} ->
+  #         IO.puts("#{color("✓", :green)} Successfully made #{script_path} executable")
+  #         :ok
 
-        {error, _} ->
-          {:error, :chmod_failed, "Failed to make #{script_path} executable: #{error}"}
-      end
-   # end
-  end
+  #       {error, _} ->
+  #         {:error, :chmod_failed, "Failed to make #{script_path} executable: #{error}"}
+  #     end
+  #  # end
+  # end
 
   defp fetch_elixir_deps do
     IO.puts("\nFetching Elixir dependencies...")
@@ -375,17 +378,18 @@ defmodule AxonCore.VerifySetup do
 
 
 
-  defp create_priv_python_dir do
-    IO.puts("\nEnsuring priv/python directory exists...")
-    priv_python_path = Path.join(Path.join(File.cwd!(), "priv"), "python")
-    case File.mkdir_p(priv_python_path) do
-      :ok ->
-        IO.puts("#{color("✓", :green)} priv/python directory exists")
-        :ok
-      {:error, reason} ->
-        {:error, :priv_python_dir_failed, "Failed to create priv/python directory: #{reason}"}
-    end
-  end
+  # defp create_priv_python_dir do
+  #   IO.puts("\nEnsuring priv/python directory exists...")
+  #   priv_python_path = Path.join(Path.join(File.cwd!(), "priv"), "python")
+  #   IO.puts("\#{priv_python_path}")
+  #   case File.mkdir_p(priv_python_path) do
+  #     :ok ->
+  #       IO.puts("#{color("✓", :green)} priv/python directory exists")
+  #       :ok
+  #     {:error, reason} ->
+  #       {:error, :priv_python_dir_failed, "Failed to create priv/python directory: #{reason}"}
+  #   end
+  # end
 
 
 
@@ -393,6 +397,7 @@ defmodule AxonCore.VerifySetup do
 
   defp setup_venv do
     # Ensure Python environment is set up
+    IO.puts("\#Python Env Mgr -- ensure env..")
     try do
       AxonCore.PythonEnvManager.ensure_env!()
       :ok
@@ -401,6 +406,36 @@ defmodule AxonCore.VerifySetup do
         {:error, :python_env_setup_failed, "Failed to set up Python environment: #{inspect(e)}"}
     end
   end
+
+
+
+
+
+
+
+
+  # defp project_root do
+  #   # Use :code.priv_dir to get the correct priv directory path
+  #   priv_dir = :code.priv_dir(:axon_core)
+  #   Path.join(priv_dir, "python")
+  # end
+
+  # # defp lib_root do
+  # #   # Use :code.priv_dir to get the correct priv directory path
+  # #   priv_dir = :code.lib_dir(:axon_core)
+  # # end
+
+  # defp source_root do
+  #   # Use :code.priv_dir to get the correct priv directory path
+  #   Path.join(File.cwd!(), "script")
+  # end
+
+  # defp python_package_path do
+  #   Path.join([project_root(), "src"])
+  # end
+
+
+
 end
 
 AxonCore.VerifySetup.run()

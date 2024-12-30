@@ -40,8 +40,8 @@ defmodule AxonCore.Agent.Server do
     case start_python_agent(state) do
       {:ok, ext} ->
         #Task.start_link(fn -> listen_for_output(ext) end)
-        endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
-        headers = [{"Content-Type", "application/json"}]
+        _endpoint = "http://localhost:#{state.port}/agents/#{state.name}/run_sync"
+        _headers = [{"Content-Type", "application/json"}]
         {:ok, ext}
         # case HTTPClient.post(endpoint, headers, JSONCodec.encode!(%{message: "ping"})) do
         #   {:ok, _} ->
@@ -70,6 +70,17 @@ defmodule AxonCore.Agent.Server do
         {:reply, {:error, reason}, ext}
     end
   end
+
+
+
+  def handle_call(:ping, _from, %{channel: channel} = state) do
+    case check_channel_health(channel) do
+      :ok -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+
 
   @impl true
   #def handle_info({port, {:data, data}}, %{port_ref: port_ref} = ext) when port == port_ref do
@@ -104,11 +115,15 @@ defmodule AxonCore.Agent.Server do
     Logger.info("Starting Python agent with module: #{inspect(module)}, model: #{inspect(model)}, port: #{inspect(port_number)}, agent_id: #{inspect(agent_id)}")
     # python_cmd = AxonCore.PythonEnvManager.python_path()
     #working_dir = Path.absname("script/src")
+    priv_dir = :code.priv_dir(:axon_core)
+    python_dir = Path.join(priv_dir, "python")
+
+
     start_agent_script_path =
     Path.absname(
       Path.join([
-        File.cwd!(),
-        "script",
+        python_dir,
+        "src",
         "start_agent.sh"
       ])
     )
@@ -197,31 +212,25 @@ defmodule AxonCore.Agent.Server do
 
 
 
-  def handle_call(:ping, _from, %{channel: channel} = state) do
-    case check_channel_health(channel) do
-      :ok -> {:reply, :ok, state}
-      {:error, reason} -> {:reply, {:error, reason}, state}
-    end
-  end
-
-  defp check_channel_health(channel) do
+  defp check_channel_health(_channel) do
     # Simple health check request
-    request = AI.PredictRequest.new(input: "ping")
-    case channel |> AI.Service.Stub.predict(request, timeout: 5000) do
-      {:ok, _response} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    #request = AI.PredictRequest.new(input: "ping")
+    # case channel |> AI.Service.Stub.predict(request, timeout: 5000) do
+    #   {:ok, _response} -> :ok
+    #   {:error, reason} -> {:error, reason}
+    # end
+    {:ok}
   end
 
-  defp handle_port_message({:exit_status, status}, state) do
-    Logger.error("Python process exited with status: #{status}")
-    {:stop, {:python_crash, status}, state}
-  end
+  # defp handle_port_message({:exit_status, status}, state) do
+  #   Logger.error("Python process exited with status: #{status}")
+  #   {:stop, {:python_crash, status}, state}
+  # end
 
-  defp handle_port_message(msg, state) do
-    Logger.debug("Received port message: #{inspect(msg)}")
-    {:noreply, state}
-  end
+  # defp handle_port_message(msg, state) do
+  #   Logger.debug("Received port message: #{inspect(msg)}")
+  #   {:noreply, state}
+  # end
 
 
 
