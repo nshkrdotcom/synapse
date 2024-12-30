@@ -22,6 +22,7 @@ defmodule AxonCore.PythonEnvManager do
          :ok <- check_python_version(),
          :ok <- ensure_venv(),
          :ok <- copy_python_sources(),
+         #:ok <- ensure_executable(),
          :ok <- install_dependencies() do
       :ok
     else
@@ -380,6 +381,37 @@ defmodule AxonCore.PythonEnvManager do
     # If we reached this point, everything was successful
     :ok
   end
+
+
+  # (not needed if we're using /bin/bash)
+  # defp ensure_executable do
+  #   project_root = project_root()
+  #   python_dest_path = Path.join(project_root, "src")
+  #   script_path = Path.join(python_dest_path, "start_agent.sh")
+
+  #   IO.puts("\nEnsuring #{script_path} is executable...")
+
+  #   unless File.exists?(script_path) do
+  #     {:error, :executable_not_found, "Could not find start_agent.sh at #{script_path}"}
+  #   end
+
+  #   # Check if the file is executable by the owner
+  #   #if :file.read_file_info(script_path) == {:ok, %{mode: mode}} and (mode & 8) == 8 do
+  #   #  IO.puts("#{color("✓", :green)} #{script_path} is executable")
+  #   #  :ok
+  #   #else
+  #     # Make the file executable
+  #     case System.cmd("chmod", ["+x", script_path]) do
+  #       {_, 0} ->
+  #         #IO.puts("#{color("✓", :green)} Successfully made #{script_path} executable")
+  #         :ok
+
+  #       {error, _} ->
+  #         {:error, :chmod_failed, "Failed to make #{script_path} executable: #{error}"}
+  #     end
+  #  # end
+  # end
+
 
   # defp project_root do
   #   Application.app_dir(:axon_core, "priv/python")
