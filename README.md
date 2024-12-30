@@ -45,11 +45,12 @@ Axon follows an umbrella project structure, similar in style to `cf_ex`, with th
 git clone https://github.com/nshkrdotcom/axon.git
 cd axon
 ```
-2. Run the verification script to check your environment and install dependencies:
+2.  **Dependency Management:** Axon uses Elixir to manage Python dependencies via Poetry. The `setup.exs` script handles all dependencies for both Elixir and Python.
+3. Run the verification script to check your environment and install dependencies:
 ```bash
 ./verify_setup.exs
 ```
-3. Start the Elixir shell:
+4. Start the Elixir shell:
 ```bash
 iex -S mix
 ```

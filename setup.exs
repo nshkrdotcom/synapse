@@ -1,10 +1,38 @@
 #!/usr/bin/env elixir
 
+# Change to the project root directory (assuming the script is in the project root)
+File.cd!(Path.dirname(__ENV__.file))
+
+# Start Mix
 Mix.start()
 Mix.shell(Mix.Shell.IO)
 
-# Change the current directory to the root of the project
-#File.cd!(Path.join([__DIR__, ".."]))
+# Load the project configuration
+Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
+  # Load all compilation paths
+  Mix.Task.run("loadpaths")
+
+  # Load all dependencies
+  Mix.Task.run("deps.loadpaths")
+
+  # Compile the project
+  case Mix.Task.run("compile") do
+    {:error, _} ->
+      IO.puts("Failed to compile project")
+      System.halt(1)
+    _ ->
+      :ok
+  end
+
+  # Start all applications
+  Mix.Task.run("app.start")
+
+  # Now load your application specifically
+  Application.load(:axon_core)
+
+  # Ensure all code paths are available
+  Code.append_path("_build/dev/lib/axon_core/ebin")
+end)
 
 defmodule AxonCore.Setup.Error do
   defexception [:message, :reason, :context]
@@ -49,6 +77,10 @@ defmodule AxonCore.Setup.Error do
 end
 
 defmodule AxonCore.VerifySetup do
+  #alias AxonCore.PythonEnvManager
+
+  #alias AxonCore.Error.PythonEnvError
+
   @colors %{
     red: "\e[31m",
     green: "\e[32m",
@@ -62,9 +94,11 @@ defmodule AxonCore.VerifySetup do
 
     with :ok <- check_elixir_version(),
          :ok <- check_python(),
+         :ok <- create_priv_python_dir(),
          :ok <- ensure_poetry_installed(),
          :ok <- setup_python_environment(),
          :ok <- ensure_executable(),
+         :ok <- setup_venv(),
          :ok <- install_protoc(),
          :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
@@ -132,7 +166,6 @@ defmodule AxonCore.VerifySetup do
 
   defp ensure_poetry_installed do
     IO.puts("\nEnsuring Poetry is installed...")
-
     try do
       case System.cmd("poetry", ["--version"], stderr_to_stdout: true) do
         {_, 0} ->
@@ -296,6 +329,7 @@ defmodule AxonCore.VerifySetup do
 
   defp print_error(%AxonCore.Setup.Error{} = error) do
     IO.puts("""
+    IO.puts("""
 
     #{color("╔══ Error ══╗", :red)}
     #{error.message}
@@ -326,6 +360,50 @@ defmodule AxonCore.VerifySetup do
   defp color(text, color_name) do
     "#{@colors[color_name]}#{text}#{@colors[:reset]}"
   end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  defp create_priv_python_dir do
+    IO.puts("\nEnsuring priv/python directory exists...")
+    priv_python_path = Path.join(Path.join(File.cwd!(), "priv"), "python")
+    case File.mkdir_p(priv_python_path) do
+      :ok ->
+        IO.puts("#{color("✓", :green)} priv/python directory exists")
+        :ok
+      {:error, reason} ->
+        {:error, :priv_python_dir_failed, "Failed to create priv/python directory: #{reason}"}
+    end
+  end
+
+
+
+
+
+  defp setup_venv do
+    # Ensure Python environment is set up
+    try do
+      AxonCore.PythonEnvManager.ensure_env!()
+      :ok
+    catch
+      e ->
+        {:error, :python_env_setup_failed, "Failed to set up Python environment: #{inspect(e)}"}
+    end
+  end
 end
 
 AxonCore.VerifySetup.run()
+
+# # Run integration tests
+# ExUnit.run(test_paths: ["test/integration/grpc_test.exs"])

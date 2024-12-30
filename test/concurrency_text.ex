@@ -30,7 +30,7 @@ defmodule AxonCore.ConcurrencyTest do
           # use unique prompt for each request to avoid caching issues
           prompt = "What is the weather in #{agent_id} on #{:rand.uniform(1000)}?"
 
-          case send_message(agent_id, %{prompt: prompt}) do
+          case AxonCore.Agent.send_message(agent_id, %{prompt: prompt}) do
             {:ok, result} ->
               assert is_binary(result)
             {:error, reason} ->
@@ -53,7 +53,7 @@ defmodule AxonCore.ConcurrencyTest do
       for _ <- 1..10 do
         Task.async(fn ->
           prompt = "What is the weather in #{agent_id} on #{:rand.uniform(1000)}?"
-          case send_message(agent_id, %{prompt: prompt}) do
+          case AxonCore.Agent.send_message(agent_id, %{prompt: prompt}) do
             {:ok, result} ->
               assert is_binary(result)
 

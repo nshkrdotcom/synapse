@@ -6,6 +6,9 @@ defmodule AxonCore.PythonEnvManager do
   """
 
   require Logger
+
+  alias AxonCore.PythonEnvManager
+
   alias AxonCore.Error.PythonEnvError
 
   @python_min_version "3.10.0"
@@ -20,6 +23,7 @@ defmodule AxonCore.PythonEnvManager do
     with :ok <- ensure_project_structure(),
          :ok <- check_python_version(),
          :ok <- ensure_venv(),
+         :ok <- copy_python_sources(),
          :ok <- install_dependencies() do
       :ok
     else
@@ -66,20 +70,67 @@ defmodule AxonCore.PythonEnvManager do
   end
 
   # Private Functions
-
   defp ensure_project_structure do
-    python_root = project_root()
+    # Get application priv dir - this will be created during compilation
+    priv_dir = :code.priv_dir(:axon_core)
+    python_root = Path.join(priv_dir, "python")
     src_path = python_package_path()
     agents_path = Path.join(src_path, "agents")
 
-    with :ok <- File.mkdir_p(python_root),
-         :ok <- File.mkdir_p(src_path),
-         :ok <- File.mkdir_p(agents_path) do
+    Logger.info("Ensuring project structure:")
+    Logger.info("  priv_dir: #{inspect(priv_dir)}")
+    Logger.info("  python_root: #{python_root}")
+    Logger.info("  src_path: #{src_path}")
+    Logger.info("  agents_path: #{agents_path}")
+
+    # Create all directories
+    with :ok <- ensure_directory(python_root),
+         :ok <- ensure_directory(src_path),
+         :ok <- ensure_directory(agents_path) do
+      Logger.info("Successfully created all directories")
       :ok
     else
-      {:error, reason} -> {:error, :project_structure_failed, %{error: reason}}
+      {:error, reason} ->
+        Logger.error("Failed to create directory structure: #{inspect(reason)}")
+        {:error, :project_structure_failed, %{error: reason}}
     end
   end
+
+  defp ensure_directory(path) do
+    Logger.info("Ensuring directory exists: #{path}")
+    case File.mkdir_p(path) do
+      :ok ->
+        Logger.info("Directory exists or was created: #{path}")
+        :ok
+      {:error, reason} = error ->
+        Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp ensure_directory(path) do
+    Logger.info("Ensuring directory exists: #{path}")
+    if File.exists?(path) do
+      if File.dir?(path) do
+        Logger.info("Directory already exists: #{path}")
+        :ok
+      else
+        Logger.error("Path exists but is not a directory: #{path}")
+        {:error, {:not_directory, path}}
+      end
+    else
+      Logger.info("Creating directory: #{path}")
+      case File.mkdir_p(path) do
+        :ok ->
+          Logger.info("Successfully created directory: #{path}")
+          :ok
+        {:error, reason} = error ->
+          Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
+          error
+      end
+    end
+  end
+
 
   defp check_python_version do
     case System.cmd("python3", ["--version"]) do
@@ -231,8 +282,15 @@ defmodule AxonCore.PythonEnvManager do
 
   defp install_dependencies do
     Logger.info("Installing project dependencies...")
-    python_package_dir = Path.join([File.cwd!(), "apps", "axon_core", "priv", "python"])
+    # Use the same path resolution as our other functions
+    #source_root = source_root()
+    python_package_dir = project_root()
     venv_python = python_path()
+    #project_root = File.cwd!()
+
+
+    Logger.info("Installing dependencies in: #{python_package_dir}")
+    Logger.info("Using Python from: #{venv_python}")
 
     # First install Poetry
     case System.cmd(venv_python, ["-m", "pip", "install", "poetry"],
@@ -243,6 +301,7 @@ defmodule AxonCore.PythonEnvManager do
       {output, 0} ->
         Logger.info("Successfully installed Poetry: #{output}")
         venv_poetry = Path.join([venv_path(), "bin", "poetry"])
+        Logger.info("Poetry binary at: #{venv_poetry}")
 
         # Then use Poetry to install dependencies
         case System.cmd(venv_poetry, ["install", "--no-root"],
@@ -279,8 +338,69 @@ defmodule AxonCore.PythonEnvManager do
     end
   end
 
+  defp copy_python_sources do
+    source_root = source_root()
+    project_root = project_root()
+
+    Logger.info("Copying Python sources from #{source_root} to #{project_root}")
+    python_src_path = Path.join(source_root, "src")
+    python_dest_path = Path.join(project_root, "src")
+
+    # Ensure the destination directory exists, removing the old one if necessary
+    if File.exists?(python_dest_path) do
+      Logger.info("Removing existing Python destination path #{python_dest_path}...")
+      File.rm_rf!(python_dest_path)
+    end
+    # File.mkdir_p!(python_dest_path) # No longer needed since File.cp_r! creates the directory
+
+    # Copy the Python source directory
+    try do
+      File.cp_r!(python_src_path, python_dest_path)
+    catch
+      # Catch any errors during the copying process
+      e ->
+        Logger.error("Failed to copy Python sources: #{inspect(e)}")
+        {:error, :python_source_copy_failed, %{reason: e}}
+    end
+
+    # Copy pyproject.toml
+    Logger.info("Copying pyproject.toml from #{source_root} to #{project_root}")
+    try do
+      File.cp!(Path.join(source_root, "pyproject.toml"), Path.join(project_root, "pyproject.toml"))
+    catch
+      e ->
+        Logger.error("Failed to copy pyproject.toml: #{inspect(e)}")
+        {:error, :pyproject_copy_failed, %{reason: e}}
+    end
+
+    # Remove poetry.lock if it exists in the destination
+    if File.exists?(Path.join(project_root, "poetry.lock")) do
+      Logger.info("Removing existing poetry.lock at #{project_root}")
+      File.rm!(Path.join(project_root, "poetry.lock"))
+    end
+
+    # If we reached this point, everything was successful
+    :ok
+  end
+
+  # defp project_root do
+  #   Application.app_dir(:axon_core, "priv/python")
+  # end
+
   defp project_root do
-    Application.app_dir(:axon_core, "priv/python")
+    # Use :code.priv_dir to get the correct priv directory path
+    priv_dir = :code.priv_dir(:axon_core)
+    Path.join(priv_dir, "python")
+  end
+
+  # defp lib_root do
+  #   # Use :code.priv_dir to get the correct priv directory path
+  #   priv_dir = :code.lib_dir(:axon_core)
+  # end
+
+  defp source_root do
+    # Use :code.priv_dir to get the correct priv directory path
+    Path.join(File.cwd!(), "script")
   end
 
   defp python_package_path do
