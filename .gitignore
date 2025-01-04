@@ -10,6 +10,12 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 
+
+.hex/
+.mix/
+.replit
+
+
 # Python
 __pycache__/
 *.py[cod]

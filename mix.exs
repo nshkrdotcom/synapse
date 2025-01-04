@@ -5,11 +5,11 @@ defmodule AxonCore.MixProject do
     [
       app: :axon_core,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       build_embedded: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      build_path: "_build",
+      #build_path: "_build",
       deps: deps(),
       aliases: aliases(),
     ]

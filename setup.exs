@@ -10,7 +10,7 @@ Mix.shell(Mix.Shell.IO)
 # Load the project configuration
 Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
   # Load all compilation paths
- # IO.puts("Start...")
+  # IO.puts("Start...")
   Mix.Task.run("loadpaths")
 
   # Load all dependencies
@@ -21,20 +21,22 @@ Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
     {:error, _} ->
       IO.puts("Failed to compile project")
       System.halt(1)
+
     _ ->
       :ok
   end
-  #IO.puts("Compile complete...")
+
+  # IO.puts("Compile complete...")
 
   # Start all applications
-  #Mix.Task.run("app.start")
+  # Mix.Task.run("app.start")
 
   # Now load your application specifically
-  #Application.load(:axon_core)
+  # Application.load(:axon_core)
 
   # Ensure all code paths are available
   Code.append_path("_build/dev/lib/axon_core/ebin")
- # IO.puts("Mix.Project.in_project done...")
+  # IO.puts("Mix.Project.in_project done...")
 end)
 
 defmodule AxonCore.Setup.Error do
@@ -80,9 +82,9 @@ defmodule AxonCore.Setup.Error do
 end
 
 defmodule AxonCore.VerifySetup do
-  #alias AxonCore.PythonEnvManager
+  # alias AxonCore.PythonEnvManager
 
-  #alias AxonCore.Error.PythonEnvError
+  # alias AxonCore.Error.PythonEnvError
 
   @colors %{
     red: "\e[31m",
@@ -96,14 +98,14 @@ defmodule AxonCore.VerifySetup do
     IO.puts("\n#{color("=== Setting up Axon development environment ===", :blue)}\n")
 
     with :ok <- check_elixir_version(),
+         :ok <- fetch_elixir_deps(),
          :ok <- check_python(),
-         #:ok <- create_priv_python_dir(),
-         #:ok <- ensure_poetry_installed(),
-         #:ok <- setup_python_environment(),
-         #:ok <- ensure_executable(),
+         # :ok <- create_priv_python_dir(),
+         # :ok <- ensure_poetry_installed(),
+         # :ok <- setup_python_environment(),
+         # :ok <- ensure_executable(),
          :ok <- setup_venv(),
          :ok <- install_protoc(),
-         :ok <- fetch_elixir_deps(),
          :ok <- compile_project() do
       IO.puts("""
       \n#{color("✓ Setup completed successfully!", :green)}
@@ -139,8 +141,7 @@ defmodule AxonCore.VerifySetup do
       IO.puts("#{color("✓", :green)} Elixir version #{version} OK")
       :ok
     else
-      {:error,
-       :elixir_version, "Elixir version must be >= #{min_version} (found: #{version})"}
+      {:error, :elixir_version, "Elixir version must be >= #{min_version} (found: #{version})"}
     end
   end
 
@@ -156,8 +157,7 @@ defmodule AxonCore.VerifySetup do
           IO.puts("#{color("✓", :green)} Python version #{version} OK")
           :ok
         else
-          {AxonCore.Setup.Error,
-           :version_mismatch,
+          {AxonCore.Setup.Error, :version_mismatch,
            "Python version #{version} is below minimum required version #{min_version}"}
         end
 
@@ -252,11 +252,13 @@ defmodule AxonCore.VerifySetup do
 
   defp install_protoc do
     IO.puts("\nEnsuring protoc is installed...")
+
     try do
       case System.cmd("protoc", ["--version"], stderr_to_stdout: true) do
         {_, 0} ->
           IO.puts("#{color("✓", :green)} protoc is already installed")
           :ok
+
         _ ->
           install_protoc_package()
       end
@@ -272,6 +274,7 @@ defmodule AxonCore.VerifySetup do
       {_, 0} ->
         IO.puts("#{color("✓", :green)} protoc installed successfully")
         :ok
+
       {error, _} ->
         {:error, :protoc_install_failed, "Failed to install protoc: #{error}"}
     end
@@ -332,7 +335,7 @@ defmodule AxonCore.VerifySetup do
 
   defp print_error(%AxonCore.Setup.Error{} = error) do
     IO.puts("""
-    IO.puts("""
+    IO.puts(\"""
 
     #{color("╔══ Error ══╗", :red)}
     #{error.message}
@@ -364,20 +367,6 @@ defmodule AxonCore.VerifySetup do
     "#{@colors[color_name]}#{text}#{@colors[:reset]}"
   end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   # defp create_priv_python_dir do
   #   IO.puts("\nEnsuring priv/python directory exists...")
   #   priv_python_path = Path.join(Path.join(File.cwd!(), "priv"), "python")
@@ -391,13 +380,10 @@ defmodule AxonCore.VerifySetup do
   #   end
   # end
 
-
-
-
-
   defp setup_venv do
     # Ensure Python environment is set up
     IO.puts("\#Python Env Mgr -- ensure env..")
+
     try do
       AxonCore.PythonEnvManager.ensure_env!()
       :ok
@@ -406,13 +392,6 @@ defmodule AxonCore.VerifySetup do
         {:error, :python_env_setup_failed, "Failed to set up Python environment: #{inspect(e)}"}
     end
   end
-
-
-
-
-
-
-
 
   # defp project_root do
   #   # Use :code.priv_dir to get the correct priv directory path
@@ -433,9 +412,6 @@ defmodule AxonCore.VerifySetup do
   # defp python_package_path do
   #   Path.join([project_root(), "src"])
   # end
-
-
-
 end
 
 AxonCore.VerifySetup.run()
