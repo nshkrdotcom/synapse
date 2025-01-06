@@ -1,0 +1,36 @@
+graph LR
+    CEO[Executive Agent] --> COO[Operations Director Agent]
+    CEO --> CTO[Technical Director Agent]
+    CEO --> CPO[Product Director Agent]
+    
+    COO --> PM[Project Manager Agents]
+    COO --> RM[Resource Manager Agents]
+    
+    CTO --> ARCH[Architecture Agents]
+    CTO --> SEC[Security Agents]
+    CTO --> PERF[Performance Agents]
+    
+    CPO --> PROD[Product Agents]
+    CPO --> UX[User Experience Agents]
+    CPO --> QA[Quality Assurance Agents]
+
+    subgraph Specialized Teams
+        PM --> DEV[Development Agents]
+        PM --> TEST[Testing Agents]
+        PM --> DOC[Documentation Agents]
+        
+        ARCH --> DESIGN[Design Pattern Agents]
+        ARCH --> INFRA[Infrastructure Agents]
+        
+        PROD --> SPEC[Specification Agents]
+        PROD --> VAL[Validation Agents]
+    end
+
+    subgraph Support Layer
+        DEV --> LINT[Linting Agents]
+        DEV --> GEN[Code Generation Agents]
+        TEST --> UNIT[Unit Test Agents]
+        TEST --> INT[Integration Test Agents]
+        DOC --> API[API Doc Agents]
+        DOC --> GUIDE[User Guide Agents]
+    end

@@ -1,0 +1,20 @@
+graph TD
+    subgraph Maestro Application
+        A[Conductor] --> B(Instrumentation Core);
+        A --> C(Agent Pool);
+        A --> D{Tool Registry};
+        A --- E[IEx Integration];
+        B --> B1[Code Analysis];
+        B --> B2[Runtime Monitoring];
+        B --> B3[Data Aggregation];
+        C --> C1(Agent 1);
+        C --> C2(Agent 2);
+        C --> C3(...);
+        C1 --> D;
+        C2 --> D;
+        C3 --> D;
+        C1 --- B;
+        C2 --- B;
+        C3 --- B;
+    end
+    A -- External Communication --> F(Future: gRPC, etc.);

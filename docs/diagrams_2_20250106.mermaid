@@ -1,0 +1,94 @@
+graph TD
+    subgraph Data_Ingestion["Data Ingestion & Preprocessing"]
+        DI[["Document Processing
+        [Apache Tika, PyPDF2]
+        ---
+        Text Extraction
+        [NLTK, SpaCy, Stanford CoreNLP]"]]
+    end
+
+    subgraph Entity_Recognition["Entity Processing"]
+        NER[["Named Entity Recognition
+        [SpaCy, BERT, RoBERTa]
+        ---
+        Entity Linking
+        [DBpedia Spotlight, WikiData]"]]
+        
+        AE[["Attribute Extraction
+        [OpenIE, Stanford OpenIE]
+        ---
+        Property Mining
+        [Custom ML Models, Rules]"]]
+    end
+
+    subgraph Relationship_Engine["Relationship Processing"]
+        RE[["Relation Extraction
+        [DeepKE, OpenNRE, SpanBERT]
+        ---
+        Context Analysis
+        [BERT, GPT Models]"]]
+        
+        RL[["Reinforcement Learning
+        [Ray RLlib, Stable Baselines3]
+        ---
+        Multi-Agent Systems
+        [PettingZoo, RLCard]"]]
+    end
+
+    subgraph Knowledge_Construction["Knowledge Construction"]
+        KG[["Graph Construction
+        [NetworkX, Neo4j, RDFLib]
+        ---
+        Graph Embeddings
+        [PyTorch-BigGraph, DGL-KE]"]]
+        
+        PS[["Probabilistic Systems
+        [PyMC, Edward2, Pyro]
+        ---
+        Uncertainty Modeling
+        [ProbLog, MLN]"]]
+    end
+
+    subgraph Analysis_Layer["Analysis & Refinement"]
+        ML[["Machine Learning
+        [PyTorch, TensorFlow]
+        ---
+        Deep Learning
+        [DGL, PyG]"]]
+        
+        VA[["Validation & Analysis
+        [NetworkX Analytics, OLAP]
+        ---
+        Quality Metrics
+        [Custom Metrics, SHACL]"]]
+    end
+
+    subgraph Visualization["Visualization & Interface"]
+        VIS[["Graph Visualization
+        [D3.js, Cytoscape, Gephi]
+        ---
+        Interactive Exploration
+        [Streamlit, Plotly]"]]
+        
+        UI[["User Interface
+        [React, Vue.js]
+        ---
+        API Layer
+        [FastAPI, GraphQL]"]]
+    end
+
+    Data_Ingestion --> Entity_Recognition
+    Entity_Recognition --> Relationship_Engine
+    Relationship_Engine --> Knowledge_Construction
+    Knowledge_Construction --> Analysis_Layer
+    Analysis_Layer --> Visualization
+    
+    %% Feedback loops
+    Analysis_Layer -.-> Entity_Recognition
+    Analysis_Layer -.-> Relationship_Engine
+    Visualization -.-> Knowledge_Construction
+    
+    %% Cross-component interactions
+    Entity_Recognition -.-> Knowledge_Construction
+    Relationship_Engine -.-> Analysis_Layer
+    Knowledge_Construction -.-> Visualization

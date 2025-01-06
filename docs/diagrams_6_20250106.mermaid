@@ -1,0 +1,57 @@
+graph TD
+    subgraph Core_System["Core Multi-Agent BEAM System"]
+        direction LR
+        MA[["Meta Agent
+        [System Orchestration]"]]
+        
+        subgraph Domain_Agents["Domain-Specific Agents"]
+            BA["BEAM Agent"]
+            CA["Code Agent"]
+            PA["Project Agent"]
+            TA["Test Agent"]
+        end
+        
+        subgraph System_Layer["System Interface Layer"]
+            PI["Project Interface"]
+            BI["BEAM Interface"]
+            FI["File Interface"]
+            CI["Command Interface"]
+        end
+    end
+
+    subgraph IDE_Integration["IDE Integration Layer"]
+        direction LR
+        subgraph Protocol["Protocol Layer"]
+            JSON_RPC["JSON-RPC Server"]
+            WS["WebSocket Server"]
+            Events["Event Bus"]
+        end
+        
+        subgraph Adapters["IDE Adapters"]
+            VS["VS Code Adapter"]
+            Other["Other IDE Adapters"]
+        end
+    end
+
+    subgraph VS_Code["VS Code Plugin"]
+        UI["UI Components"]
+        Commands["Command Palette"]
+        FileSystem["Workspace"]
+        Terminal["Integrated Terminal"]
+    end
+
+    %% Core connections
+    MA --> Domain_Agents
+    Domain_Agents --> System_Layer
+    System_Layer --> Protocol
+
+    %% IDE connections
+    Protocol --> Adapters
+    VS --> UI
+    VS --> Commands
+    VS --> FileSystem
+    VS --> Terminal
+
+    %% Necessary direct connections
+    FileSystem -.-> FI
+    Terminal -.-> CI

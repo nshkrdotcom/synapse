@@ -1,0 +1,66 @@
+graph TD
+    subgraph Data_Ingestion_Preprocessing["Data Ingestion & Preprocessing"]
+        
+        DI[/"Document Intake <br> [PDFs, HTML, Text Files]"/]
+        DP[/"Preprocessing <br> [Apache Tika, NLTK, SpaCy]"/]
+        
+        DI --> DP
+    end
+
+    subgraph Entity_Processing["Entity & Attribute Processing"]
+ 
+        NER[/"Entity Recognition <br> [SpaCy, Stanford CoreNLP, BERT]"/]
+        EL[/"Entity Linking <br> [DBpedia Spotlight, Wikidata]"/]
+        AE[/"Attribute Extraction <br> [Custom Rules, OpenIE]"/]
+        NER --> EL
+        AE --> EL
+    end
+
+    subgraph Relationship_Processing["Relationship Processing & Refinement"]
+        direction LR
+        RE[/"Relationship Extraction <br> [OpenIE, REBEL, Zero-Shot RE]"/]
+        CA[/"Contextual Analysis <br> [LLMs, Transformers]"/]
+        RL[/"Reinforcement Learning <br> [Multi-Agent, Chiral/Orthogonal Rewards]"/]
+        RE --> CA
+        CA --> RL
+    end
+
+    subgraph Knowledge_Construction["Knowledge Graph Construction & Management"]
+        direction LR
+        KC[/"Graph Construction <br> [NetworkX, Neo4j, RDFLib]"/]
+        KC2[/"Dynamic Knowledge Integration <br> [Streaming Updates, Versioning]"/]
+        
+        KC --> KC2
+    end
+
+    subgraph Analysis_Refinement["Analysis, Refinement, and Expansion"]
+        direction LR
+        AR[/"Advanced Analytics <br> [Graph Algorithms, Statistical Analysis]"/]
+        OR[/"Ontology Refinement <br> [Emergent Ontology, Formalization]"/]
+        MI[/"Multi-Agent Interaction and Refinement <br> [Chiral/Orthogonal Dynamics]"/]
+        AR --> OR
+        OR --> MI
+    end
+
+    subgraph Visualization_Interface["Visualization, Interaction & Output"]
+        direction LR
+        VI[/"Interactive Visualization <br> [D3.js, Cytoscape.js, Gephi]"/]
+        API[/"API Layer <br> [GraphQL, REST]"/]
+        VI --> API
+    end
+
+    Data_Ingestion_Preprocessing --> Entity_Processing
+    Entity_Processing --> Relationship_Processing
+    Relationship_Processing --> Knowledge_Construction
+    Knowledge_Construction --> Analysis_Refinement
+    Analysis_Refinement --> Visualization_Interface
+
+    %% Feedback loops
+    Analysis_Refinement -.-> Entity_Processing
+    Analysis_Refinement -.-> Relationship_Processing
+    Knowledge_Construction -..-> Data_Ingestion_Preprocessing
+    
+    %% Cross-component interactions
+    Entity_Processing -.-> Knowledge_Construction
+    Relationship_Processing -..-> Analysis_Refinement
+    

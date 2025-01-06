@@ -1,0 +1,38 @@
+graph TD
+    subgraph IDE["VS Code"]
+        ELS["ElixirLS"]
+        EXT["Our Extension"]
+        DEBUG["Debug Adapter"]
+    end
+
+    subgraph BEAM["BEAM VM"]
+        APP["Elixir Application"]
+        DBG["Debugger"]
+        OBS[":observer"]
+    end
+
+    subgraph Agent_System["Multi-Agent System"]
+        MA["Manager Agent"]
+        DA["Debug Agent"]
+        PA["Profile Agent"]
+        IA["IEx Agent"]
+    end
+
+    %% Core connections
+    ELS <--> APP
+    EXT <--> MA
+    DEBUG <--> DBG
+
+    %% Agent interactions
+    MA --> DA
+    MA --> PA
+    MA --> IA
+
+    %% BEAM tooling connections
+    DA <--> DBG
+    PA <--> OBS
+    IA <--> APP
+
+    %% Extension connections
+    EXT <--> ELS
+    EXT <--> DEBUG

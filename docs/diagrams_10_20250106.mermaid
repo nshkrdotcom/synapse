@@ -1,0 +1,12 @@
+graph LR
+    subgraph Python Agent Framework
+        A[Agent 1] <--> B(gRPC Client);
+        A <--> C[Agent 2];
+        A <--> D[...];
+    end
+    subgraph Elixir Instrumentation Core
+        E(gRPC Server) <--> F[InstrumentationManager];
+        F --- G[IEx Integration];
+        F <--> H[Elixir App Under Development];
+    end
+    B <--> E;
