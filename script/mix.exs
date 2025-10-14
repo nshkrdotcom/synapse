@@ -1,9 +1,9 @@
-defmodule AxonPython.MixProject do
+defmodule SynapsePython.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :axon_python,
+      app: :synapse_python,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -23,9 +23,11 @@ defmodule AxonPython.MixProject do
 
   defp deps do
     [
-      {:axon_core, in_umbrella: true},
-      {:erlport, "~> 0.10.1"},  # For Python integration
-      {:jason, "~> 1.2"}        # For JSON encoding/decoding
+      {:synapse_core, in_umbrella: true},
+      # For Python integration
+      {:erlport, "~> 0.10.1"},
+      # For JSON encoding/decoding
+      {:jason, "~> 1.2"}
     ]
   end
 end

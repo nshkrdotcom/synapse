@@ -10,7 +10,7 @@ My apologies for leading you down that path initially. Let me provide the action
     *   Add a WebSocket endpoint to your FastAPI application. You can use the `websockets` library or FastAPI's built-in WebSocket support.
     *   Modify the `run_agent_stream` function to send data through the WebSocket connection instead of using `StreamingResponse`.
     *   When the stream is finished, send a special message indicating completion (e.g., `{"status": "complete", "usage": {...}}`).
-*   **b) Elixir Side (`AxonCore.AgentProcess`):**
+*   **b) Elixir Side (`SynapseCore.AgentProcess`):**
     *   Replace the polling logic in `handle_info/2` with a WebSocket client.
     *   Establish a WebSocket connection to the Python agent when a `run_stream` request is received.
     *   Listen for incoming messages on the WebSocket.
@@ -32,22 +32,22 @@ My apologies for leading you down that path initially. Let me provide the action
 
 *   **a) Handle More Complex Types:**
     *   Extend `elixir_to_json_schema` and `json_schema_to_elixir_type` to support more complex data structures, including nested objects, lists, and potentially custom Pydantic validators or constraints.
-    *   Consider using a more comprehensive JSON Schema library like `jaxon` if needed.
+    *   Consider using a more comprehensive JSON Schema library like `jsynapse` if needed.
 
 **4. Implement Result Validation (Basic):**
 
 *   **a) Integrate `SchemaUtils.validate`:**
-    *   In `AxonCore.AgentProcess`, after receiving a result from the Python agent, use `SchemaUtils.validate` to validate it against the expected schema.
+    *   In `SynapseCore.AgentProcess`, after receiving a result from the Python agent, use `SchemaUtils.validate` to validate it against the expected schema.
     *   You might need to convert the Elixir representation of the schema to a proper JSON Schema string using `Jason.encode!`.
 *   **b) Handle Validation Errors:**
     *   Decide how to handle validation errors: retry (if appropriate), log the error, or raise an exception.
 
 **5. Implement Tool Calling (Elixir to Python):**
 
-*   **a) `AxonCore.AgentProcess`:**
+*   **a) `SynapseCore.AgentProcess`:**
     *   Add a `handle_call` clause to handle a `:call_tool` message (or similar).
     *   Construct a request to the Python agent's `/agents/{agent_id}/tool_call` endpoint, including the tool name and arguments.
-    *   Send the request using `AxonCore.HTTPClient`.
+    *   Send the request using `SynapseCore.HTTPClient`.
     *   Handle the response, which will contain the result of the tool call.
 *   **b) `agent_wrapper.py`:**
     *   Ensure the `/agents/{agent_id}/tool_call` endpoint is implemented to receive and process tool call requests.
@@ -56,7 +56,7 @@ My apologies for leading you down that path initially. Let me provide the action
 
 *   **a) `agent_wrapper.py`:**
     *   Ensure that all relevant exceptions are caught and translated into structured error responses (JSON).
-*   **b) `AxonCore.AgentProcess`:**
+*   **b) `SynapseCore.AgentProcess`:**
     *   Properly handle the structured error responses from Python.
     *   Implement retry logic based on error type and agent configuration.
     *   Log errors using Elixir's `Logger`.
@@ -65,12 +65,12 @@ My apologies for leading you down that path initially. Let me provide the action
 
 *   **a) `agent_wrapper.py`:**
     *   Send log messages to Elixir, potentially via a dedicated endpoint (you can use the existing `/agents/{agent_id}/log` endpoint).
-*   **b) `AxonCore.AgentProcess`:**
+*   **b) `SynapseCore.AgentProcess`:**
     *   Handle incoming log messages and log them using Elixir's `Logger`.
 
 **8. Testing:**
 
-*   **a) Unit Tests:** Write unit tests for all Elixir modules (`AxonCore.HTTPClient`, `AxonCore.JSONCodec`, `AxonCore.SchemaUtils`, `AxonCore.ToolUtils`, `AxonCore.AgentProcess`).
+*   **a) Unit Tests:** Write unit tests for all Elixir modules (`SynapseCore.HTTPClient`, `SynapseCore.JSONCodec`, `SynapseCore.SchemaUtils`, `SynapseCore.ToolUtils`, `SynapseCore.AgentProcess`).
 *   **b) Integration Tests:** Write tests that verify the interaction between Elixir and Python, including:
     *   Agent creation.
     *   Running agents synchronously and asynchronously.
@@ -84,7 +84,7 @@ My apologies for leading you down that path initially. Let me provide the action
 
 **Revised Code Snippets (Illustrative):**
 
-**`axon_python/src/axon_python/agent_wrapper.py` (WebSocket Handling - Conceptual):**
+**`synapse_python/src/synapse_python/agent_wrapper.py` (WebSocket Handling - Conceptual):**
 
 ```python
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -122,7 +122,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
         })
 ```
 
-**`axon_core/lib/axon_core/agent_process.ex` (WebSocket Handling - Conceptual):**
+**`synapse_core/lib/synapse_core/agent_process.ex` (WebSocket Handling - Conceptual):**
 
 ```elixir
 # ... (other code)
@@ -166,7 +166,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
 # Example of initiating a WebSocket connection in `handle_call` for `:run_stream`
 def handle_call({:run_stream, request}, from, state) do
   # ...
-  {:ok, ws_conn} = AxonCore.WebSocketClient.connect("ws://localhost:#{state.port}/ws/#{state.name}")
+  {:ok, ws_conn} = SynapseCore.WebSocketClient.connect("ws://localhost:#{state.port}/ws/#{state.name}")
   # Store the WebSocket connection and the caller's PID
   {:noreply, %{state | ws_conn: ws_conn, stream_caller: from}}
   # ...

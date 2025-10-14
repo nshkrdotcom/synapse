@@ -1,16 +1,16 @@
 **1. gRPC Integration with `elixir-grpc`**
 
-Integrating `elixir-grpc` into Axon would be a significant step towards a high-performance, strongly-typed communication layer between Elixir and Python. Here's a breakdown:
+Integrating `elixir-grpc` into Synapse would be a significant step towards a high-performance, strongly-typed communication layer between Elixir and Python. Here's a breakdown:
 
 **a) Protocol Buffers Definition (`.proto`)**
 
 We'd start by defining our messages and services in a `.proto` file. This file serves as the contract between Elixir and Python.
 
 ```protobuf
-// axon.proto
+// synapse.proto
 syntax = "proto3";
 
-package axon;
+package synapse;
 
 service AgentService {
   rpc Run (RunRequest) returns (RunResponse) {}
@@ -106,27 +106,27 @@ message ToolDefinition {
 
 We would run the `protoc` compiler using this in a `mix` task:
 ```bash
-mix grpc.gen axon.proto
+mix grpc.gen synapse.proto
 ```
 
-**c) Elixir gRPC Server (`axon_core/lib/axon_core/agent_grpc_server.ex`)**
+**c) Elixir gRPC Server (`synapse_core/lib/synapse_core/agent_grpc_server.ex`)**
 
 ```elixir
-defmodule AxonCore.AgentGrpcServer do
-  use GRPC.Server, service: Axon.AgentService.Service
+defmodule SynapseCore.AgentGrpcServer do
+  use GRPC.Server, service: Synapse.AgentService.Service
 
   def run(request, stream) do
     # Get agent_id from the request
     agent_id = request.agent_id
 
     # Lookup the agent in the registry
-    case AxonCore.AgentRegistry.lookup(agent_id) do
+    case SynapseCore.AgentRegistry.lookup(agent_id) do
       {:ok, agent_pid} ->
         # Forward the request to the agent process
         send(agent_pid, {:grpc_request, request, stream})
 
         # Return a response immediately, signaling that the request has been received
-        Axon.RunResponse.new(result: "Request received", usage: Axon.Usage.new())
+        Synapse.RunResponse.new(result: "Request received", usage: Synapse.Usage.new())
 
       {:error, :not_found} ->
         # Handle the case where the agent is not found
@@ -139,7 +139,7 @@ defmodule AxonCore.AgentGrpcServer do
       # Get agent_id from the request
       agent_id = request.agent_id
       # Lookup the agent in the registry
-      case AxonCore.AgentRegistry.lookup(agent_id) do
+      case SynapseCore.AgentRegistry.lookup(agent_id) do
         {:ok, agent_pid} ->
           # Forward the request to the agent process
           send(agent_pid, {:grpc_stream_request, request, stream})
@@ -156,10 +156,10 @@ defmodule AxonCore.AgentGrpcServer do
 end
 ```
 
-**d) Elixir Agent Process (`axon_core/lib/axon_core/agent_process.ex`)**
+**d) Elixir Agent Process (`synapse_core/lib/synapse_core/agent_process.ex`)**
 
 ```elixir
-defmodule AxonCore.AgentProcess do
+defmodule SynapseCore.AgentProcess do
   use GenServer
 
   # ... (start_link, init, etc.)
@@ -184,14 +184,14 @@ defmodule AxonCore.AgentProcess do
 end
 ```
 
-**e) Python gRPC Client (`axon_python/src/axon_python/agent_wrapper.py`)**
+**e) Python gRPC Client (`synapse_python/src/synapse_python/agent_wrapper.py`)**
 
 ```python
 import grpc
-from axon_python.generated import axon_pb2, axon_pb2_grpc  # Assuming you named your proto file "axon.proto"
+from synapse_python.generated import synapse_pb2, synapse_pb2_grpc  # Assuming you named your proto file "synapse.proto"
 from pydantic_ai.agent import Agent  # Or your agent class
 
-class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
+class AgentServicer(synapse_pb2_grpc.AgentServiceServicer):
     def __init__(self, agent: Agent):
         self.agent = agent
 
@@ -204,9 +204,9 @@ class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
         result = self.agent.run_sync(prompt, message_history=message_history)
 
         # Convert the result to a gRPC response
-        return axon_pb2.RunResponse(
+        return synapse_pb2.RunResponse(
             result=result.data,
-            usage=axon_pb2.Usage(
+            usage=synapse_pb2.Usage(
                 requests=result.usage.requests,
                 request_tokens=result.usage.request_tokens,
                 response_tokens=result.usage.response_tokens,
@@ -222,7 +222,7 @@ class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
         # Run the agent in streaming mode
         for chunk in self.agent.run_stream(prompt, message_history=message_history):
             # Convert each chunk to a gRPC response
-            yield axon_pb2.RunResponseChunk(data=chunk)
+            yield synapse_pb2.RunResponseChunk(data=chunk)
 
     def _convert_message(self, msg):
         # Convert a gRPC ModelMessage to a pydantic-ai ModelMessage
@@ -231,7 +231,7 @@ class AgentServicer(axon_pb2_grpc.AgentServiceServicer):
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    axon_pb2_grpc.add_AgentServiceServicer_to_server(AgentServicer(agent), server)
+    synapse_pb2_grpc.add_AgentServiceServicer_to_server(AgentServicer(agent), server)
     server.add_insecure_port('[::]:50051')  # Specify the port your agent should listen on
     server.start()
     server.wait_for_termination()
@@ -251,11 +251,11 @@ PORT="$2" #now grpc port
 MODEL="$3"
 
 # Set environment variables for the agent
-export AXON_PYTHON_AGENT_PORT="$PORT"
-export AXON_PYTHON_AGENT_MODEL="$MODEL"
+export SYNAPSE_PYTHON_AGENT_PORT="$PORT"
+export SYNAPSE_PYTHON_AGENT_MODEL="$MODEL"
 
 # Start the gRPC server
-python -m axon_python.agent_wrapper # Assuming your server code is in agent_wrapper.py
+python -m synapse_python.agent_wrapper # Assuming your server code is in agent_wrapper.py
 ```
 
 **Why This is More Complex:**
@@ -275,9 +275,9 @@ python -m axon_python.agent_wrapper # Assuming your server code is in agent_wrap
 
 Start with HTTP for simplicity. If performance becomes an issue, carefully evaluate whether the benefits of gRPC outweigh the added complexity in your specific use case.
 
-**3. `pydantic-ai` Examples and Axon's Value Proposition**
+**3. `pydantic-ai` Examples and Synapse's Value Proposition**
 
-Let's use the `chat_app.py` example to demonstrate how Axon adds value and how we can leverage Elixir's strengths.
+Let's use the `chat_app.py` example to demonstrate how Synapse adds value and how we can leverage Elixir's strengths.
 
 **`pydantic-ai` Example: `chat_app.py`**
 

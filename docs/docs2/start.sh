@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # # Start the Elixir application
-# (cd apps/axon && iex -S mix phx.server) &
+# (cd apps/synapse && iex -S mix phx.server) &
 
 # # Start a Python agent in the background, passing the agent module as an argument
-# (cd apps/axon_python && poetry run python ./scripts/start_agent.sh example_agent 8000 "openai:gpt-4o") &
+# (cd apps/synapse_python && poetry run python ./scripts/start_agent.sh example_agent 8000 "openai:gpt-4o") &
 
 # # You can start more agents here if needed
 # # ...
@@ -17,17 +17,17 @@
 #!/bin/bash
 
 # Start the Elixir application in interactive mode
-# (cd apps/axon && iex -S mix phx.server) & # remove this line from old start.sh
+# (cd apps/synapse && iex -S mix phx.server) & # remove this line from old start.sh
 
 # Start the Elixir application in the background
-(cd apps/axon && mix phx.server) &
+(cd apps/synapse && mix phx.server) &
 
 # Wait for the Elixir application to fully start
 # This can be improved by checking if the server is actually listening on the expected port
 sleep 5
 
 # Now we will change the directory to where our Python project is
-cd apps/axon_python || exit
+cd apps/synapse_python || exit
 
 # It's a good practice to ensure that the virtual environment is activated
 # shellcheck disable=SC1091
@@ -40,7 +40,7 @@ python -m pip install -e .
 # Here we are assuming that start_agent.sh is executable and in the current directory
 # Note: Removed the background execution (&) to keep the script simple for demonstration
 # Adjust the python command and the module path as necessary for your project structure
-python -u -m axon_python.agent_wrapper example_agent 8000 "openai:gpt-4o"
+python -u -m synapse_python.agent_wrapper example_agent 8000 "openai:gpt-4o"
 
 # If you need to start more agents, you can add more lines similar to the above
 

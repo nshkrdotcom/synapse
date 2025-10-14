@@ -1,14 +1,14 @@
-# Axon: Elixir-Powered AI Agent Orchestration
+# Synapse: Elixir-Powered AI Agent Orchestration
 
 ## Overview
 
-**Axon** is a robust and scalable AI agent orchestration framework built on the power of Elixir and the BEAM VM. It leverages the strengths of **Erlang/OTP** for concurrency, fault tolerance, and distributed computing to manage and coordinate a network of AI agents. While providing first-class integration with Python, Axon is designed to support polyglot architectures, empowering developers to build sophisticated, multi-agent systems that harness the best of both worlds.
+**Synapse** is a robust and scalable AI agent orchestration framework built on the power of Elixir and the BEAM VM. It leverages the strengths of **Erlang/OTP** for concurrency, fault tolerance, and distributed computing to manage and coordinate a network of AI agents. While providing first-class integration with Python, Synapse is designed to support polyglot architectures, empowering developers to build sophisticated, multi-agent systems that harness the best of both worlds.
 
-Axon draws inspiration from `pydantic-ai`, a Python library that combines the structured data validation of Pydantic with the dynamic capabilities of LLMs. However, Axon is not merely a port; it's a reimagining of agent orchestration in the context of Elixir's unique capabilities.
+Synapse draws inspiration from `pydantic-ai`, a Python library that combines the structured data validation of Pydantic with the dynamic capabilities of LLMs. However, Synapse is not merely a port; it's a reimagining of agent orchestration in the context of Elixir's unique capabilities.
 
 ## Core Principles
 
-*   **Elixir-First Orchestration:** Elixir's OTP principles (supervision trees, GenServers, message passing) form the foundation of Axon's agent management.
+*   **Elixir-First Orchestration:** Elixir's OTP principles (supervision trees, GenServers, message passing) form the foundation of Synapse's agent management.
 *   **Polyglot Design:** Seamlessly integrate Python agents (built with `pydantic-ai` or other frameworks) and potentially other languages, taking advantage of their specific strengths.
 *   **Scalability and Fault Tolerance:** Leverage the BEAM VM's inherent capabilities to build systems that can scale effortlessly and gracefully handle failures.
 *   **Developer Ergonomics:** Provide a clean, Elixir-idiomatic API for defining, managing, and interacting with agents.
@@ -17,15 +17,15 @@ Axon draws inspiration from `pydantic-ai`, a Python library that combines the st
 
 ## Structure
 
-Axon follows an umbrella project structure, similar in style to `cf_ex`, with the following applications:
+Synapse follows an umbrella project structure, similar in style to `cf_ex`, with the following applications:
 
-*   **`axon_core`:** The core Elixir library. It contains modules for:
+*   **`synapse_core`:** The core Elixir library. It contains modules for:
     *   Agent supervision and lifecycle management.
     *   HTTP communication with Python (and potentially other) agents.
     *   JSON encoding/decoding for data exchange.
     *   Common typespecs and utilities.
-*   **`axon`:** A Phoenix application providing a web interface and API for interacting with the Axon system. This component will make heavy use of our `cf_ex` library for improved Cloudflare integration.
-*   **`axon_python`:** A dedicated application for managing the integration with Python-based agents. It includes:
+*   **`synapse`:** A Phoenix application providing a web interface and API for interacting with the Synapse system. This component will make heavy use of our `cf_ex` library for improved Cloudflare integration.
+*   **`synapse_python`:** A dedicated application for managing the integration with Python-based agents. It includes:
     *   A FastAPI wrapper (`agent_wrapper.py`) to expose `pydantic-ai` agents as HTTP endpoints.
     *   Example `pydantic-ai` agent implementations.
     *   Elixir modules for spawning and communicating with Python processes.
@@ -42,10 +42,10 @@ Axon follows an umbrella project structure, similar in style to `cf_ex`, with th
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/nshkrdotcom/axon.git
-cd axon
+git clone https://github.com/nshkrdotcom/synapse.git
+cd synapse
 ```
-2.  **Dependency Management:** Axon uses Elixir to manage Python dependencies via Poetry. The `setup.exs` script handles all dependencies for both Elixir and Python.
+2.  **Dependency Management:** Synapse uses Elixir to manage Python dependencies via Poetry. The `setup.exs` script handles all dependencies for both Elixir and Python.
 3. Run the verification script to check your environment and install dependencies:
 ```bash
 ./verify_setup.exs
@@ -54,16 +54,16 @@ cd axon
 ```bash
 iex -S mix
 ```
-Now you're ready to start using Axon! See the examples below to get started.
+Now you're ready to start using Synapse! See the examples below to get started.
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:axon_core, in_umbrella: true},
-    {:axon, in_umbrella: true},
-    {:axon_python, in_umbrella: true},
+    {:synapse_core, in_umbrella: true},
+    {:synapse, in_umbrella: true},
+    {:synapse_python, in_umbrella: true},
     {:jason, "~> 1.4"}, # Or another JSON library
     {:req, "~> 0.4"} # Or another HTTP client
     # Consider adding Finch for improved performance later
@@ -82,7 +82,7 @@ end
 # lib/my_app/agent_workflow.ex
 
 defmodule MyApp.AgentWorkflow do
-  use Axon.Workflow
+  use Synapse.Workflow
 
   agent(:python_agent_1, 
       module: "python_agent_1", 
@@ -138,7 +138,7 @@ curl -X POST http://localhost:4000/agents/python_agent_1/run_sync \
 **Example `pydantic-ai` Agent in Python:**
 
 ```python
-# apps/axon_python/lib/axon_python/agents/python_agent_1.py
+# apps/synapse_python/lib/synapse_python/agents/python_agent_1.py
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
@@ -167,10 +167,10 @@ agent = Agent(
 *   **Extensible Design:** Allows for future integration of other LLMs, tools, and communication protocols (e.g., gRPC).
 *   **Streaming Support:** Designed with streaming in mind, although the initial implementation might use polling for simplicity.
 
-## Why "Axon"?
+## Why "Synapse"?
 
-The name "Axon" combines the "Ax" from "Elixir" with "on" to signify agents that are "on" and connected. It also evokes the biological axon, which transmits signals in a neural network, reflecting the framework's role in connecting and orchestrating AI agents.
+The name "Synapse" combines the "Ax" from "Elixir" with "on" to signify agents that are "on" and connected. It also evokes the biological synapse, which transmits signals in a neural network, reflecting the framework's role in connecting and orchestrating AI agents.
 
 ## Conclusion
 
-Axon aims to be a unique and powerful addition to the AI ecosystem, combining the strengths of Elixir/OTP with the flexibility and rich ecosystem of Python and `pydantic-ai`. This README provides a starting point for the project, outlining the core concepts, structure, and initial design choices. As development progresses, the design and implementation details will be further refined. We will prioritize a simple and robust HTTP-based integration, allowing us to deliver a functional system quickly while keeping our options open for future performance optimizations and advanced features.
+Synapse aims to be a unique and powerful addition to the AI ecosystem, combining the strengths of Elixir/OTP with the flexibility and rich ecosystem of Python and `pydantic-ai`. This README provides a starting point for the project, outlining the core concepts, structure, and initial design choices. As development progresses, the design and implementation details will be further refined. We will prioritize a simple and robust HTTP-based integration, allowing us to deliver a functional system quickly while keeping our options open for future performance optimizations and advanced features.

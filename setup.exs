@@ -8,7 +8,7 @@ Mix.start()
 Mix.shell(Mix.Shell.IO)
 
 # Load the project configuration
-Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
+Mix.Project.in_project(:synapse_core, File.cwd!(), fn _module ->
   # Load all compilation paths
   # IO.puts("Start...")
   Mix.Task.run("loadpaths")
@@ -32,14 +32,14 @@ Mix.Project.in_project(:axon_core, File.cwd!(), fn _module ->
   # Mix.Task.run("app.start")
 
   # Now load your application specifically
-  # Application.load(:axon_core)
+  # Application.load(:synapse_core)
 
   # Ensure all code paths are available
-  Code.append_path("_build/dev/lib/axon_core/ebin")
+  Code.append_path("_build/dev/lib/synapse_core/ebin")
   # IO.puts("Mix.Project.in_project done...")
 end)
 
-defmodule AxonCore.Setup.Error do
+defmodule SynapseCore.Setup.Error do
   defexception [:message, :reason, :context]
 
   def new(reason, context \\ %{}) do
@@ -81,10 +81,10 @@ defmodule AxonCore.Setup.Error do
   end
 end
 
-defmodule AxonCore.VerifySetup do
-  # alias AxonCore.PythonEnvManager
+defmodule SynapseCore.VerifySetup do
+  # alias SynapseCore.PythonEnvManager
 
-  # alias AxonCore.Error.PythonEnvError
+  # alias SynapseCore.Error.PythonEnvError
 
   @colors %{
     red: "\e[31m",
@@ -95,7 +95,7 @@ defmodule AxonCore.VerifySetup do
   }
 
   def run do
-    IO.puts("\n#{color("=== Setting up Axon development environment ===", :blue)}\n")
+    IO.puts("\n#{color("=== Setting up Synapse development environment ===", :blue)}\n")
 
     with :ok <- check_elixir_version(),
          :ok <- fetch_elixir_deps(),
@@ -157,12 +157,12 @@ defmodule AxonCore.VerifySetup do
           IO.puts("#{color("✓", :green)} Python version #{version} OK")
           :ok
         else
-          {AxonCore.Setup.Error, :version_mismatch,
+          {SynapseCore.Setup.Error, :version_mismatch,
            "Python version #{version} is below minimum required version #{min_version}"}
         end
 
       _ ->
-        {AxonCore.Setup.Error, :python_not_found,
+        {SynapseCore.Setup.Error, :python_not_found,
          "Python 3 not found. Please install Python 3.10 or higher"}
     end
   end
@@ -189,7 +189,7 @@ defmodule AxonCore.VerifySetup do
   #           install_poetry()
 
   #         _ ->
-  #           {AxonCore.Setup.Error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
+  #           {SynapseCore.Setup.Error, :poetry_install_failed, "Unexpected error: #{inspect(e)}"}
   #       end
   #   end
   # end
@@ -212,7 +212,7 @@ defmodule AxonCore.VerifySetup do
   #       :ok
 
   #     {error, _} ->
-  #       {AxonCore.Setup.Error, :poetry_install_failed, error}
+  #       {SynapseCore.Setup.Error, :poetry_install_failed, error}
   #   end
   # end
 
@@ -240,12 +240,12 @@ defmodule AxonCore.VerifySetup do
   #           :ok
 
   #         {error, _} ->
-  #           {AxonCore.Setup.Error,
+  #           {SynapseCore.Setup.Error,
   #            :dependency_install_failed, "Failed to install Python dependencies: #{error}"}
   #       end
 
   #     {error, _} ->
-  #       {AxonCore.Setup.Error,
+  #       {SynapseCore.Setup.Error,
   #        :venv_creation_failed, "Failed to set up virtual environment using Poetry: #{error}"}
   #   end
   # end
@@ -316,7 +316,7 @@ defmodule AxonCore.VerifySetup do
         :ok
 
       {error, _} ->
-        {AxonCore.Setup.Error, :deps_fetch, "Failed to fetch dependencies: #{error}"}
+        {SynapseCore.Setup.Error, :deps_fetch, "Failed to fetch dependencies: #{error}"}
     end
   end
 
@@ -329,11 +329,11 @@ defmodule AxonCore.VerifySetup do
         :ok
 
       {error, _} ->
-        {AxonCore.Setup.Error, :compile, "Failed to compile project: #{error}"}
+        {SynapseCore.Setup.Error, :compile, "Failed to compile project: #{error}"}
     end
   end
 
-  defp print_error(%AxonCore.Setup.Error{} = error) do
+  defp print_error(%SynapseCore.Setup.Error{} = error) do
     IO.puts("""
     IO.puts(\"""
 
@@ -385,7 +385,7 @@ defmodule AxonCore.VerifySetup do
     IO.puts("\#Python Env Mgr -- ensure env..")
 
     try do
-      AxonCore.PythonEnvManager.ensure_env!()
+      SynapseCore.PythonEnvManager.ensure_env!()
       :ok
     catch
       e ->
@@ -395,13 +395,13 @@ defmodule AxonCore.VerifySetup do
 
   # defp project_root do
   #   # Use :code.priv_dir to get the correct priv directory path
-  #   priv_dir = :code.priv_dir(:axon_core)
+  #   priv_dir = :code.priv_dir(:synapse_core)
   #   Path.join(priv_dir, "python")
   # end
 
   # # defp lib_root do
   # #   # Use :code.priv_dir to get the correct priv directory path
-  # #   priv_dir = :code.lib_dir(:axon_core)
+  # #   priv_dir = :code.lib_dir(:synapse_core)
   # # end
 
   # defp source_root do
@@ -414,7 +414,7 @@ defmodule AxonCore.VerifySetup do
   # end
 end
 
-AxonCore.VerifySetup.run()
+SynapseCore.VerifySetup.run()
 
 # # Run integration tests
 # ExUnit.run(test_paths: ["test/integration/grpc_test.exs"])

@@ -4,13 +4,13 @@ graph LR
         Agent1[["Agent 1<br>(Elixir)"]]
         Agent2[["Agent 2<br>(Python)"]]
     end
-    ElixirProject -- "Uses" --> AxonInspector
-    subgraph AxonInspector["Axon&nbsp;Inspector&nbsp;(Elixir&nbsp;Module)"]
+    ElixirProject -- "Uses" --> SynapseInspector
+    subgraph SynapseInspector["Synapse&nbsp;Inspector&nbsp;(Elixir&nbsp;Module)"]
         IM[["Introspection Module<br>(:erlang, :sys, :dbg, :recon, etc.)"]]
         API[["gRPC API<br>(Agent Interface)"]]
         DM[["Debugging Module<br>(IEx Integration)"]]
     end
-    AxonInspector -- "Introspects" --> ElixirProject
+    SynapseInspector -- "Introspects" --> ElixirProject
     subgraph ElixirProject["Elixir&nbsp;Project&nbsp;(Target&nbsp;Application)"]
         App[["Application Code"]]
         Tests[["Test Suite (ExUnit)"]]
@@ -30,7 +30,7 @@ graph LR
     classDef Agent fill:#ccf,stroke:#333,stroke-width:2px
     classDef Introspection fill:#cfc,stroke:#333,stroke-width:2px
 
-    class ElixirProject,AxonInspector Elixir
+    class ElixirProject,SynapseInspector Elixir
     class AI_Agents Agent
     class Agent1,Agent2,LLM,SLM Agent
     class IM,DM Introspection

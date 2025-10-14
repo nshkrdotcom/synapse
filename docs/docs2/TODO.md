@@ -12,8 +12,8 @@ Here's a prioritized list, focusing on the essential elements for a functional i
         *   Executing the corresponding Python tool function in `agent_wrapper.py`.
         *   Returning the tool result back to Elixir.
     *   **Files Involved:**
-        *   `axon_core/lib/axon_core/agent_process.ex` (sending requests, receiving responses)
-        *   `axon_python/src/axon_python/agent_wrapper.py` (handling tool calls, invoking `pydantic-ai` tools)
+        *   `synapse_core/lib/synapse_core/agent_process.ex` (sending requests, receiving responses)
+        *   `synapse_python/src/synapse_python/agent_wrapper.py` (handling tool calls, invoking `pydantic-ai` tools)
     *   **Considerations:**
         *   Decide on the format for sending tool arguments (currently, it seems we are using JSON).
         *   Handle potential errors during tool execution.
@@ -44,7 +44,7 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 2. **Refine Schema Translation (Basic Types):**
     *   **Details:** We need to handle basic data types for tool parameters and result types. This is essential for data exchange between Elixir and Python.
     *   **Files Involved:**
-        *   `axon_core/lib/axon_core/schema_utils.ex`
+        *   `synapse_core/lib/synapse_core/schema_utils.ex`
     *   **Considerations:**
         *   Start with support for `string`, `integer`, `boolean`, `number`, `null`, `list`, and `map` (for nested objects).
         *   Ensure that `elixir_to_json_schema` and `json_schema_to_elixir_type` are consistent.
@@ -54,8 +54,8 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 3. **Implement Result Validation (Basic):**
     *   **Details:** Implement basic validation of the agent's result against the `result_type` schema. We can start with simple type checking and structure validation in Elixir.
     *   **Files Involved:**
-        *   `axon_core/lib/axon_core/agent_process.ex` (when handling the final result)
-        *   `axon_core/lib/axon_core/schema_utils.ex` (if using `jason_schema` for validation)
+        *   `synapse_core/lib/synapse_core/agent_process.ex` (when handling the final result)
+        *   `synapse_core/lib/synapse_core/schema_utils.ex` (if using `jason_schema` for validation)
     *   **Considerations:**
         *   Decide where validation should primarily happen (Elixir or Python).
         *   Handle validation errors appropriately (retry, log, or raise exceptions).
@@ -66,7 +66,7 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 4. **Complete `handle_info` for Non-Streaming Responses:**
     *   **Details:** We need to fully implement the logic for receiving and processing non-streaming responses from the Python agent. This includes handling success cases, errors, and log messages.
     *   **Files Involved:**
-        *   `axon_core/lib/axon_core/agent_process.ex`
+        *   `synapse_core/lib/synapse_core/agent_process.ex`
     *   **Implementation Notes:**
         *   Add proper pattern matching on the `response` to handle different `status_code` values.
         *   Use `Logger` to log messages received from the Python agent.
@@ -76,8 +76,8 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 5. **Streaming Implementation (Basic Text Streaming):**
     *   **Details:** Implement basic text streaming from the Python agent to the Elixir client.
     *   **Files Involved:**
-        *   `axon_python/src/axon_python/agent_wrapper.py` (using `StreamingResponse` in FastAPI)
-        *   `axon_core/lib/axon_core/agent_process.ex` (`handle_info` for `:poll_stream` and potentially `:stream_chunk`)
+        *   `synapse_python/src/synapse_python/agent_wrapper.py` (using `StreamingResponse` in FastAPI)
+        *   `synapse_core/lib/synapse_core/agent_process.ex` (`handle_info` for `:poll_stream` and potentially `:stream_chunk`)
     *   **Considerations:**
         *   Decide on a polling interval or use a more advanced mechanism like WebSockets if necessary.
         *   Handle chunking and buffering of streamed data.
@@ -88,18 +88,18 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 6. **Error Handling (Robust):**
     *   **Details:** Implement comprehensive error handling to catch all relevant exceptions in `agent_wrapper.py` and translate them into structured error responses. Define how different error types (validation errors, model errors, tool errors) are handled and reported to Elixir.
     *   **Files Involved:**
-        *   `axon_python/src/axon_python/agent_wrapper.py`
-        *   `axon_core/lib/axon_core/agent_process.ex`
+        *   `synapse_python/src/synapse_python/agent_wrapper.py`
+        *   `synapse_core/lib/synapse_core/agent_process.ex`
     *   **Implementation Notes:**
         *   Use `try...except` blocks in `agent_wrapper.py` to catch exceptions.
         *   Define a consistent format for error responses (e.g., JSON with `status`, `error_type`, `message`, and optional `details`).
         *   In `AgentProcess`, pattern match on error types and handle them appropriately (retry, restart, log, etc.).
 
 7. **Logging:**
-    *   **Details:** Implement more detailed logging, especially within `AxonCore.AgentProcess` to track the flow of messages, agent state, and any errors encountered.
+    *   **Details:** Implement more detailed logging, especially within `SynapseCore.AgentProcess` to track the flow of messages, agent state, and any errors encountered.
     *   **Files Involved:**
-        *   `axon_core/lib/axon_core/agent_process.ex`
-        *   `axon_python/src/axon_python/agent_wrapper.py`
+        *   `synapse_core/lib/synapse_core/agent_process.ex`
+        *   `synapse_python/src/synapse_python/agent_wrapper.py`
     *   **Implementation Notes:**
         *   Use Elixir's `Logger` with appropriate log levels (debug, info, warning, error).
         *   Consider using structured logging (e.g., log as JSON) for easier parsing and analysis.
@@ -131,7 +131,7 @@ Here's a prioritized list, focusing on the essential elements for a functional i
 
 For now, we should concentrate on items 1-4 from the "High Priority" list. These are essential for a basic, functional integration. Once these are working, we can move on to streaming, more robust error handling, and then the lower-priority items.
 
-By prioritizing these tasks and taking an iterative approach, we can build a solid foundation for Axon and gradually enhance its capabilities. I'll be here to assist you as we implement each of these features. Let's get started with the `Tool Calling (Python Tools)` since you have done preliminary work on `schema_utils.ex`.
+By prioritizing these tasks and taking an iterative approach, we can build a solid foundation for Synapse and gradually enhance its capabilities. I'll be here to assist you as we implement each of these features. Let's get started with the `Tool Calling (Python Tools)` since you have done preliminary work on `schema_utils.ex`.
 
 
 

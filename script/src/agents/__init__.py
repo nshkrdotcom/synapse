@@ -1,1 +1,1 @@
-"""Axon agent package."""
+"""Synapse agent package."""

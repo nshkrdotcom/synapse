@@ -1,9 +1,9 @@
 # Testing initiall
 
-Before running the test, ensure that the Python environment is set up correctly, and the AXON_PYTHON_AGENT_PORT environment variable is set if needed. You can then run the test using:
+Before running the test, ensure that the Python environment is set up correctly, and the SYNAPSE_PYTHON_AGENT_PORT environment variable is set if needed. You can then run the test using:
 
 ```
-mix test test/axon_core/agent_process_test.exs
+mix test test/synapse_core/agent_process_test.exs
 ```
 
 
@@ -14,7 +14,7 @@ Make sure your pydantic-ai environment is set up and your example_agent.py is in
 
 Ensure that the start_agent.sh script is executable (chmod +x start_agent.sh).
 
-Run mix test in the axon directory.
+Run mix test in the synapse directory.
 
 This test will:
 

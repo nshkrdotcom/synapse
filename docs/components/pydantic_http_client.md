@@ -28,7 +28,7 @@
 ```elixir
 # Add to your supervision tree
 children = [
-  AxonCore.PydanticHTTPClient
+  SynapseCore.PydanticHTTPClient
 ]
 
 Supervisor.start_link(children, strategy: :one_for_one)
@@ -38,13 +38,13 @@ Supervisor.start_link(children, strategy: :one_for_one)
 
 ```elixir
 # Synchronous POST request
-{:ok, response} = AxonCore.PydanticHTTPClient.post(
+{:ok, response} = SynapseCore.PydanticHTTPClient.post(
   "http://localhost:8000/run",
   %{prompt: "Hello!"}
 )
 
 # Streaming request
-{:ok, stream_pid} = AxonCore.PydanticHTTPClient.post_stream(
+{:ok, stream_pid} = SynapseCore.PydanticHTTPClient.post_stream(
   "http://localhost:8000/stream",
   %{prompt: "Tell me a story."}
 )
@@ -62,7 +62,7 @@ end
 The client can be configured through application config:
 
 ```elixir
-config :axon_core, :pydantic_http_client,
+config :synapse_core, :pydantic_http_client,
   pool_size: 50,
   connect_timeout: 5_000,
   receive_timeout: 30_000,
@@ -145,9 +145,9 @@ end
 The client emits telemetry events:
 
 ```elixir
-[:axon, :http, :request, :start]
-[:axon, :http, :request, :stop]
-[:axon, :http, :request, :exception]
+[:synapse, :http, :request, :start]
+[:synapse, :http, :request, :stop]
+[:synapse, :http, :request, :exception]
 ```
 
 ## Common Issues and Solutions

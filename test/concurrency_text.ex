@@ -1,17 +1,17 @@
-# axon/test/axon/concurrency_test.exs
+# synapse/test/synapse/concurrency_test.exs
 
-defmodule AxonCore.ConcurrencyTest do
+defmodule SynapseCore.ConcurrencyTest do
   use ExUnit.Case, async: true
   # Use a different alias if you're not using HTTPClient directly in your tests
-  # alias AxonCore.Agent.HTTPClient, as: TestHTTPClient
-  import AxonCore.Agent, only: [send_message: 2]
-  # doctest Axon
+  # alias SynapseCore.Agent.HTTPClient, as: TestHTTPClient
+  import SynapseCore.Agent, only: [send_message: 2]
+  # doctest Synapse
 
   setup do
     # Start your application or necessary supervisors
     # You might need to adjust this depending on your application's setup
-    # :ok = Application.ensure_all_started(:axon)
-    start_supervised(AxonCore.Application)
+    # :ok = Application.ensure_all_started(:synapse)
+    start_supervised(SynapseCore.Application)
 
     # If you have any setup to do before tests, like starting agents, do it here
     # For example, if you need to register agents or set up some initial state:
@@ -30,9 +30,10 @@ defmodule AxonCore.ConcurrencyTest do
           # use unique prompt for each request to avoid caching issues
           prompt = "What is the weather in #{agent_id} on #{:rand.uniform(1000)}?"
 
-          case AxonCore.Agent.send_message(agent_id, %{prompt: prompt}) do
+          case SynapseCore.Agent.send_message(agent_id, %{prompt: prompt}) do
             {:ok, result} ->
               assert is_binary(result)
+
             {:error, reason} ->
               flunk("Agent #{agent_id} failed: #{reason}")
           end
@@ -53,7 +54,8 @@ defmodule AxonCore.ConcurrencyTest do
       for _ <- 1..10 do
         Task.async(fn ->
           prompt = "What is the weather in #{agent_id} on #{:rand.uniform(1000)}?"
-          case AxonCore.Agent.send_message(agent_id, %{prompt: prompt}) do
+
+          case SynapseCore.Agent.send_message(agent_id, %{prompt: prompt}) do
             {:ok, result} ->
               assert is_binary(result)
 

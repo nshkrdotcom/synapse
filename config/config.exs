@@ -3,24 +3,24 @@ import Config
 # config :grpc,
 #   start_server: true,
 #   services: [
-#     AxonCore.AgentGrpcServer
+#     SynapseCore.AgentGrpcServer
 #   ]
 
-config :axon_core,
+config :synapse_core,
   # Add any necessary configuration here for your application
   # For example, you can define the default port for your Phoenix application
-  #http: [port: 49949],
+  # http: [port: 49949],
 
-# Configure Finch
-# config :axon_core, :finch,
-#   name: AxonFinch,
-#   pools: %{
-#     :default => [size: 10]
-#   }
+  # Configure Finch
+  # config :synapse_core, :finch,
+  #   name: SynapseFinch,
+  #   pools: %{
+  #     :default => [size: 10]
+  #   }
 
-# ... other configurations ...
+  # ... other configurations ...
 
-#config :axon_core,
+  # config :synapse_core,
   python_min_version: "3.10.0",
   python_max_version: "3.13.0",
   python_venv_path: ".venv",
@@ -28,7 +28,8 @@ config :axon_core,
   python_module_path: "script/src",
   python_env: %{
     # Path to the Python executable, using the virtual environment's Python
-    python_path: Path.join([System.get_env("HOME"), ".cache", "axon", ".venv", "bin", "python"])
+    python_path:
+      Path.join([System.get_env("HOME"), ".cache", "synapse", ".venv", "bin", "python"])
   }
 
 # General application configuration
@@ -37,7 +38,6 @@ config :axon_core,
 # backends: [:console],
 # format: "$time $metadata[$level] $message\n",
 # metadata: [:request_id]
-
 
 config :logger,
   level: :debug,
@@ -53,8 +53,7 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [request_id: nil, trace_id: nil]
 
-
 # Finch configuration
 config :finch,
-# Define a default pool for HTTP connections
-default_pool: [size: 10]
+  # Define a default pool for HTTP connections
+  default_pool: [size: 10]

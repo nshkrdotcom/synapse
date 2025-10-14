@@ -2,7 +2,7 @@
 
 **Ideal Level of Integration:**
 
-The ideal integration should strike a balance between leveraging `pydantic-ai`'s strengths and maintaining a clean, Elixir-centric architecture for Axon. We want to avoid simply wrapping `pydantic-ai` entirely and instead focus on a more **selective integration** that addresses our specific needs.
+The ideal integration should strike a balance between leveraging `pydantic-ai`'s strengths and maintaining a clean, Elixir-centric architecture for Synapse. We want to avoid simply wrapping `pydantic-ai` entirely and instead focus on a more **selective integration** that addresses our specific needs.
 
 Here's a proposed approach:
 
@@ -52,11 +52,11 @@ Here's a proposed approach:
 
 
 
- Okay, let's review our conversation and create a complete file tree for the Axon project based on our current design parameters, including all necessary files while excluding irrelevant ones.
+ Okay, let's review our conversation and create a complete file tree for the Synapse project based on our current design parameters, including all necessary files while excluding irrelevant ones.
 
 **Core Principles and Design Choices (Recap):**
 
-*   **Elixir as the Orchestrator:** Axon is an Elixir-first framework, leveraging OTP for supervision, concurrency, and fault tolerance.
+*   **Elixir as the Orchestrator:** Synapse is an Elixir-first framework, leveraging OTP for supervision, concurrency, and fault tolerance.
 *   **`pydantic-ai` Integration:** We're using `pydantic-ai` in Python to handle LLM interactions, structured output generation, and tool calling.
 *   **HTTP Communication:** We've chosen HTTP with JSON for communication between Elixir and Python agents (for now).
 *   **Simplified Python Wrapper:** `agent_wrapper.py` acts as a thin layer between Elixir and `pydantic-ai` agents, handling requests and responses.
@@ -69,7 +69,7 @@ Here's a proposed approach:
 
 1. **Umbrella Structure:** We're following the established pattern from `cf_ex` of using an Elixir umbrella project. This is good for organizing the different components.
 
-2. **`apps/axon_core`:** This is the core of the Elixir logic.
+2. **`apps/synapse_core`:** This is the core of the Elixir logic.
     *   **`supervisor.ex`:**  Supervises agent processes.
     *   **`agent_registry.ex`:**  Likely using `Registry` to track agent processes.
     *   **`http_client.ex`:** Handles making HTTP requests to Python agents. We might use `req` or `Finch` here.
@@ -79,21 +79,21 @@ Here's a proposed approach:
     *   **`tool_utils.ex`:**  (New) A module to encapsulate logic related to tool definition translation and potentially dynamic function calls for Elixir-based tools.
     *   **`schema_utils.ex`:** (New) A module to handle schema translation and validation, potentially using `jason_schema` or a custom implementation.
 
-3. **`apps/axon`:** A Phoenix application for a web interface and API.
+3. **`apps/synapse`:** A Phoenix application for a web interface and API.
     *   **`controllers/`, `channels/`, `templates/`, `views/`:**  Standard Phoenix directories for controllers, channels, templates, and views.
-    *   **`axon.ex`, `axon_web.ex`, `router.ex`:** Standard Phoenix application and routing files.
+    *   **`synapse.ex`, `synapse_web.ex`, `router.ex`:** Standard Phoenix application and routing files.
 
-4. **`apps/axon_python`:**
+4. **`apps/synapse_python`:**
     *   **`pyproject.toml`, `poetry.lock`:**  Poetry project files for managing Python dependencies.
-    *   **`src/axon_python/__init__.py`:**  Make `axon_python` a package.
-    *   **`src/axon_python/agent_wrapper.py`:** The FastAPI application that wraps `pydantic-ai` agents. This will include error handling and logging logic to send information back to Elixir.
-    *   **`src/axon_python/agents/`:**  A directory for storing `pydantic-ai` agent code (e.g., `example_agent.py`, `bank_support_agent.py`).
-    *   **`src/axon_python/llm_wrapper.py`:** (New) A module providing a simplified interface for interacting with LLMs, abstracting away some of the `pydantic-ai` and library-specific details.
+    *   **`src/synapse_python/__init__.py`:**  Make `synapse_python` a package.
+    *   **`src/synapse_python/agent_wrapper.py`:** The FastAPI application that wraps `pydantic-ai` agents. This will include error handling and logging logic to send information back to Elixir.
+    *   **`src/synapse_python/agents/`:**  A directory for storing `pydantic-ai` agent code (e.g., `example_agent.py`, `bank_support_agent.py`).
+    *   **`src/synapse_python/llm_wrapper.py`:** (New) A module providing a simplified interface for interacting with LLMs, abstracting away some of the `pydantic-ai` and library-specific details.
     *   **`scripts/start_agent.sh`:**  A shell script to start a Python agent process, activating the virtual environment and setting environment variables.
     *   **`test/`:** Python tests.
     *   **`mix.exs`:** While this will be an Elixir umbrella application, it will manage a python project.
 
-5. **`lib/axon.ex`:** Main entry point for the Axon application.
+5. **`lib/synapse.ex`:** Main entry point for the Synapse application.
 
 6. **`rel/`:** Release configuration (if needed for deployment).
 
@@ -141,10 +141,10 @@ elixir_schema = %{
 }
 
 # Convert to JSON Schema
-json_schema = AxonCore.SchemaUtils.elixir_to_json_schema(elixir_schema)
+json_schema = SynapseCore.SchemaUtils.elixir_to_json_schema(elixir_schema)
 
 # Convert back to Elixir type (basic representation)
-elixir_type = AxonCore.SchemaUtils.json_schema_to_elixir_type(json_schema)
+elixir_type = SynapseCore.SchemaUtils.json_schema_to_elixir_type(json_schema)
 
 # Validate some data
 data = %{
@@ -155,7 +155,7 @@ data = %{
   "address" => %{"street" => "123 Main St", "city" => "San Francisco", "zip" => 94105}
 }
 
-validation_result = AxonCore.SchemaUtils.validate(json_schema, data)
+validation_result = SynapseCore.SchemaUtils.validate(json_schema, data)
 
 IO.inspect(json_schema)
 IO.inspect(elixir_type)
@@ -198,7 +198,7 @@ IO.inspect(validation_result)
     ```
 
 *   **Elixir Error Handling:**
-    *   The `AxonCore.AgentProcess` GenServer will receive these error responses.
+    *   The `SynapseCore.AgentProcess` GenServer will receive these error responses.
     *   Based on the error type and the agent's configuration, it will decide how to handle the error:
         *   **Retry:** If the error is `ModelRetry` or a transient error (e.g., network issue), and the retry limit hasn't been reached, the agent process can retry the operation.
         *   **Restart:** If the error is a `ValidationError` or another non-recoverable error, the agent process might be restarted by the supervisor (based on the supervision strategy).
@@ -209,11 +209,11 @@ IO.inspect(validation_result)
 
 *   **Centralized Logging:**
     *   The `agent_wrapper.py` will be configured to send log messages back to the Elixir side as part of the response (or potentially via a separate channel, like a dedicated logging endpoint or stream).
-    *   The `AxonCore.AgentProcess` will receive these log messages and use Elixir's `Logger` to log them centrally.
+    *   The `SynapseCore.AgentProcess` will receive these log messages and use Elixir's `Logger` to log them centrally.
     *   We can use structured logging (e.g., JSON format) to make it easier to parse and analyze logs.
 
 *   **Metrics:**
-    *   `AxonCore.AgentProcess` can track metrics like:
+    *   `SynapseCore.AgentProcess` can track metrics like:
         *   Number of requests processed.
         *   Number of successful/failed requests.
         *   Number of retries.
@@ -225,7 +225,7 @@ IO.inspect(validation_result)
 
 *   **Elixir-Centric Testing:**
     *   We'll write most tests in Elixir using ExUnit.
-    *   Unit tests will focus on individual modules (e.g., `AxonCore.AgentProcess`, `AxonCore.HTTPClient`, `AxonCore.JSONCodec`).
+    *   Unit tests will focus on individual modules (e.g., `SynapseCore.AgentProcess`, `SynapseCore.HTTPClient`, `SynapseCore.JSONCodec`).
     *   Integration tests will test the interaction between different components, including the communication with Python agents.
 *   **Mocking:**
     *   For unit tests, we can mock external dependencies like the HTTP client or the LLM API.
@@ -268,9 +268,9 @@ IO.inspect(validation_result)
 **Next Steps:**
 
 1. **Refine Schema Translation:** Develop a more robust mechanism for translating between Elixir data structures and JSON Schema for tool and result type definitions.
-2. **Implement Error Handling:**  Implement the detailed error handling logic in both `agent_wrapper.py` and `AxonCore.AgentProcess`, including retries and escalation.
+2. **Implement Error Handling:**  Implement the detailed error handling logic in both `agent_wrapper.py` and `SynapseCore.AgentProcess`, including retries and escalation.
 3. **Implement Logging:** Integrate Elixir's `Logger` with the Python agent's logs, potentially using a structured logging format.
-4. **Implement Basic Monitoring:** Add metrics tracking to `AxonCore.AgentProcess` and expose them via `Telemetry` or `PromEx`.
+4. **Implement Basic Monitoring:** Add metrics tracking to `SynapseCore.AgentProcess` and expose them via `Telemetry` or `PromEx`.
 5. **Write Tests:**  Write comprehensive unit and integration tests for both the Elixir and Python components.
 
-This detailed analysis and proposed approach should provide a solid foundation for building Axon as a powerful and robust Elixir-based AI agent orchestration framework. By carefully defining the integration points and leveraging the strengths of both Elixir and `pydantic-ai`, we can create a system that is both powerful and maintainable.
+This detailed analysis and proposed approach should provide a solid foundation for building Synapse as a powerful and robust Elixir-based AI agent orchestration framework. By carefully defining the integration points and leveraging the strengths of both Elixir and `pydantic-ai`, we can create a system that is both powerful and maintainable.

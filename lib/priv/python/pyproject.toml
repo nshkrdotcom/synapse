@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "axon-core"
+name = "synapse-core"
 version = "0.1.0"
-description = "Python core functionality for Axon"
+description = "Python core functionality for Synapse"
 authors = ["Your Name <your.email@example.com>"]
 packages = [
     { include = "agents", from = "src" }

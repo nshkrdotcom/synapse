@@ -1,15 +1,15 @@
-# Axon Python Integration Architecture
+# Synapse Python Integration Architecture
 
 ## Overview
 
-This document details the architecture of Axon's Python integration, focusing on how we manage Python environments, execute Python code, and handle communication between Elixir and Python processes. This integration is designed to provide robust, fault-tolerant execution of Python-based AI agents while leveraging BEAM/OTP's supervision and process isolation capabilities.
+This document details the architecture of Synapse's Python integration, focusing on how we manage Python environments, execute Python code, and handle communication between Elixir and Python processes. This integration is designed to provide robust, fault-tolerant execution of Python-based AI agents while leveraging BEAM/OTP's supervision and process isolation capabilities.
 
 ## Core Components
 
 ### 1. Python Environment Management
 
 #### PythonEnvManager (Elixir)
-- Located in `apps/axon_core/lib/axon_core/python_env_manager.ex`
+- Located in `apps/synapse_core/lib/synapse_core/python_env_manager.ex`
 - Responsible for:
   - Validating Python installation (version >= 3.10)
   - Creating and managing virtual environments
@@ -19,7 +19,7 @@ This document details the architecture of Axon's Python integration, focusing on
 - Implements idempotent operations for environment setup
 
 ```elixir
-defmodule AxonCore.PythonEnvManager do
+defmodule SynapseCore.PythonEnvManager do
   def ensure_env! do
     case check_python_env() do
       :ok -> :ok
@@ -32,7 +32,7 @@ end
 ### 2. Agent Process Management
 
 #### Agent Supervisor (Elixir)
-- Located in `lib/axon/agent.ex`
+- Located in `lib/synapse/agent.ex`
 - Implements OTP Supervisor behavior
 - Manages lifecycle of agent processes
 - Handles dynamic agent creation and termination
@@ -41,13 +41,13 @@ end
   ```elixir
   %{
     id: agent_name,
-    start: {Axon.Agent, :start_link, [opts]},
+    start: {Synapse.Agent, :start_link, [opts]},
     type: :supervisor
   }
   ```
 
 #### Agent Server (Elixir)
-- Located in `lib/axon/agent/server.ex`
+- Located in `lib/synapse/agent/server.ex`
 - Implements GenServer behavior
 - Manages individual agent state
 - Handles:
@@ -61,7 +61,7 @@ end
 
 #### Port Communication
 - Uses Erlang ports for process spawning and IO streaming
-- Implemented in `Axon.Agent.Server`:
+- Implemented in `Synapse.Agent.Server`:
   ```elixir
   Port.open({:spawn_executable, cmd}, [
     {:args, [module, port, model]},
@@ -92,7 +92,7 @@ end
 ### 4. Python Agent Implementation
 
 #### Agent Wrapper (Python)
-- Located in `apps/axon_python/src/axon_python/agent_wrapper.py`
+- Located in `apps/synapse_python/src/synapse_python/agent_wrapper.py`
 - Implements:
   - FastAPI HTTP server
   - Agent lifecycle management
@@ -107,12 +107,12 @@ end
 ## Supervision Strategy
 
 ```
-Axon.Supervisor
-├── Axon.Telemetry
+Synapse.Supervisor
+├── Synapse.Telemetry
 ├── Phoenix.PubSub
-└── Axon.Agent (for each agent)
+└── Synapse.Agent (for each agent)
     ├── Task.Supervisor
-    └── Axon.Agent.Server
+    └── Synapse.Agent.Server
         └── Port (Python Process)
 ```
 
@@ -160,12 +160,12 @@ For the basic end-to-end test:
 
 1. Start the system:
    ```elixir
-   {:ok, _} = Application.ensure_all_started(:axon)
+   {:ok, _} = Application.ensure_all_started(:synapse)
    ```
 
 2. Create an agent:
    ```elixir
-   {:ok, agent} = Axon.Agent.start_link(
+   {:ok, agent} = Synapse.Agent.start_link(
      name: "test_agent",
      python_module: "agents.example_agent",
      model: "test:model",
@@ -175,7 +175,7 @@ For the basic end-to-end test:
 
 3. Send a test message:
    ```elixir
-   {:ok, response} = Axon.Agent.Server.send_message(
+   {:ok, response} = Synapse.Agent.Server.send_message(
      "test_agent",
      %{
        "prompt" => "Hello, agent!",

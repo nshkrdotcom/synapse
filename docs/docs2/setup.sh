@@ -3,7 +3,7 @@
 # Fail on any error
 set -e
 
-echo "Setting up Axon development environment..."
+echo "Setting up Synapse development environment..."
 
 # Check Elixir installation
 if ! command -v elixir >/dev/null 2>&1; then

@@ -1,7 +1,7 @@
-defmodule AxonCore.PydanticIntegrationTest do
+defmodule SynapseCore.PydanticIntegrationTest do
   use ExUnit.Case
-  
-  alias AxonCore.{
+
+  alias SynapseCore.{
     PydanticAgentProcess,
     PydanticHTTPClient,
     PydanticToolRegistry,
@@ -70,13 +70,13 @@ defmodule AxonCore.PydanticIntegrationTest do
 
     test "handles agent crashes gracefully", %{config: config} do
       {:ok, pid} = PydanticSupervisor.start_agent(config)
-      
+
       # Simulate crash
       Process.exit(pid, :kill)
-      
+
       # Wait for restart
       Process.sleep(100)
-      
+
       # Agent should be restarted
       new_pid = Process.whereis(String.to_atom(config.name))
       assert Process.alive?(new_pid)
@@ -91,12 +91,13 @@ defmodule AxonCore.PydanticIntegrationTest do
     end
 
     test "handles synchronous messages", %{config: config} do
-      result = PydanticAgentProcess.run(
-        config.name,
-        "Translate 'Hello' to Spanish",
-        [],
-        %{}
-      )
+      result =
+        PydanticAgentProcess.run(
+          config.name,
+          "Translate 'Hello' to Spanish",
+          [],
+          %{}
+        )
 
       assert {:ok, %{result: result}} = result
       assert is_map(result)
@@ -104,12 +105,13 @@ defmodule AxonCore.PydanticIntegrationTest do
     end
 
     test "handles streaming messages", %{config: config} do
-      {:ok, stream_pid} = PydanticAgentProcess.run_stream(
-        config.name,
-        "Tell me a long story about a cat",
-        [],
-        %{}
-      )
+      {:ok, stream_pid} =
+        PydanticAgentProcess.run_stream(
+          config.name,
+          "Tell me a long story about a cat",
+          [],
+          %{}
+        )
 
       chunks = collect_stream_chunks(stream_pid)
       assert length(chunks) > 0
@@ -117,12 +119,14 @@ defmodule AxonCore.PydanticIntegrationTest do
     end
 
     test "handles errors gracefully", %{config: config} do
-      result = PydanticAgentProcess.run(
-        config.name,
-        "", # Empty prompt should cause an error
-        [],
-        %{}
-      )
+      result =
+        PydanticAgentProcess.run(
+          config.name,
+          # Empty prompt should cause an error
+          "",
+          [],
+          %{}
+        )
 
       assert {:error, _reason} = result
     end
@@ -133,64 +137,69 @@ defmodule AxonCore.PydanticIntegrationTest do
       {:ok, _pid} = PydanticSupervisor.start_agent(config)
 
       # Register test tools
-      :ok = PydanticToolRegistry.register_tool(%{
-        name: "echo",
-        description: "Echoes input",
-        parameters: %{
-          "type" => "object",
-          "properties" => %{
-            "input" => %{"type" => "string"}
+      :ok =
+        PydanticToolRegistry.register_tool(%{
+          name: "echo",
+          description: "Echoes input",
+          parameters: %{
+            "type" => "object",
+            "properties" => %{
+              "input" => %{"type" => "string"}
+            },
+            "required" => ["input"]
           },
-          "required" => ["input"]
-        },
-        handler: fn %{"input" => input} -> input end
-      })
+          handler: fn %{"input" => input} -> input end
+        })
 
-      :ok = PydanticToolRegistry.register_tool(%{
-        name: "async_tool",
-        description: "Async operation",
-        parameters: %{
-          "type" => "object",
-          "properties" => %{
-            "delay" => %{"type" => "integer"}
+      :ok =
+        PydanticToolRegistry.register_tool(%{
+          name: "async_tool",
+          description: "Async operation",
+          parameters: %{
+            "type" => "object",
+            "properties" => %{
+              "delay" => %{"type" => "integer"}
+            },
+            "required" => ["delay"]
           },
-          "required" => ["delay"]
-        },
-        handler: fn %{"delay" => delay} ->
-          Process.sleep(delay)
-          "Done after #{delay}ms"
-        end
-      })
+          handler: fn %{"delay" => delay} ->
+            Process.sleep(delay)
+            "Done after #{delay}ms"
+          end
+        })
 
       :ok
     end
 
     test "executes tools successfully", %{config: config} do
-      result = PydanticAgentProcess.call_tool(
-        config.name,
-        "echo",
-        %{"input" => "test"}
-      )
+      result =
+        PydanticAgentProcess.call_tool(
+          config.name,
+          "echo",
+          %{"input" => "test"}
+        )
 
       assert {:ok, "test"} = result
     end
 
     test "handles tool errors", %{config: config} do
-      result = PydanticAgentProcess.call_tool(
-        config.name,
-        "nonexistent_tool",
-        %{}
-      )
+      result =
+        PydanticAgentProcess.call_tool(
+          config.name,
+          "nonexistent_tool",
+          %{}
+        )
 
       assert {:error, _} = result
     end
 
     test "handles async tools", %{config: config} do
-      result = PydanticAgentProcess.call_tool(
-        config.name,
-        "async_tool",
-        %{"delay" => 100}
-      )
+      result =
+        PydanticAgentProcess.call_tool(
+          config.name,
+          "async_tool",
+          %{"delay" => 100}
+        )
 
       assert {:ok, "Done after 100ms"} = result
     end
@@ -200,40 +209,45 @@ defmodule AxonCore.PydanticIntegrationTest do
     test "handles network errors", %{config: config} do
       # Use invalid port
       config = %{config | port: 9999}
-      
+
       {:ok, _pid} = PydanticSupervisor.start_agent(config)
-      
-      result = PydanticAgentProcess.run(
-        config.name,
-        "Hello",
-        [],
-        %{}
-      )
+
+      result =
+        PydanticAgentProcess.run(
+          config.name,
+          "Hello",
+          [],
+          %{}
+        )
 
       assert {:error, :network_error, _} = result
     end
 
     test "handles timeouts", %{config: config} do
       {:ok, _pid} = PydanticSupervisor.start_agent(config)
-      
-      result = PydanticAgentProcess.run(
-        config.name,
-        "Sleep for 10 seconds", # Should trigger timeout
-        [],
-        %{}
-      )
+
+      result =
+        PydanticAgentProcess.run(
+          config.name,
+          # Should trigger timeout
+          "Sleep for 10 seconds",
+          [],
+          %{}
+        )
 
       assert {:error, :timeout, _} = result
     end
 
     test "handles validation errors", %{config: config} do
       {:ok, _pid} = PydanticSupervisor.start_agent(config)
-      
-      result = PydanticAgentProcess.call_tool(
-        config.name,
-        "echo",
-        %{"wrong_param" => "test"} # Invalid parameters
-      )
+
+      result =
+        PydanticAgentProcess.call_tool(
+          config.name,
+          "echo",
+          # Invalid parameters
+          %{"wrong_param" => "test"}
+        )
 
       assert {:error, :validation_error, _} = result
     end
@@ -242,7 +256,7 @@ defmodule AxonCore.PydanticIntegrationTest do
   describe "system monitoring" do
     test "provides system status" do
       status = PydanticSupervisor.status()
-      
+
       assert is_map(status)
       assert Map.has_key?(status, :http_client)
       assert Map.has_key?(status, :tool_registry)
@@ -251,11 +265,11 @@ defmodule AxonCore.PydanticIntegrationTest do
 
     test "tracks agent metrics", %{config: config} do
       {:ok, _pid} = PydanticSupervisor.start_agent(config)
-      
+
       # Run some operations to generate metrics
       PydanticAgentProcess.run(config.name, "Hello", [], %{})
       PydanticAgentProcess.call_tool(config.name, "echo", %{"input" => "test"})
-      
+
       # TODO: Add actual metric assertions once metrics are implemented
       # This is a placeholder for future metric testing
     end
@@ -267,8 +281,10 @@ defmodule AxonCore.PydanticIntegrationTest do
     receive do
       {:chunk, chunk} ->
         collect_stream_chunks(pid, [chunk | chunks])
+
       {:end_stream} ->
         Enum.reverse(chunks)
+
       {:error, _reason} ->
         Enum.reverse(chunks)
     after

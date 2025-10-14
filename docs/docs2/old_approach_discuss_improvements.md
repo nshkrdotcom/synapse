@@ -1,9 +1,9 @@
-Okay, I've listened to the audio and reviewed the provided `pydantic-ai` example code. Here's an analysis of potential insights and improvements we can apply to our Axon framework, keeping in mind our goal of building a robust Elixir-based system:
+Okay, I've listened to the audio and reviewed the provided `pydantic-ai` example code. Here's an analysis of potential insights and improvements we can apply to our Synapse framework, keeping in mind our goal of building a robust Elixir-based system:
 
 **Key Takeaways from the `pydantic-ai` Example and Audio:**
 
 1. **Structured Output:** The example demonstrates `pydantic-ai`'s core strength: generating structured output conforming to a Pydantic model (`ResearchResult` in this case). This aligns well with our goal of leveraging `pydantic-ai`'s validation capabilities.
-2. **Dependency Injection:** The audio highlights the use of `ResearchDependencies` to inject data (like the current date) into the agent's context. This is a valuable technique we should incorporate into Axon.
+2. **Dependency Injection:** The audio highlights the use of `ResearchDependencies` to inject data (like the current date) into the agent's context. This is a valuable technique we should incorporate into Synapse.
 3. **Dynamic System Prompt:** The example modifies the system prompt dynamically to include the current date, showcasing a way to contextualize the agent's behavior.
 4. **Tool Usage:** The `search_agent` demonstrates how to define and use tools with `pydantic-ai`, including passing arguments and handling results.
 5. **Multiple Search Queries:** The agent intelligently decides how many search queries to make based on the user's request, highlighting the dynamic nature of agent execution.
@@ -11,7 +11,7 @@ Okay, I've listened to the audio and reviewed the provided `pydantic-ai` example
 7. **Error Handling:** While not explicitly shown in the example, error handling is crucial when dealing with external services like search APIs and LLMs.
 8. **Streaming:** The example doesn't fully implement streaming but sets up the `chat_app.py` example for it. The audio discusses this feature.
 
-**Insights and Potential Improvements for Axon:**
+**Insights and Potential Improvements for Synapse:**
 
 1. **Elixir-Based Dependency Injection:** We can implement a similar dependency injection mechanism in Elixir. The `AgentProcess` could receive dependencies during initialization and pass them to the Python agent in the request payload.
 
@@ -33,15 +33,15 @@ Okay, I've listened to the audio and reviewed the provided `pydantic-ai` example
 
 6. **Streaming over gRPC:** As our next major goal, we should implement streaming over gRPC. This will be necessary for providing real-time or near-real-time feedback to users, especially for long-running agent operations.
 
-**Revised `AxonCore.AgentProcess` (Illustrative):**
+**Revised `SynapseCore.AgentProcess` (Illustrative):**
 
 ```elixir
-defmodule AxonCore.AgentProcess do
+defmodule SynapseCore.AgentProcess do
   use GenServer
   require Logger
 
-  alias AxonCore.{HTTPClient, JSONCodec, SchemaUtils, ToolUtils}
-  alias AxonCore.Types, as: T
+  alias SynapseCore.{HTTPClient, JSONCodec, SchemaUtils, ToolUtils}
+  alias SynapseCore.Types, as: T
 
   @default_timeout 60_000
   @poll_interval 500 # Interval for polling for streamed data, in milliseconds
@@ -62,7 +62,7 @@ defmodule AxonCore.AgentProcess do
       end
 
     {:ok, _} = Application.ensure_all_started(:os_mon)
-    spawn_port = "#{python_command} -u -m axon_python.agent_wrapper"
+    spawn_port = "#{python_command} -u -m synapse_python.agent_wrapper"
 
     # Pass the python_module as an argument to the script
     port_args =
@@ -78,7 +78,7 @@ defmodule AxonCore.AgentProcess do
         end
 
     # Use a relative path for `cd`
-    relative_path_to_python_src = "../../../apps/axon_python/src"
+    relative_path_to_python_src = "../../../apps/synapse_python/src"
 
     port =
       Port.open(
@@ -90,7 +90,7 @@ defmodule AxonCore.AgentProcess do
              "cd #{relative_path_to_python_src}; source ../../.venv/bin/activate; #{spawn_port} #{Enum.join(port_args, " ")}"
            ]},
           {:cd, File.cwd!()},
-          {:env, ["PYTHONPATH=./", "AXON_PYTHON_AGENT_MODEL=#{state.model}" | state.extra_env]},
+          {:env, ["PYTHONPATH=./", "SYNAPSE_PYTHON_AGENT_MODEL=#{state.model}" | state.extra_env]},
           :binary,
           :use_stdio,
           :stderr_to_stdout,
@@ -174,7 +174,7 @@ async def create_agent(request: Request):
     # ... (agent creation logic)
 
         # Dynamically import the agent module based on the provided name
-        module_name = f"axon_python.agents.{data['agent_module']}"
+        module_name = f"synapse_python.agents.{data['agent_module']}"
         agent_module = importlib.import_module(module_name)
 
         # Assuming each agent module has an 'agent' attribute which is an instance of pydantic_ai.Agent
@@ -206,7 +206,7 @@ This setup ensures that agents are managed dynamically, allowing for greater fle
 
 
 
-Okay, let's analyze this transcript, extract the key information, and relate it to our Axon project, keeping in mind our Elixir-first approach and the goal of integrating `pydantic-ai`.
+Okay, let's analyze this transcript, extract the key information, and relate it to our Synapse project, keeping in mind our Elixir-first approach and the goal of integrating `pydantic-ai`.
 
 **Transcript Summary:**
 
@@ -255,25 +255,25 @@ The video discusses 17 Python libraries that the presenter considers essential f
 *   **Jinja:** Templating engine for Python.
 *   **Tavily Search API and DuckDuckGo Search:** APIs for integrating search functionality into agents.
 
-**Axon Integration Analysis:**
+**Synapse Integration Analysis:**
 
-Let's analyze how each component from the transcript can be integrated into Axon, categorized by Elixir, Python, or Both:
+Let's analyze how each component from the transcript can be integrated into Synapse, categorized by Elixir, Python, or Both:
 
-| Component                        | Elixir (Axon)                                                                                                  | Python (`axon_python`)                                                                                                       | Both                                                                                                                                      | Notes                                                                                                                                                                |
+| Component                        | Elixir (Synapse)                                                                                                  | Python (`synapse_python`)                                                                                                       | Both                                                                                                                                      | Notes                                                                                                                                                                |
 | :------------------------------- | :------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Pydantic**                     | Schema translation (Elixir structs to JSON Schema), validation using `SchemaUtils` and `jason_schema`.          | Core dependency of `pydantic-ai`. Used for defining agent input/output, tool parameters, and validating LLM responses. |                                                                                                                                          | Elixir needs a way to represent and validate data structures equivalent to Pydantic models.                                                                    |
 | **Pydantic Settings**            | Configuration management using Elixir's `Config` or a custom solution.                                           | Load settings using `BaseSettings` within `agent_wrapper.py` or individual agents.                                          |                                                                                                                                          | Elixir will be the source of truth for configuration, passed to Python via environment variables or command-line arguments during agent process startup. |
 | **Python-dotenv**                |                                                                                                               | Load environment variables from `.env` files in the Python environment.                                                  |                                                                                                                                          | We can manage environment variables on the Elixir side and pass them to the Python process.                                                                 |
 | **FastAPI**                      | Communicate with the `agent_wrapper.py` FastAPI server via HTTP requests.                                       | `agent_wrapper.py` will use FastAPI to expose endpoints for agent creation, execution, and (eventually) streaming.        |                                                                                                                                          | We've chosen HTTP as the primary communication protocol.                                                                                                        |
 | **Uvicorn**                      |                                                                                                               | Run the FastAPI application.                                                                                               |                                                                                                                                          | `start_agent.sh` will use `uvicorn` to start the Python agent.                                                                                                 |
-| **Celery**                       | Not directly used, but Elixir's concurrency model with GenServers and Tasks can provide similar functionality. | Could be used for asynchronous tasks within Python agents if needed.                                                        |                                                                                                                                          | Axon will likely handle task distribution and asynchronous execution using Elixir's built-in mechanisms.                                                       |
+| **Celery**                       | Not directly used, but Elixir's concurrency model with GenServers and Tasks can provide similar functionality. | Could be used for asynchronous tasks within Python agents if needed.                                                        |                                                                                                                                          | Synapse will likely handle task distribution and asynchronous execution using Elixir's built-in mechanisms.                                                       |
 | **Databases (PostgreSQL, MongoDB)** | Interact with databases using `Ecto` (for PostgreSQL) or other database libraries.                              | Interact with databases using `psycopg`, `PyMongo`, or other database drivers.                                               | Both (or either, depending on agent needs)                                                                                           | Agents might need to access databases to store/retrieve data. We need to consider data ownership, transactions, and concurrency if both Elixir and Python access the same database. |
 | **SQLAlchemy**                   |                                                                                                               | Can be used for database interactions in Python agents if needed.                                                            |                                                                                                                                          | If agents need complex database interactions, SQLAlchemy might be used on the Python side.                                                                      |
 | **Alembic**                      |                                                                                                               | Can be used for database migrations in Python.                                                                               |                                                                                                                                          | If Python agents use SQLAlchemy and databases, Alembic can manage migrations.                                                                                    |
 | **Pandas**                       |                                                                                                               | Can be used for data manipulation and analysis within Python agents if needed.                                                 |                                                                                                                                          | Primarily a Python-side concern, unless we need to exchange Pandas DataFrames directly with Elixir (which might require a custom serialization solution).     |
 | **LLM APIs (OpenAI, Anthropic, etc.)** |                                                                                                               | `pydantic-ai` and `llm_wrapper.py` will use these APIs for interacting with LLMs.                                                |                                                                                                                                          | We can configure API keys and other connection details in Elixir and pass them to the Python agents.                                                            |
 | **Instructor**                   |                                                                                                               | Can be used within Python agents for structured output extraction.                                                              |                                                                                                                                          | `pydantic-ai` might already offer similar functionality, but we can integrate Instructor if needed.                                                               |
-| **Agent Frameworks (LangChain, LlamaIndex)** | Not directly used. Axon is our agent framework.                                                                        | Can be used within Python agents if needed, but we're primarily leveraging `pydantic-ai`.                                       |                                                                                                                                          | We might borrow ideas or design patterns from these frameworks, but Axon is our core agent orchestration layer.                                                 |
+| **Agent Frameworks (LangChain, LlamaIndex)** | Not directly used. Synapse is our agent framework.                                                                        | Can be used within Python agents if needed, but we're primarily leveraging `pydantic-ai`.                                       |                                                                                                                                          | We might borrow ideas or design patterns from these frameworks, but Synapse is our core agent orchestration layer.                                                 |
 | **Vector Databases (Pinecone, Weaviate, Qdrant, pgvector)** | Can interact with vector databases using Elixir libraries if needed.                                                | Can interact with vector databases using Python clients if needed.                                                                  | Both (or either, depending on agent needs)                                                                                           | Agents might use vector databases for semantic search, RAG, etc. We need to decide whether to manage vector database connections from Elixir or Python. |
 | **Observability (Langfuse, LangSmith)** | Integrate with monitoring tools using Elixir libraries (e.g., `Telemetry`, `PromEx`).                            | Can send data to these platforms from Python agents if needed.                                                                  | Both                                                                                                                                          | We'll likely focus on Elixir-based monitoring, but Python agents can also send data to these platforms if it provides additional value.                       |
 | **DSPy**                         | Potentially integrate with DSPy or implement similar optimization techniques in Elixir.                       | Can be used within Python agents for prompt optimization.                                                                       |                                                                                                                                          | DSPy's approach to prompt optimization is interesting. We might explore similar techniques in Elixir or use DSPy within Python agents.                             |
@@ -301,7 +301,7 @@ Let's analyze how each component from the transcript can be integrated into Axon
 
 **Conclusion:**
 
-Axon will primarily leverage Elixir's strengths for orchestration, concurrency, and fault tolerance. `pydantic-ai` will be used within Python agents to handle LLM interactions, structured output, and tool calling. We'll use HTTP for communication and focus on a clear separation of concerns.
+Synapse will primarily leverage Elixir's strengths for orchestration, concurrency, and fault tolerance. `pydantic-ai` will be used within Python agents to handle LLM interactions, structured output, and tool calling. We'll use HTTP for communication and focus on a clear separation of concerns.
 
 The integration will involve:
 

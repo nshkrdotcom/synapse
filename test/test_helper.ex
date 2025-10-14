@@ -1,10 +1,10 @@
 # test/test_helper.exs
 ExUnit.start()
 # Setup Mox
-Mox.defmock(AxonCore.HTTPClientMock, for: AxonCore.HTTPClient)
+Mox.defmock(SynapseCore.HTTPClientMock, for: SynapseCore.HTTPClient)
 
 # Ensure the application is started
-Application.ensure_all_started(:axon)
+Application.ensure_all_started(:synapse)
 
 # Ensure agents are started
 # Agent.start_link(

@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "axon-python"
+name = "synapse-python"
 version = "0.1.0"
-description = "Python components for Axon, the Elixir-based AI agent orchestrator."
+description = "Python components for Synapse, the Elixir-based AI agent orchestrator."
 authors = ["Your Name <your.email@example.com>"]
-packages = [{ include = "axon_python", from = "src" }]
+packages = [{ include = "synapse_python", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.9"

@@ -1,8 +1,8 @@
-Okay, let's focus on concurrency and fault tolerance, ensuring our Axon system behaves correctly under load and gracefully handles errors, especially agent process failures.
+Okay, let's focus on concurrency and fault tolerance, ensuring our Synapse system behaves correctly under load and gracefully handles errors, especially agent process failures.
 
 **1. Concurrency Testing:**
 
-**Goal:** Verify that Axon can handle multiple concurrent requests to different agents and to the same agent without issues like data corruption, race conditions, or deadlocks.
+**Goal:** Verify that Synapse can handle multiple concurrent requests to different agents and to the same agent without issues like data corruption, race conditions, or deadlocks.
 
 **Approach:**
 
@@ -15,20 +15,20 @@ Okay, let's focus on concurrency and fault tolerance, ensuring our Axon system b
 **Test Implementation (using `Task.async_stream` for simplicity):**
 
 ```elixir
-# axon/test/axon/concurrency_test.exs
+# synapse/test/synapse/concurrency_test.exs
 
-defmodule Axon.ConcurrencyTest do
+defmodule Synapse.ConcurrencyTest do
   use ExUnit.Case, async: true
   # Use a different alias if you're not using HTTPClient directly in your tests
-  # alias Axon.Agent.HTTPClient, as: TestHTTPClient
-  import Axon.Agent, only: [send_message: 2]
-  # doctest Axon
+  # alias Synapse.Agent.HTTPClient, as: TestHTTPClient
+  import Synapse.Agent, only: [send_message: 2]
+  # doctest Synapse
 
   setup do
     # Start your application or necessary supervisors
     # You might need to adjust this depending on your application's setup
-    # :ok = Application.ensure_all_started(:axon)
-    start_supervised(Axon.Application)
+    # :ok = Application.ensure_all_started(:synapse)
+    start_supervised(Synapse.Application)
 
     # If you have any setup to do before tests, like starting agents, do it here
     # For example, if you need to register agents or set up some initial state:
@@ -96,7 +96,7 @@ end
 
 **2. Fault Tolerance Testing:**
 
-**Goal:** Verify that Axon can gracefully handle the failure and restart of Python agent processes.
+**Goal:** Verify that Synapse can gracefully handle the failure and restart of Python agent processes.
 
 **Approach:**
 
@@ -130,4 +130,4 @@ end
 *   **Tsung or K6:** Use these tools for load testing.
 *   **Erlang's `:observer`:** Use the Observer for inspecting the state of the system during testing.
 
-By thoroughly testing concurrency and fault tolerance, we can ensure that Axon is a robust and reliable framework for orchestrating AI agents. Remember to automate these tests so they can be run regularly as part of your development process.
+By thoroughly testing concurrency and fault tolerance, we can ensure that Synapse is a robust and reliable framework for orchestrating AI agents. Remember to automate these tests so they can be run regularly as part of your development process.

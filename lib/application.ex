@@ -1,4 +1,4 @@
-defmodule AxonCore.Application do
+defmodule SynapseCore.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -7,17 +7,16 @@ defmodule AxonCore.Application do
 
   @impl true
   def start(_type, _args) do
-
-    #python_path = Path.join(File.cwd!(), "scripts/src")
+    # python_path = Path.join(File.cwd!(), "scripts/src")
     children = [
       # Start the Registry for agent processes
-      {Registry, keys: :unique, name: AxonCore.AgentRegistry},
+      {Registry, keys: :unique, name: SynapseCore.AgentRegistry},
       # Start the Telemetry supervisor
-      #AxonCore.Telemetry,
+      # SynapseCore.Telemetry,
       # Start the PubSub system
-      #{Phoenix.PubSub, name: AxonCore.PubSub},
+      # {Phoenix.PubSub, name: SynapseCore.PubSub},
       # Start a single test agent
-      # {AxonCore.Agent.Server,
+      # {SynapseCore.Agent.Server,
       #   name: :example_agent,
       #   python_module: "agents.example_agent",
       #   model: "default",
@@ -25,8 +24,8 @@ defmodule AxonCore.Application do
       #   extra_env: [{"PYTHONPATH", python_path}]
       # },
       # %{
-      #   id: AxonCore.Agent.Server,
-      #   start: {AxonCore.Agent.Server, :start_link, [
+      #   id: SynapseCore.Agent.Server,
+      #   start: {SynapseCore.Agent.Server, :start_link, [
       #     name: :example_agent,
       #     python_module: "agents.example_agent",
       #     model: "default",
@@ -37,10 +36,10 @@ defmodule AxonCore.Application do
       #   shutdown: 50000,
       #   type: :worker
       # },
-      AxonCore.AgentSupervisor,
+      SynapseCore.AgentSupervisor
       # %{
-      #   id: AxonCore.Agent.Server,
-      #   start: {AxonCore.Agent.Server, :start_link, [
+      #   id: SynapseCore.Agent.Server,
+      #   start: {SynapseCore.Agent.Server, :start_link, [
       #     [
       #       name: :example_agent,
       #       python_module: "agents.example_agent",
@@ -54,9 +53,11 @@ defmodule AxonCore.Application do
       #   type: :supervisor
       # },
     ]
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: AxonCore.Supervisor] #, max_restarts: 1, max_seconds: 30]
+    # , max_restarts: 1, max_seconds: 30]
+    opts = [strategy: :one_for_one, name: SynapseCore.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end

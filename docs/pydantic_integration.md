@@ -2,14 +2,14 @@
 
 ## Overview
 
-The Axon framework provides a robust integration with `pydantic-ai` through a clean, type-safe interface. This integration leverages Elixir's powerful OTP principles for managing Python-based AI agents while maintaining the flexibility and ease of use that `pydantic-ai` provides.
+The Synapse framework provides a robust integration with `pydantic-ai` through a clean, type-safe interface. This integration leverages Elixir's powerful OTP principles for managing Python-based AI agents while maintaining the flexibility and ease of use that `pydantic-ai` provides.
 
 ## Quick Start
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-org/axon.git
-cd axon
+git clone https://github.com/your-org/synapse.git
+cd synapse
 ```
 
 2. Run the setup script:
@@ -71,10 +71,10 @@ config = %{
 }
 
 # Start the agent
-{:ok, pid} = AxonCore.PydanticSupervisor.start_agent(config)
+{:ok, pid} = SynapseCore.PydanticSupervisor.start_agent(config)
 
 # Use the agent
-{:ok, result} = AxonCore.PydanticAgentProcess.run(
+{:ok, result} = SynapseCore.PydanticAgentProcess.run(
   "my_agent",
   "Translate 'Hello' to Spanish"
 )
@@ -84,7 +84,7 @@ config = %{
 
 ```elixir
 # Synchronous execution
-{:ok, result} = AxonCore.PydanticAgentProcess.run(
+{:ok, result} = SynapseCore.PydanticAgentProcess.run(
   "my_agent",
   "Hello, how are you?",
   [], # message history
@@ -92,7 +92,7 @@ config = %{
 )
 
 # Streaming execution
-{:ok, stream_pid} = AxonCore.PydanticAgentProcess.run_stream(
+{:ok, stream_pid} = SynapseCore.PydanticAgentProcess.run_stream(
   "my_agent",
   "Tell me a long story."
 )
@@ -109,7 +109,7 @@ end
 
 ```elixir
 # Register a tool
-:ok = AxonCore.PydanticToolRegistry.register_tool(%{
+:ok = SynapseCore.PydanticToolRegistry.register_tool(%{
   name: "my_tool",
   description: "Does something useful",
   parameters: %{
@@ -126,7 +126,7 @@ end
 })
 
 # Call a tool
-{:ok, result} = AxonCore.PydanticAgentProcess.call_tool(
+{:ok, result} = SynapseCore.PydanticAgentProcess.call_tool(
   "my_agent",
   "my_tool",
   %{"input" => "test"}
@@ -135,13 +135,13 @@ end
 
 ## Error Handling
 
-Axon provides comprehensive error handling through structured error types:
+Synapse provides comprehensive error handling through structured error types:
 
 ### Environment Errors
 
 ```elixir
 # Example environment error
-%AxonCore.Error.PythonEnvError{
+%SynapseCore.Error.PythonEnvError{
   message: "Python version mismatch",
   reason: :version_mismatch,
   context: %{
@@ -155,7 +155,7 @@ Axon provides comprehensive error handling through structured error types:
 
 ```elixir
 # Example agent error
-%AxonCore.Error.AgentError{
+%SynapseCore.Error.AgentError{
   message: "Agent execution failed",
   reason: :execution_failed,
   context: %{
@@ -168,7 +168,7 @@ Axon provides comprehensive error handling through structured error types:
 
 ```elixir
 # Example HTTP error
-%AxonCore.Error.HTTPError{
+%SynapseCore.Error.HTTPError{
   message: "Failed to connect to Python service",
   reason: :connection_failed,
   context: %{
@@ -181,7 +181,7 @@ Axon provides comprehensive error handling through structured error types:
 
 ```elixir
 # Example tool error
-%AxonCore.Error.ToolError{
+%SynapseCore.Error.ToolError{
   message: "Tool parameter validation failed",
   reason: :validation_failed,
   context: %{
@@ -243,7 +243,7 @@ Axon provides comprehensive error handling through structured error types:
    ```
    **Solution**:
    - Verify Python service is running
-   - Check logs: `_build/dev/lib/axon_core/priv/python/.venv/logs/`
+   - Check logs: `_build/dev/lib/synapse_core/priv/python/.venv/logs/`
    - Restart the application
 
 3. **Tool Execution Error**
@@ -272,7 +272,7 @@ Axon provides comprehensive error handling through structured error types:
    # Kill process
    sudo kill -9 <PID>
    # Or change port in config
-   config :axon_core, :http_port, 8001
+   config :synapse_core, :http_port, 8001
    ```
 
 2. **Firewall Blocks**
@@ -354,7 +354,7 @@ Axon provides comprehensive error handling through structured error types:
    - Check system memory: `free -h`
    - Adjust memory limits:
    ```elixir
-   config :axon_core, :memory_limit, "4G"
+   config :synapse_core, :memory_limit, "4G"
    ```
    - Enable swap if needed:
    ```bash
@@ -372,7 +372,7 @@ Axon provides comprehensive error handling through structured error types:
    - Check CPU usage: `top`
    - Adjust timeouts:
    ```elixir
-   config :axon_core, :execution_timeout, 60_000
+   config :synapse_core, :execution_timeout, 60_000
    ```
    - Consider process nice values:
    ```bash
@@ -388,7 +388,7 @@ Axon provides comprehensive error handling through structured error types:
    - Check disk usage: `df -h`
    - Clean old logs:
    ```bash
-   find _build/dev/lib/axon_core/log -mtime +7 -delete
+   find _build/dev/lib/synapse_core/log -mtime +7 -delete
    ```
    - Rotate logs:
    ```elixir
@@ -417,7 +417,7 @@ Axon provides comprehensive error handling through structured error types:
    **Solution**:
    ```elixir
    # Reset agent state
-   AxonCore.PydanticAgentProcess.reset_state("agent_name")
+   SynapseCore.PydanticAgentProcess.reset_state("agent_name")
    ```
 
 3. **Deadlocks**
@@ -432,7 +432,7 @@ Axon provides comprehensive error handling through structured error types:
    ```
    - Force release locks:
    ```elixir
-   AxonCore.PydanticAgentProcess.force_unlock("agent_name")
+   SynapseCore.PydanticAgentProcess.force_unlock("agent_name")
    ```
 
 ### Integration Issues
@@ -445,8 +445,8 @@ Axon provides comprehensive error handling through structured error types:
    **Solution**:
    - Check versions:
    ```elixir
-   AxonCore.version()
-   AxonCore.PythonEnvManager.get_package_version("pydantic")
+   SynapseCore.version()
+   SynapseCore.PythonEnvManager.get_package_version("pydantic")
    ```
    - Update dependencies:
    ```bash
@@ -462,7 +462,7 @@ Axon provides comprehensive error handling through structured error types:
    **Solution**:
    ```elixir
    # Force encoding
-   config :axon_core, :force_encoding, "UTF-8"
+   config :synapse_core, :force_encoding, "UTF-8"
    ```
 
 3. **Schema Validation**
@@ -473,11 +473,11 @@ Axon provides comprehensive error handling through structured error types:
    **Solution**:
    - Debug schema:
    ```elixir
-   AxonCore.PydanticToolRegistry.debug_schema("tool_name")
+   SynapseCore.PydanticToolRegistry.debug_schema("tool_name")
    ```
    - Update schema:
    ```elixir
-   AxonCore.PydanticToolRegistry.update_schema("tool_name", schema)
+   SynapseCore.PydanticToolRegistry.update_schema("tool_name", schema)
    ```
 
 ## Best Practices
@@ -509,10 +509,10 @@ The integration provides several tools for monitoring and debugging:
 1. **Status Checks**
 ```elixir
 # Get system status
-status = AxonCore.PydanticSupervisor.status()
+status = SynapseCore.PydanticSupervisor.status()
 
 # List running agents
-agents = AxonCore.PydanticSupervisor.list_agents()
+agents = SynapseCore.PydanticSupervisor.list_agents()
 ```
 
 2. **Logging**
@@ -531,7 +531,7 @@ The integration can be configured through application config:
 
 ```elixir
 # config/config.exs
-config :axon_core, :pydantic,
+config :synapse_core, :pydantic,
   http_client: [
     pool_size: 50,
     connect_timeout: 5_000,
@@ -579,16 +579,16 @@ config :axon_core, :pydantic,
 1. **Error Logging**
    ```elixir
    # Log with context
-   AxonCore.Error.log_error(error, severity: :error, include_stacktrace: true)
+   SynapseCore.Error.log_error(error, severity: :error, include_stacktrace: true)
    ```
 
 2. **Error Formatting**
    ```elixir
    # Format for display
-   AxonCore.Error.format_error(error, include_stacktrace: false)
+   SynapseCore.Error.format_error(error, include_stacktrace: false)
    ```
 
 3. **Log Locations**
-   - Elixir logs: `_build/dev/lib/axon_core/log/`
-   - Python logs: `_build/dev/lib/axon_core/priv/python/.venv/logs/`
-   - HTTP logs: `_build/dev/lib/axon_core/log/http.log`
+   - Elixir logs: `_build/dev/lib/synapse_core/log/`
+   - Python logs: `_build/dev/lib/synapse_core/priv/python/.venv/logs/`
+   - HTTP logs: `_build/dev/lib/synapse_core/log/http.log`

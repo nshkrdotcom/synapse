@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from pydantic_ai import Agent
 from pydantic_ai.message import SystemPromptPart, TextPart, UserPromptPart
 
-from axon_python.pydantic_agent_wrapper import (
+from synapse_python.pydantic_agent_wrapper import (
     AgentConfig,
     AgentError,
     AgentNotFoundError,

@@ -1,4 +1,4 @@
-You're right to emphasize the deep integration with Pydantic in `pydantic-ai` and the challenges and opportunities that presents for our Elixir-centric Axon framework. Let's delve into those aspects.
+You're right to emphasize the deep integration with Pydantic in `pydantic-ai` and the challenges and opportunities that presents for our Elixir-centric Synapse framework. Let's delve into those aspects.
 
 **1. Pydantic Integration in `pydantic-ai`**
 
@@ -121,9 +121,9 @@ Given these challenges, here's a more detailed look at how we can achieve a deep
 
 **Example Integration with `bank_support.py`:**
 
-Let's see how we can integrate the `bank_support.py` example into Axon, illustrating the concepts we've discussed.
+Let's see how we can integrate the `bank_support.py` example into Synapse, illustrating the concepts we've discussed.
 
-**1. Python Agent (`axon_python/src/axon_python/agents/bank_support_agent.py`):**
+**1. Python Agent (`synapse_python/src/synapse_python/agents/bank_support_agent.py`):**
 
 ```python
 from dataclasses import dataclass
@@ -145,7 +145,7 @@ class SupportResult(BaseModel):  # (13)!
 
 # Get model from environment variable
 import os
-model_name = os.environ.get("AXON_PYTHON_AGENT_MODEL")
+model_name = os.environ.get("SYNAPSE_PYTHON_AGENT_MODEL")
 
 support_agent = Agent(  # (1)!
     model_name,  # (2)!
@@ -162,11 +162,11 @@ support_agent = Agent(  # (1)!
 
 ```elixir
 defmodule MyApp.AgentWorkflow do
-  use Axon.Workflow
+  use Synapse.Workflow
 
   agent(:bank_support_agent,
     module: "bank_support_agent",
-    model: {:system, "AXON_PYTHON_AGENT_MODEL"},
+    model: {:system, "SYNAPSE_PYTHON_AGENT_MODEL"},
     system_prompt: "You are a support agent in our bank...",
     tools: [
       %{
@@ -194,7 +194,7 @@ end
 **3. Elixir `AgentProcess` (Simplified):**
 
 ```elixir
-defmodule AxonCore.AgentProcess do
+defmodule SynapseCore.AgentProcess do
   use GenServer
 
   # ...

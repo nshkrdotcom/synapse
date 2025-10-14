@@ -28,7 +28,7 @@
 ```elixir
 # Add to your supervision tree
 children = [
-  AxonCore.PydanticToolRegistry
+  SynapseCore.PydanticToolRegistry
 ]
 
 Supervisor.start_link(children, strategy: :one_for_one)
@@ -38,7 +38,7 @@ Supervisor.start_link(children, strategy: :one_for_one)
 
 ```elixir
 # Register a simple tool
-:ok = AxonCore.PydanticToolRegistry.register_tool(%{
+:ok = SynapseCore.PydanticToolRegistry.register_tool(%{
   name: "greet",
   description: "Greets a person",
   parameters: %{
@@ -52,7 +52,7 @@ Supervisor.start_link(children, strategy: :one_for_one)
 })
 
 # Register a module-based tool
-:ok = AxonCore.PydanticToolRegistry.register_tool(%{
+:ok = SynapseCore.PydanticToolRegistry.register_tool(%{
   name: "fetch_data",
   description: "Fetches data from a source",
   parameters: %{
@@ -71,16 +71,16 @@ Supervisor.start_link(children, strategy: :one_for_one)
 
 ```elixir
 # Execute a tool
-{:ok, result} = AxonCore.PydanticToolRegistry.execute_tool(
+{:ok, result} = SynapseCore.PydanticToolRegistry.execute_tool(
   "greet",
   %{"name" => "Alice"}
 )
 
 # List available tools
-tools = AxonCore.PydanticToolRegistry.list_tools()
+tools = SynapseCore.PydanticToolRegistry.list_tools()
 
 # Get tool information
-{:ok, tool} = AxonCore.PydanticToolRegistry.get_tool("greet")
+{:ok, tool} = SynapseCore.PydanticToolRegistry.get_tool("greet")
 ```
 
 ## Tool Configuration
@@ -151,9 +151,9 @@ The registry provides detailed error information:
 The registry emits telemetry events:
 
 ```elixir
-[:axon, :tool, :execute, :start]
-[:axon, :tool, :execute, :stop]
-[:axon, :tool, :execute, :exception]
+[:synapse, :tool, :execute, :start]
+[:synapse, :tool, :execute, :stop]
+[:synapse, :tool, :execute, :exception]
 ```
 
 ## Common Issues and Solutions
@@ -208,7 +208,7 @@ defmodule MyApp.AsyncTool do
 end
 
 # Register async tool
-:ok = AxonCore.PydanticToolRegistry.register_tool(%{
+:ok = SynapseCore.PydanticToolRegistry.register_tool(%{
   name: "async_tool",
   description: "An async tool",
   parameters: %{
@@ -229,7 +229,7 @@ defmodule MyApp.ComposedTool do
   def handle(%{"steps" => steps}) do
     steps
     |> Enum.reduce_while({:ok, nil}, fn step, {:ok, acc} ->
-      case AxonCore.PydanticToolRegistry.execute_tool(
+      case SynapseCore.PydanticToolRegistry.execute_tool(
         step["tool"],
         Map.put(step["args"], "_previous", acc)
       ) do

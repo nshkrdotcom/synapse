@@ -2,7 +2,7 @@
 
 ## Overview
 
-`PydanticAgentProcess` is the core component that manages individual AI agents in the Axon framework. It handles the complete lifecycle of an agent, from initialization to shutdown, and manages all communication between Elixir and the Python-based pydantic-ai agent.
+`PydanticAgentProcess` is the core component that manages individual AI agents in the Synapse framework. It handles the complete lifecycle of an agent, from initialization to shutdown, and manages all communication between Elixir and the Python-based pydantic-ai agent.
 
 ## Architecture
 
@@ -56,14 +56,14 @@ config = %{
   }
 }
 
-{:ok, pid} = AxonCore.PydanticAgentProcess.start_link(config)
+{:ok, pid} = SynapseCore.PydanticAgentProcess.start_link(config)
 ```
 
 ### Running Commands
 
 ```elixir
 # Synchronous execution
-{:ok, result} = AxonCore.PydanticAgentProcess.run(
+{:ok, result} = SynapseCore.PydanticAgentProcess.run(
   "my_agent",
   "Hello!",
   [], # message history
@@ -71,13 +71,13 @@ config = %{
 )
 
 # Streaming execution
-{:ok, stream_pid} = AxonCore.PydanticAgentProcess.run_stream(
+{:ok, stream_pid} = SynapseCore.PydanticAgentProcess.run_stream(
   "my_agent",
   "Tell me a story."
 )
 
 # Tool calling
-{:ok, result} = AxonCore.PydanticAgentProcess.call_tool(
+{:ok, result} = SynapseCore.PydanticAgentProcess.call_tool(
   "my_agent",
   "my_tool",
   %{"input" => "test"}
@@ -133,7 +133,7 @@ The process maintains the following state:
 The process can be configured through application config:
 
 ```elixir
-config :axon_core, :pydantic_agent,
+config :synapse_core, :pydantic_agent,
   default_timeout: 60_000,
   retry_attempts: 3,
   retry_delay: 1000
@@ -144,9 +144,9 @@ config :axon_core, :pydantic_agent,
 The process emits telemetry events for monitoring:
 
 ```elixir
-[:axon, :agent, :request, :start]
-[:axon, :agent, :request, :stop]
-[:axon, :agent, :request, :exception]
+[:synapse, :agent, :request, :start]
+[:synapse, :agent, :request, :stop]
+[:synapse, :agent, :request, :exception]
 ```
 
 ## Best Practices

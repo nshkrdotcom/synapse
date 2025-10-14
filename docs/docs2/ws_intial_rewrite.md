@@ -1,49 +1,49 @@
-# Axon Pydantic-AI Integration Files
+# Synapse Pydantic-AI Integration Files
 
-This document provides an overview of all files created for the Axon Pydantic-AI integration.
+This document provides an overview of all files created for the Synapse Pydantic-AI integration.
 
 ## Core Components
 
 ### Elixir Components
 
-1. **Agent Process** (`apps/axon_core/lib/axon_core/pydantic_agent_process.ex`)
+1. **Agent Process** (`apps/synapse_core/lib/synapse_core/pydantic_agent_process.ex`)
    - Core component for managing AI agents
    - Handles lifecycle and message passing
    - Manages state and error handling
 
-2. **HTTP Client** (`apps/axon_core/lib/axon_core/pydantic_http_client.ex`)
+2. **HTTP Client** (`apps/synapse_core/lib/synapse_core/pydantic_http_client.ex`)
    - Handles communication with Python agents
    - Built on Finch for better performance
    - Supports both sync and streaming requests
 
-3. **Tool Registry** (`apps/axon_core/lib/axon_core/pydantic_tool_registry.ex`)
+3. **Tool Registry** (`apps/synapse_core/lib/synapse_core/pydantic_tool_registry.ex`)
    - Manages and executes tools
    - Handles tool validation
    - Provides tool discovery
 
-4. **Supervisor** (`apps/axon_core/lib/axon_core/pydantic_supervisor.ex`)
+4. **Supervisor** (`apps/synapse_core/lib/synapse_core/pydantic_supervisor.ex`)
    - Manages component lifecycles
    - Provides fault tolerance
    - Handles dynamic agent creation
 
-5. **JSON Codec** (`apps/axon_core/lib/axon_core/pydantic_json_codec.ex`)
+5. **JSON Codec** (`apps/synapse_core/lib/synapse_core/pydantic_json_codec.ex`)
    - Handles JSON encoding/decoding
    - Manages datetime serialization
    - Converts string keys to atoms safely
 
 ### Python Components
 
-1. **Agent Wrapper** (`apps/axon_python/src/axon_python/pydantic_agent_wrapper.py`)
+1. **Agent Wrapper** (`apps/synapse_python/src/synapse_python/pydantic_agent_wrapper.py`)
    - FastAPI service for pydantic-ai agents
    - Handles HTTP endpoints
    - Manages agent lifecycle
 
-2. **Translation Agent** (`apps/axon_python/src/axon_python/agents/translation_agent.py`)
+2. **Translation Agent** (`apps/synapse_python/src/synapse_python/agents/translation_agent.py`)
    - Example agent implementation
    - Demonstrates basic agent setup
    - Shows tool usage
 
-3. **Research Agent** (`apps/axon_python/src/axon_python/agents/research_agent.py`)
+3. **Research Agent** (`apps/synapse_python/src/synapse_python/agents/research_agent.py`)
    - Complex agent example
    - Shows tool chaining
    - Demonstrates streaming
@@ -62,12 +62,12 @@ This document provides an overview of all files created for the Axon Pydantic-AI
 
 ## Tests
 
-1. **Integration Tests** (`apps/axon_core/test/integration/pydantic_integration_test.exs`)
+1. **Integration Tests** (`apps/synapse_core/test/integration/pydantic_integration_test.exs`)
    - Complete system testing
    - Covers all components
    - Tests error cases
 
-2. **Python Tests** (`apps/axon_python/tests/test_pydantic_agent_wrapper.py`)
+2. **Python Tests** (`apps/synapse_python/tests/test_pydantic_agent_wrapper.py`)
    - Tests Python components
    - Covers HTTP endpoints
    - Tests agent functionality
@@ -104,7 +104,7 @@ This document provides an overview of all files created for the Axon Pydantic-AI
 1. Add components to your supervision tree:
 ```elixir
 children = [
-  AxonCore.PydanticSupervisor
+  SynapseCore.PydanticSupervisor
 ]
 
 Supervisor.start_link(children, strategy: :one_for_one)
@@ -119,12 +119,12 @@ config = %{
   system_prompt: "You are a helpful assistant."
 }
 
-{:ok, pid} = AxonCore.PydanticSupervisor.start_agent(config)
+{:ok, pid} = SynapseCore.PydanticSupervisor.start_agent(config)
 ```
 
 3. Use the agent:
 ```elixir
-{:ok, result} = AxonCore.PydanticAgentProcess.run(
+{:ok, result} = SynapseCore.PydanticAgentProcess.run(
   "my_agent",
   "Translate 'Hello' to Spanish"
 )
