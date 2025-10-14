@@ -1,4 +1,11 @@
+<p align="center">
+  <img src="assets/synapse.svg" alt="Synapse Logo" width="150"/>
+</p>
+
 # Synapse: Elixir-Powered AI Agent Orchestration
+
+[![Hex.pm](https://img.shields.io/hexpm/v/synapse_core.svg)](https://hex.pm/packages/synapse_core)
+[![License](https://img.shields.io/hexpm/l/synapse_core.svg)](https://github.com/nshkrdotcom/synapse/blob/main/LICENSE)
 
 ## Overview
 
@@ -15,61 +22,14 @@ Synapse draws inspiration from `pydantic-ai`, a Python library that combines the
 *   **Extensibility:** Allow for the integration of various LLMs, vector databases, and other AI tools through a modular architecture.
 *   **Observability:** Offer robust monitoring, logging, and tracing capabilities to understand the behavior of complex agent interactions.
 
-## Structure
-
-Synapse follows an umbrella project structure, similar in style to `cf_ex`, with the following applications:
-
-*   **`synapse_core`:** The core Elixir library. It contains modules for:
-    *   Agent supervision and lifecycle management.
-    *   HTTP communication with Python (and potentially other) agents.
-    *   JSON encoding/decoding for data exchange.
-    *   Common typespecs and utilities.
-*   **`synapse`:** A Phoenix application providing a web interface and API for interacting with the Synapse system. This component will make heavy use of our `cf_ex` library for improved Cloudflare integration.
-*   **`synapse_python`:** A dedicated application for managing the integration with Python-based agents. It includes:
-    *   A FastAPI wrapper (`agent_wrapper.py`) to expose `pydantic-ai` agents as HTTP endpoints.
-    *   Example `pydantic-ai` agent implementations.
-    *   Elixir modules for spawning and communicating with Python processes.
-
-## Getting Started
-
-### Prerequisites
-
-- Elixir 1.14 or higher
-- Python 3.10 or higher
-- Git
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/nshkrdotcom/synapse.git
-cd synapse
-```
-2.  **Dependency Management:** Synapse uses Elixir to manage Python dependencies via Poetry. The `setup.exs` script handles all dependencies for both Elixir and Python.
-3. Run the verification script to check your environment and install dependencies:
-```bash
-./verify_setup.exs
-```
-4. Start the Elixir shell:
-```bash
-iex -S mix
-```
-Now you're ready to start using Synapse! See the examples below to get started.
-
 ## Installation
+
+The package can be installed by adding `synapse_core` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:synapse_core, in_umbrella: true},
-    {:synapse, in_umbrella: true},
-    {:synapse_python, in_umbrella: true},
-    {:jason, "~> 1.4"}, # Or another JSON library
-    {:req, "~> 0.4"} # Or another HTTP client
-    # Consider adding Finch for improved performance later
-    # Optional:
-    # {:ecto_sql, "~> 3.9"}, # If using Ecto for persistence
-    # {:postgrex, ">= 0.0.0"} # If using Postgres
+    {:synapse_core, "~> 0.1.0"}
   ]
 end
 ```
