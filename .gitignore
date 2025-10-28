@@ -57,3 +57,6 @@ priv/
 
 # ALTAR repository
 /ALTAR/
+
+# Synapse Phoenix subdirectory
+/synapse/
