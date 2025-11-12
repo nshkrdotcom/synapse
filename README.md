@@ -5,6 +5,9 @@
 # Synapse
 
 [![Hex.pm](https://img.shields.io/hexpm/v/synapse.svg)](https://hex.pm/packages/synapse)
+[![HexDocs](https://img.shields.io/badge/docs-hexdocs.pm-blue.svg)](https://hexdocs.pm/synapse)
+[![Downloads](https://img.shields.io/hexpm/dt/synapse.svg)](https://hex.pm/packages/synapse)
+[![Elixir](https://img.shields.io/badge/elixir-~%3E%201.15-purple.svg)](https://elixir-lang.org/)
 [![License](https://img.shields.io/hexpm/l/synapse.svg)](LICENSE)
 
 Version: v0.1.0 (2025-11-11)

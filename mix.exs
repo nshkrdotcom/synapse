@@ -110,7 +110,8 @@ defmodule Synapse.MixProject do
     [
       main: "readme",
       source_ref: "v0.1.0",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"]
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      assets: %{"assets" => "assets"}
     ]
   end
 end
