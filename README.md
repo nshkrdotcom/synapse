@@ -126,6 +126,120 @@ Example snippet:
 
 On boot, the orchestrator runtime validates configs, spawns any missing agents, and monitors process health. Update the file and trigger a reload to reconcile changes.
 
+## Declarative Workflow Engine
+
+The workflow engine executes declarative specs (steps + dependencies) with retries, compensation, and telemetry. It powers specialist runs and the coordinator paths while giving you a uniform audit trail and optional Postgres persistence.
+
+Key pieces
+
+- Spec: `Synapse.Workflow.Spec` with `Step` and `Output` helpers
+- Engine: `Synapse.Workflow.Engine.execute/2` runs the spec and emits telemetry
+- Persistence (optional): snapshots to `workflow_executions` via `Synapse.Workflow.Persistence`
+
+Minimal example
+
+```elixir
+alias Synapse.Workflow.{Spec, Engine}
+alias Synapse.Workflow.Spec.Step
+
+spec =
+  Spec.new(
+    name: :example_workflow,
+    description: "Analyze and generate critique with retries",
+    metadata: %{version: 1},
+    steps: [
+      Step.new(
+        id: :fetch_context,
+        action: MyApp.Actions.FetchContext,
+        # env = %{input, results, context, step, workflow}
+        params: fn env -> %{id: env.input.review_id} end
+      ),
+      Step.new(
+        id: :analyze,
+        action: Synapse.Actions.CriticReview,
+        requires: [:fetch_context],
+        retry: [max_attempts: 3, backoff: 200],
+        on_error: :continue,
+        params: fn env -> %{diff: env.input.diff, metadata: env.results.fetch_context} end
+      ),
+      Step.new(
+        id: :generate_critique,
+        action: Synapse.Actions.GenerateCritique,
+        requires: [:analyze],
+        params: fn env ->
+          review = env.results.analyze
+          %{
+            prompt: "Summarize issues",
+            messages: [%{role: "user", content: Enum.join(review.issues || [], ", ")}],
+            profile: :openai
+          }
+        end
+      )
+    ],
+    outputs: [
+      Spec.output(:review, from: :analyze),
+      Spec.output(:critique, from: :generate_critique, path: [:content])
+    ]
+  )
+
+input = %{review_id: "PR-42", diff: "..."}
+ctx = %{request_id: "req_abc123"} # required when persistence is enabled
+
+case Engine.execute(spec, input: input, context: ctx) do
+  {:ok, %{results: _results, outputs: outputs, audit_trail: audit}} ->
+    IO.inspect(outputs.critique, label: "Critique")
+    IO.inspect(audit.steps, label: "Audit trail")
+
+  {:error, %{failed_step: step, error: error, audit_trail: audit}} ->
+    IO.inspect({step, error}, label: "Workflow failed")
+    IO.inspect(audit.steps, label: "Audit trail")
+end
+```
+
+Parameters and env
+
+- Step params may be a map/keyword, or a function `fn env -> ... end` where `env` includes `:input`, `:results`, `:context`, `:step`, and `:workflow`.
+- Steps support `requires: [:other_step]`, `retry: [max_attempts:, backoff:]`, and `on_error: :halt | :continue`.
+- Outputs map step results to the final payload; `path` lets you pick nested fields; `transform` is available for custom shaping.
+
+Persistence
+
+- Dev config enables persistence by default: see `config/config.exs` for `config :synapse, Synapse.Workflow.Engine, persistence: {Synapse.Workflow.Persistence.Postgres, []}`.
+- When persistence is enabled, you must provide a `:request_id` in `context`; the engine will snapshot before/after steps to `workflow_executions`.
+- You can override per call: `Engine.execute(spec, input: ..., context: ..., persistence: nil)`.
+
+Telemetry
+
+- Emits `[:synapse, :workflow, :step, :start|:stop|:exception]` with metadata like `:workflow`, `:workflow_step`, `:workflow_attempt`.
+- Example handler:
+
+```elixir
+:telemetry.attach(
+  "wf-logger",
+  [[:synapse, :workflow, :step, :stop]],
+  fn _evt, m, meta, _ ->
+    require Logger
+    Logger.info("step done",
+      workflow: meta.workflow,
+      step: meta.workflow_step,
+      attempt: meta.workflow_attempt,
+      duration_us: m.duration_us
+    )
+  end,
+  nil
+)
+```
+
+Error and result shapes
+
+- Success: `{:ok, %{results: map(), outputs: map(), audit_trail: map()}}`
+- Failure: `{:error, %{failed_step: atom(), error: term(), attempts: pos_integer(), results: map(), audit_trail: map()}}`
+
+Further reading
+
+- Cookbook: `docs_new/workflows/engine.md`
+- ADR: `docs_new/adr/0004-declarative-workflow-engine.md`
+
 ## LLM Providers (Req)
 
 Synapse uses `Req` for HTTP and provides a multi‑provider LLM gateway. Configure at runtime via environment:
