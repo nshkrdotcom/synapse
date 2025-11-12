@@ -1,59 +1,29 @@
-import Config
-
-# config :grpc,
-#   start_server: true,
-#   services: [
-#     SynapseCore.AgentGrpcServer
-#   ]
-
-config :synapse_core,
-  # Add any necessary configuration here for your application
-  # For example, you can define the default port for your Phoenix application
-  # http: [port: 49949],
-
-  # Configure Finch
-  # config :synapse_core, :finch,
-  #   name: SynapseFinch,
-  #   pools: %{
-  #     :default => [size: 10]
-  #   }
-
-  # ... other configurations ...
-
-  # config :synapse_core,
-  python_min_version: "3.10.0",
-  python_max_version: "3.13.0",
-  python_venv_path: ".venv",
-  python_requirements_path: "requirements.txt",
-  python_module_path: "script/src",
-  python_env: %{
-    # Path to the Python executable, using the virtual environment's Python
-    python_path:
-      Path.join([System.get_env("HOME"), ".cache", "synapse", ".venv", "bin", "python"])
-  }
+# This file is responsible for configuring your application
+# and its dependencies with the aid of the Config module.
+#
+# This configuration file is loaded before any dependency and
+# is restricted to this project.
 
 # General application configuration
-# config :logger,
-# level: :debug,
-# backends: [:console],
-# format: "$time $metadata[$level] $message\n",
-# metadata: [:request_id]
+import Config
 
-config :logger,
-  level: :debug,
-  truncate: :infinity,
+config :synapse,
+  ecto_repos: [Synapse.Repo],
+  generators: [timestamp_type: :utc_datetime]
+
+config :synapse, Synapse.Workflow.Engine, persistence: {Synapse.Workflow.Persistence.Postgres, []}
+
+config :synapse, Synapse.Orchestrator.Runtime,
+  enabled: config_env() != :test,
+  config_source: {:priv, "orchestrator_agents.exs"},
+  include_types: :all,
+  reconcile_interval: 1_000
+
+# Configures Elixir's Logger
+config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [request_id: nil, trace_id: nil],
-  backends: [:console],
-  compile_time_purge_matching: [
-    [level_lower_than: :info]
-  ]
+  metadata: [:request_id]
 
-config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [request_id: nil, trace_id: nil]
-
-# Finch configuration
-config :finch,
-  # Define a default pool for HTTP connections
-  default_pool: [size: 10]
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{config_env()}.exs"

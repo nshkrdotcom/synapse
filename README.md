@@ -2,135 +2,204 @@
   <img src="assets/synapse.svg" alt="Synapse Logo" width="150"/>
 </p>
 
-# Synapse: Elixir-Powered AI Agent Orchestration
+# Synapse
 
-[![Hex.pm](https://img.shields.io/hexpm/v/synapse_core.svg)](https://hex.pm/packages/synapse_core)
-[![License](https://img.shields.io/hexpm/l/synapse_core.svg)](https://github.com/nshkrdotcom/synapse/blob/main/LICENSE)
+[![Hex.pm](https://img.shields.io/hexpm/v/synapse.svg)](https://hex.pm/packages/synapse)
+[![License](https://img.shields.io/hexpm/l/synapse.svg)](LICENSE)
 
-## Overview
+Version: v0.1.0 (2025-11-11)
 
-**Synapse** is a robust and scalable AI agent orchestration framework built on the power of Elixir and the BEAM VM. It leverages the strengths of **Erlang/OTP** for concurrency, fault tolerance, and distributed computing to manage and coordinate a network of AI agents. While providing first-class integration with Python, Synapse is designed to support polyglot architectures, empowering developers to build sophisticated, multi-agent systems that harness the best of both worlds.
+Synapse is a headless, declarative multi‑agent runtime for code review orchestration. It exposes a signal bus API (`Synapse.SignalRouter`) and a workflow engine with Postgres persistence so you can submit review work, fan it out to specialists, negotiate conflicts, and consume structured summaries — all without a Phoenix UI.
 
-Synapse draws inspiration from `pydantic-ai`, a Python library that combines the structured data validation of Pydantic with the dynamic capabilities of LLMs. However, Synapse is not merely a port; it's a reimagining of agent orchestration in the context of Elixir's unique capabilities.
+Highlights
 
-## Core Principles
+- Declarative orchestrator runtime (no GenServer boilerplate)
+- Signal bus with typed topics and contract enforcement
+- Specialist agents defined via actions + `state_schema`
+- Workflow engine with persistence and audit trail (`workflow_executions`)
+- LLM gateway powered by `Req` with OpenAI and Gemini providers
+- Telemetry throughout (router, workflows, LLM requests)
 
-*   **Elixir-First Orchestration:** Elixir's OTP principles (supervision trees, GenServers, message passing) form the foundation of Synapse's agent management.
-*   **Polyglot Design:** Seamlessly integrate Python agents (built with `pydantic-ai` or other frameworks) and potentially other languages, taking advantage of their specific strengths.
-*   **Scalability and Fault Tolerance:** Leverage the BEAM VM's inherent capabilities to build systems that can scale effortlessly and gracefully handle failures.
-*   **Developer Ergonomics:** Provide a clean, Elixir-idiomatic API for defining, managing, and interacting with agents.
-*   **Extensibility:** Allow for the integration of various LLMs, vector databases, and other AI tools through a modular architecture.
-*   **Observability:** Offer robust monitoring, logging, and tracing capabilities to understand the behavior of complex agent interactions.
+## Quick Start
 
-## Installation
+1. **Install dependencies**
 
-The package can be installed by adding `synapse_core` to your list of dependencies in `mix.exs`:
+   ```bash
+   mix setup
+   ```
+
+2. **Create and migrate the database**
+
+   By default, dev connects to `postgres://postgres:postgres@localhost:5432/synapse_dev`. Override via `POSTGRES_*` env vars (see config/dev.exs).
+
+   ```bash
+   mix ecto.create
+   mix ecto.migrate
+   ```
+
+3. **Run the Stage 2 demo (optional sanity check)**
+
+   ```bash
+   mix run examples/stage2_demo.exs
+   ```
+
+   This boots the runtime, publishes a review request, and prints the resulting summary so you can see the declarative orchestrator in action.
+
+4. **Start the runtime for development**
+
+   ```bash
+   iex -S mix
+   ```
+
+   This boots `Synapse.Runtime`, the signal router, the orchestrator runtime (reading `priv/orchestrator_agents.exs`), and the workflow engine with Postgres persistence. The application is OTP‑only — no Phoenix endpoint is required.
+
+## Submit a Review Request
+
+Publish a `:review_request` signal from CI, a script, or an iex session:
 
 ```elixir
-def deps do
-  [
-    {:synapse_core, "~> 0.1.0"}
-  ]
-end
-```
-
-## Usage (Conceptual Examples)
-
-**Defining an Agent Workflow in Elixir:**
-
-```elixir
-# lib/my_app/agent_workflow.ex
-
-defmodule MyApp.AgentWorkflow do
-  use Synapse.Workflow
-
-  agent(:python_agent_1, 
-      module: "python_agent_1", 
-      model: "openai:gpt-4o",
-      system_prompt: "You are a helpful assistant that translates English to French.",
-    tools: [
-        %{
-        name: "some_tool",
-        description: "A simple tool that takes a string and an integer as input.",
-        parameters: %{
-            "type" => "object",
-            "properties" => %{
-            "arg1" => %{"type" => "string"},
-            "arg2" => %{"type" => "integer"}
-            },
-            "required" => ["arg1", "arg2"]  # If both are required
-        },
-        handler: {:python, module: "example_agent", function: "some_tool"}
-        }
-    ],
-      result_type: %{
-        translation: :string
-      },
-      retries: 3
-      )
-
-  agent(:python_agent_2,
-    module: "python_agent_2",
-    model: "gemini-1.5-flash",
-    system_prompt: "You are a summarization expert.",
-    deps: %{api_key: "your_gemini_api_key"} # Example of passing dependencies
+{:ok, _signal} =
+  Synapse.SignalRouter.publish(
+    Synapse.SignalRouter,
+    :review_request,
+    %{
+      review_id: "PR-12345",
+      diff: git_diff,
+      files_changed: 12,
+      labels: ["security"],
+      intent: "feature",
+      metadata: %{repo: "org/app", author: "alice", files: touched_paths}
+    },
+    source: "/ci/github"
   )
+```
 
-  # Define connections/message routing between agents
-  flow do
-    python_agent_1 |> python_agent_2
-  end
+The coordinator workflow classifies the request, spawns security/performance specialists as needed, and persists every step to `workflow_executions`.
+
+## Consume Results
+
+Subscribe to summaries if you want push-style notifications:
+
+```elixir
+{:ok, _sub_id} = Synapse.SignalRouter.subscribe(Synapse.SignalRouter, :review_summary)
+
+receive do
+  {:signal, %{type: "review.summary", data: summary}} ->
+    IO.inspect(summary, label: "Review complete")
 end
 ```
 
-**Interacting with Agents via the Phoenix API:**
+Or query Postgres for historical/auditable data:
+
+```elixir
+Synapse.Workflow.Execution
+|> where(review_id: "PR-12345")
+|> Synapse.Repo.one!()
+```
+
+Each execution record includes the workflow name, step-by-step audit trail, accumulated results, and the final status, so you can drive dashboards or rerun failed work.
+
+## Orchestrator & Specialists
+
+Specialists and the coordinator are declared in `priv/orchestrator_agents.exs` and are reconciled and run by `Synapse.Orchestrator.Runtime`. Update this file to add or tune agents — no GenServer code needed.
+
+Example snippet:
+
+```elixir
+%{
+  id: :coordinator,
+  type: :orchestrator,
+  actions: [Synapse.Actions.Review.ClassifyChange],
+  orchestration: %{
+    classify_fn: &MyStrategies.classify/1,
+    spawn_specialists: [:security_specialist, :performance_specialist],
+    aggregation_fn: &MyStrategies.aggregate/2,
+    negotiate_fn: &MyStrategies.resolve_conflicts/2
+  },
+  signals: %{subscribes: [:review_request, :review_result], emits: [:review_summary]},
+  state_schema: [review_count: [type: :non_neg_integer, default: 0]]
+}
+```
+
+On boot, the orchestrator runtime validates configs, spawns any missing agents, and monitors process health. Update the file and trigger a reload to reconcile changes.
+
+## LLM Providers (Req)
+
+Synapse uses `Req` for HTTP and provides a multi‑provider LLM gateway. Configure at runtime via environment:
 
 ```bash
-# Send a request to `python_agent_1`
-curl -X POST http://localhost:4000/agents/python_agent_1/run_sync \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello, how are you?"}'
-
-# Example response
-# {"status": "success", "result": {"translation": "Bonjour, comment ça va?"}, "usage": {...}}
+export OPENAI_API_KEY=sk-...
+# or
+export GEMINI_API_KEY=ya29....
 ```
 
-**Example `pydantic-ai` Agent in Python:**
+Configuration is assembled in `config/runtime.exs`. Profiles support timeouts, retries, and provider‑specific options.
 
-```python
-# apps/synapse_python/lib/synapse_python/agents/python_agent_1.py
-from pydantic import BaseModel
-from pydantic_ai import Agent
+Example usage:
 
-class Input(BaseModel):
-    prompt: str
+```elixir
+{:ok, resp} =
+  Synapse.ReqLLM.chat_completion(%{
+    messages: [%{role: "user", content: "Summarize the following diff..."}],
+    temperature: 0.2
+  }, profile: :openai)
 
-class Output(BaseModel):
-    translation: str
-
-agent = Agent(
-    model="openai:gpt-4o",  # Or read from environment variable set by Elixir
-    result_type=Output,
-    system_prompt="You are a helpful assistant that translates English to French.",
-)
+resp.content     # normalized string content
+resp.metadata    # token usage, finish_reason, provider-specific details
 ```
 
-## Key Features and Considerations
+See: `lib/synapse/req_llm.ex`, `lib/synapse/providers/*`, and `docs_new/20251029/implementation/LLM_INTEGRATION.md`.
 
-*   **HTTP-Based Communication:** Initially using HTTP with JSON for simplicity and ease of debugging.
-*   **Pydantic-AI Integration:** Leverages the power of `pydantic-ai` for agent definition and LLM interaction on the Python side.
-*   **Elixir/OTP for Orchestration:** Utilizes Elixir's concurrency model and OTP principles for robust agent management.
-*   **Agent Lifecycle Management:** Elixir supervisors handle starting, stopping, and restarting Python agent processes.
-*   **Message Routing:** Elixir orchestrates the flow of messages between agents based on a defined workflow.
-*   **Configuration from Elixir:** All agent configuration is managed by Elixir and passed to the Python side.
-*   **Schema Validation:** Uses JSON Schema (or a similar mechanism) to define input/output schemas for agents and perform validation.
-*   **Extensible Design:** Allows for future integration of other LLMs, tools, and communication protocols (e.g., gRPC).
-*   **Streaming Support:** Designed with streaming in mind, although the initial implementation might use polling for simplicity.
+## Persistence
 
-## Why "Synapse"?
+- Adapter: `Synapse.Workflow.Persistence.Postgres`
+- Schema: `workflow_executions` (created by migration at `priv/repo/migrations/*_create_workflow_executions.exs`)
+- Test env disables persistence by default (`config/test.exs`)
 
-The name "Synapse" combines the "Ax" from "Elixir" with "on" to signify agents that are "on" and connected. It also evokes the biological synapse, which transmits signals in a neural network, reflecting the framework's role in connecting and orchestrating AI agents.
+Common tasks:
 
-## Conclusion
+```bash
+mix ecto.create
+mix ecto.migrate
+mix ecto.rollback
+```
 
-Synapse aims to be a unique and powerful addition to the AI ecosystem, combining the strengths of Elixir/OTP with the flexibility and rich ecosystem of Python and `pydantic-ai`. This README provides a starting point for the project, outlining the core concepts, structure, and initial design choices. As development progresses, the design and implementation details will be further refined. We will prioritize a simple and robust HTTP-based integration, allowing us to deliver a functional system quickly while keeping our options open for future performance optimizations and advanced features.
+Database configuration for dev can be overridden with `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`, `POSTGRES_POOL_SIZE`.
+
+## Telemetry
+
+- Signals: `[:synapse, :signal_router, :publish|:deliver]`
+- LLM: `[:synapse, :llm, :request, :start|:stop|:exception]`
+- Workflows/Orchestrator: see `docs_new/20251028/remediation/telemetry_documentation.md`
+
+Attach your own handlers using `:telemetry.attach/4`.
+
+## Tests
+
+Run the full suite with:
+
+```bash
+mix test
+```
+
+Dialyzer and other pre-commit checks are available via `mix precommit`.
+
+## Roadmap & Docs
+
+- Roadmap: `ROADMAP.md`
+- Orchestrator design and reference: `docs_new/20251028/synapse_orchestrator/README.md`
+- Multi‑agent framework docs: `docs_new/20251028/multi_agent_framework/README.md`
+- Workflow engine and persistence: `docs_new/workflows/engine.md` and ADRs in `docs_new/adr/`
+- Post‑Phoenix direction: `docs_new/20251109/README.md`
+
+## Changelog
+
+See `CHANGELOG.md`.
+
+## Tags
+
+elixir • otp • jido • req • multi‑agent • orchestrator • workflows • llm • openai • gemini • postgres • telemetry
+
+## License
+
+Licensed under MIT. See [LICENSE](LICENSE).

@@ -1,53 +1,116 @@
-defmodule SynapseCore.MixProject do
+defmodule Synapse.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :synapse_core,
+      app: :synapse,
       version: "0.1.0",
-      elixir: "~> 1.17",
-      build_embedded: Mix.env() == :prod,
+      elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      deps: deps(),
-      aliases: aliases(),
-      description: "Elixir-Powered AI Agent Orchestration",
+      name: "Synapse",
+      description: description(),
+      source_url: "https://github.com/nshkrdotcom/synapse",
+      homepage_url: "https://github.com/nshkrdotcom/synapse",
+      docs: docs(),
       package: package(),
-      maintainers: ["nshkrdotcom"]
+      aliases: aliases(),
+      deps: deps(),
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_add_apps: [:mix, :ex_unit],
+        ignore_warnings: "dialyzer.ignore-warnings.exs"
+      ]
     ]
   end
 
+  # Configuration for the OTP application.
+  #
+  # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {SynapseCore.Application, []},
+      mod: {Synapse.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test"]
-  defp elixirc_paths(_), do: ["lib"]
-
-  defp deps do
+  def cli do
     [
-      {:jason, "~> 1.4"},
-      {:protobuf, "~> 0.13.0"},
-      {:grpc, "~> 0.9.0"},
-      {:tesla, "~> 1.7"},
-      {:hackney, "~> 1.18"},
-      {:finch, "~> 0.16"}
+      preferred_envs: [precommit: :test]
     ]
   end
 
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # Specifies your project dependencies.
+  #
+  # Type `mix help deps` for examples and options.
+  defp deps do
+    [
+      {:gettext, "~> 0.26"},
+      {:jason, "~> 1.2"},
+      {:dns_cluster, "~> 0.2.0"},
+      {:bandit, "~> 1.5"},
+      {:ecto_sql, "~> 3.11"},
+      {:postgrex, "~> 0.17"},
+      {:jido, "~> 1.0"},
+      {:req, "~> 0.5"},
+      {:nimble_options, "~> 1.0"},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:supertester, "~> 0.2.1", only: :test},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  # For example, to install project dependencies and perform other setup tasks, run:
+  #
+  #     $ mix setup
+  #
+  # See the documentation for `Mix` for more info on aliases.
   defp aliases do
-    []
+    [
+      setup: ["deps.get"],
+      precommit: [
+        "compile --warning-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "dialyzer",
+        "test"
+      ]
+    ]
+  end
+
+  defp description do
+    "Declarative, headless multi-agent runtime for code review orchestration with signals, workflows, and Postgres persistence."
   end
 
   defp package do
     [
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/nshkrdotcom/synapse"
-      }
+        "GitHub" => "https://github.com/nshkrdotcom/synapse",
+        "Changelog" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.0/CHANGELOG.md",
+        "License" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.0/LICENSE"
+      },
+      files: [
+        "lib",
+        "priv",
+        "mix.exs",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ]
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "v0.1.0",
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"]
     ]
   end
 end

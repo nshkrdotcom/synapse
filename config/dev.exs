@@ -1,19 +1,14 @@
 import Config
 
-# Import the base configuration from config.exs
-import_config "config.exs"
+# Development repository configuration
+config :synapse, Synapse.Repo,
+  database: System.get_env("POSTGRES_DB", "synapse_dev"),
+  username: System.get_env("POSTGRES_USER", "postgres"),
+  password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+  hostname: System.get_env("POSTGRES_HOST", "localhost"),
+  port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
+  show_sensitive_data_on_connection_error: true,
+  pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))
 
-# Override config values for the development environment
-
-# Show more detailed logging in development
-config :logger, level: :debug
-
-# Configure the console backend to show all metadata
-config :logger, :console,
-  metadata: [:request_id, :trace_id]
-
-# If you are using Phoenix, you may want to enable code reloading
-# and other development-specific settings
-#
-# config :phoenix, :live_reload, [:code, :assets, :html]
-# config :phoenix, :logger, level: :debug
+# Verbose logging in development
+config :logger, :default_formatter, format: "[$level] $message\n"
