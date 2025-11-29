@@ -89,6 +89,7 @@ defmodule Synapse.SignalRouter do
   @spec subscribe(atom(), Signal.topic(), keyword()) ::
           {:ok, subscription_id()} | {:error, term()}
   def subscribe(router \\ __MODULE__, topic, opts \\ []) do
+    validate_topic!(topic)
     GenServer.call(router, {:subscribe, topic, opts})
   end
 
@@ -313,6 +314,14 @@ defmodule Synapse.SignalRouter do
 
   defp maybe_merge_metadata(map, meta) when meta in [nil, %{}], do: map
   defp maybe_merge_metadata(map, meta), do: Map.merge(map, meta)
+
+  defp validate_topic!(topic) do
+    if topic in Signal.topics() do
+      :ok
+    else
+      raise InvalidTopicError, topic: topic
+    end
+  end
 
   defp ensure_topic!(state, topic) do
     cond do

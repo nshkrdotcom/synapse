@@ -32,10 +32,18 @@ defmodule Synapse.Orchestrator.AgentConfig do
   @typedoc "Canonical signal topics used by the router"
   @type signal_topic :: Signal.topic()
 
+  @typedoc "Signal role mappings for orchestrators"
+  @type signal_roles :: %{
+          optional(:request) => signal_topic() | nil,
+          optional(:result) => signal_topic() | nil,
+          optional(:summary) => signal_topic() | nil
+        }
+
   @typedoc "Signal configuration normalised by the schema"
   @type signal_config :: %{
           subscribes: [signal_topic()],
-          emits: [signal_topic()]
+          emits: [signal_topic()],
+          roles: signal_roles() | nil
         }
 
   @typedoc "Orchestrator behaviour configuration"
@@ -152,7 +160,8 @@ defmodule Synapse.Orchestrator.AgentConfig do
 
   def new(config) when is_list(config) do
     with {:ok, validated} <- NimbleOptions.validate(config, schema()),
-         {:ok, coerced} <- enforce_archetype_rules(validated) do
+         {:ok, with_roles} <- apply_role_defaults(validated),
+         {:ok, coerced} <- enforce_archetype_rules(with_roles) do
       {:ok, struct(__MODULE__, Map.new(coerced))}
     end
   end
@@ -164,6 +173,31 @@ defmodule Synapse.Orchestrator.AgentConfig do
        message: "agent configuration must be provided as a map or keyword list",
        value: nil
      )}
+  end
+
+  defp apply_role_defaults(validated) do
+    type = Keyword.get(validated, :type)
+    signals = Keyword.get(validated, :signals, %{})
+
+    roles =
+      case {type, Map.get(signals, :roles)} do
+        {:orchestrator, nil} ->
+          infer_roles(signals.subscribes, signals.emits)
+
+        {:orchestrator, %{} = explicit} ->
+          explicit
+
+        {:specialist, nil} ->
+          nil
+
+        {:custom, nil} ->
+          nil
+
+        {_type, roles} ->
+          roles
+      end
+
+    {:ok, Keyword.put(validated, :signals, Map.put(signals, :roles, roles))}
   end
 
   defp enforce_archetype_rules(validated) do
@@ -203,8 +237,9 @@ defmodule Synapse.Orchestrator.AgentConfig do
   @doc false
   def validate_signals(%{} = value) do
     with {:ok, subscribes} <- fetch_signal_list(value, :subscribes, required?: true),
-         {:ok, emits} <- fetch_signal_list(value, :emits, required?: false) do
-      {:ok, %{subscribes: subscribes, emits: emits}}
+         {:ok, emits} <- fetch_signal_list(value, :emits, required?: false),
+         {:ok, roles} <- fetch_signal_roles(value, subscribes, emits) do
+      {:ok, %{subscribes: subscribes, emits: emits, roles: roles}}
     end
   end
 
@@ -232,6 +267,19 @@ defmodule Synapse.Orchestrator.AgentConfig do
     end
   end
 
+  defp fetch_signal_roles(map, subscribes, emits) do
+    case Map.get(map, :roles) || Map.get(map, "roles") do
+      nil ->
+        {:ok, nil}
+
+      %{} = roles ->
+        validate_explicit_roles(roles, subscribes, emits)
+
+      other ->
+        {:error, "roles must be a map, got #{inspect(other)}"}
+    end
+  end
+
   defp ensure_topic_list(list, _key, _opts) when is_list(list), do: {:ok, list}
 
   defp ensure_topic_list(value, key, opts) do
@@ -253,6 +301,38 @@ defmodule Synapse.Orchestrator.AgentConfig do
       {:ok, acc} -> {:ok, Enum.reverse(acc)}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp validate_explicit_roles(roles, subscribes, emits) do
+    all_topics = subscribes ++ emits
+
+    errors =
+      roles
+      |> Enum.filter(fn {_role, topic} -> not is_nil(topic) and topic not in all_topics end)
+      |> Enum.map(fn {role, topic} ->
+        "role :#{role} references topic #{inspect(topic)} which is not in subscribes or emits"
+      end)
+
+    case errors do
+      [] -> {:ok, roles}
+      _ -> {:error, Enum.join(errors, "; ")}
+    end
+  end
+
+  defp infer_roles(subscribes, emits) do
+    %{
+      request: find_topic_by_suffix(subscribes, "request"),
+      result: find_topic_by_suffix(subscribes, "result"),
+      summary: find_topic_by_suffix(emits, "summary") || List.first(emits)
+    }
+  end
+
+  defp find_topic_by_suffix(topics, suffix) do
+    Enum.find(topics, fn topic ->
+      topic
+      |> Atom.to_string()
+      |> String.ends_with?(suffix)
+    end)
   end
 
   defp normalize_topic(topic) when is_atom(topic) do

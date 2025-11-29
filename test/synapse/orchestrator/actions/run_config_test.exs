@@ -4,6 +4,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfigTest do
   @moduletag :capture_log
 
   alias Jido.{Exec, Signal}
+  alias Synapse.Orchestrator.AgentConfig
   alias Synapse.Orchestrator.Actions.RunConfig
   alias Synapse.SignalRouter
 
@@ -134,5 +135,213 @@ defmodule Synapse.Orchestrator.Actions.RunConfigTest do
     assert metadata.config_id == :telemetry_coordinator
     assert metadata.status == :complete
     assert metadata.severity == :none
+  end
+
+  describe "config-driven signal dispatch" do
+    setup do
+      router_name = :"router_#{System.unique_integer([:positive])}"
+      start_supervised!({SignalRouter, name: router_name})
+
+      {:ok, router: router_name}
+    end
+
+    test "dispatches based on roles.request topic", %{router: router} do
+      config = %AgentConfig{
+        id: :test_coordinator,
+        type: :orchestrator,
+        signals: %{
+          subscribes: [:task_request, :task_result],
+          emits: [:task_summary],
+          roles: %{request: :task_request, result: :task_result, summary: :task_summary}
+        },
+        actions: [],
+        orchestration: %{
+          classify_fn: fn _ -> %{path: :fast_path} end,
+          spawn_specialists: [],
+          aggregation_fn: fn _, state -> %{task_id: state.task_id, status: :complete} end
+        }
+      }
+
+      {:ok, signal} =
+        Signal.new(%{
+          type: "synapse.task.request",
+          source: "/test",
+          data: %{task_id: "test-123", payload: %{}}
+        })
+
+      params = %{_config: config, _signal: signal, _state: nil, _router: router}
+
+      assert {:ok, %{state: state}} = RunConfig.run(params, %{})
+      assert state.stats.total == 1
+      assert state.stats.routed == 1
+      assert state.tasks == %{}
+    end
+
+    test "dispatches based on roles.result topic", %{router: router} do
+      config = %AgentConfig{
+        id: :test_coordinator,
+        type: :orchestrator,
+        signals: %{
+          subscribes: [:task_request, :task_result],
+          emits: [:task_summary],
+          roles: %{request: :task_request, result: :task_result, summary: :task_summary}
+        },
+        actions: [],
+        orchestration: %{
+          classify_fn: fn _ -> %{path: :deep_review} end,
+          spawn_specialists: [:worker_a],
+          aggregation_fn: fn results, state ->
+            %{task_id: state.task_id, status: :complete, results: results}
+          end
+        }
+      }
+
+      {:ok, request_signal} =
+        Signal.new(%{
+          type: "synapse.task.request",
+          source: "/test",
+          data: %{task_id: "test-456", payload: %{}}
+        })
+
+      {:ok, %{state: state}} =
+        RunConfig.run(
+          %{
+            _config: config,
+            _signal: request_signal,
+            _state: nil,
+            _router: router
+          },
+          %{}
+        )
+
+      {:ok, result_signal} =
+        Signal.new(%{
+          type: "synapse.task.result",
+          source: "/test",
+          data: %{task_id: "test-456", agent: "worker_a", output: %{}}
+        })
+
+      assert {:ok, %{state: updated_state}} =
+               RunConfig.run(
+                 %{
+                   _config: config,
+                   _signal: result_signal,
+                   _state: state,
+                   _router: router
+                 },
+                 %{}
+               )
+
+      assert updated_state.stats.completed >= 1
+    end
+
+    test "uses legacy review topics when roles not specified", %{router: router} do
+      config = %AgentConfig{
+        id: :legacy_coordinator,
+        type: :orchestrator,
+        signals: %{
+          subscribes: [:review_request, :review_result],
+          emits: [:review_summary],
+          roles: nil
+        },
+        actions: [],
+        orchestration: %{
+          classify_fn: fn _ -> %{path: :fast_path} end,
+          spawn_specialists: [],
+          aggregation_fn: fn _, state ->
+            %{review_id: state.task_id, status: :complete}
+          end
+        }
+      }
+
+      {:ok, signal} =
+        Signal.new(%{
+          type: Synapse.Signal.type(:review_request),
+          source: "/test",
+          data: %{review_id: "PR-123", diff: ""}
+        })
+
+      params = %{_config: config, _signal: signal, _state: nil, _router: router}
+
+      assert {:ok, _result} = RunConfig.run(params, %{})
+    end
+  end
+
+  describe "generic state keys" do
+    setup do
+      router_name = :"router_#{System.unique_integer([:positive])}"
+      start_supervised!({SignalRouter, name: router_name})
+
+      {:ok, router: router_name}
+    end
+
+    test "uses tasks instead of reviews in state", %{router: router} do
+      config = orchestrator_config()
+
+      {:ok, signal} =
+        Signal.new(%{
+          type: "synapse.task.request",
+          source: "/test",
+          data: %{task_id: "state-test-123", payload: %{}}
+        })
+
+      {:ok, result} =
+        RunConfig.run(
+          %{
+            _config: config,
+            _signal: signal,
+            _state: nil,
+            _router: router
+          },
+          %{}
+        )
+
+      assert Map.has_key?(result.state, :tasks)
+      refute Map.has_key?(result.state, :reviews)
+    end
+
+    test "stats use generic keys", %{router: router} do
+      config = orchestrator_config()
+
+      {:ok, signal} =
+        Signal.new(%{
+          type: "synapse.task.request",
+          source: "/test",
+          data: %{task_id: "stats-test", payload: %{}}
+        })
+
+      {:ok, result} =
+        RunConfig.run(
+          %{
+            _config: config,
+            _signal: signal,
+            _state: nil,
+            _router: router
+          },
+          %{}
+        )
+
+      stats = result.state.stats
+      assert Map.has_key?(stats, :total)
+      assert Map.has_key?(stats, :routed) or Map.has_key?(stats, :dispatched)
+    end
+  end
+
+  defp orchestrator_config do
+    %AgentConfig{
+      id: :test_coord,
+      type: :orchestrator,
+      signals: %{
+        subscribes: [:task_request, :task_result],
+        emits: [:task_summary],
+        roles: %{request: :task_request, result: :task_result, summary: :task_summary}
+      },
+      actions: [],
+      orchestration: %{
+        classify_fn: fn _ -> %{path: :routed} end,
+        spawn_specialists: [],
+        aggregation_fn: fn _, state -> %{task_id: state.task_id, status: :complete} end
+      }
+    }
   end
 end

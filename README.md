@@ -108,6 +108,31 @@ Synapse.Signal.register_topic(:my_event,
 )
 ```
 
+## Agent Configuration
+
+Orchestrator agents can specify signal roles for custom domains:
+
+```elixir
+%{
+  id: :my_coordinator,
+  type: :orchestrator,
+  signals: %{
+    subscribes: [:ticket_created, :ticket_analyzed],
+    emits: [:ticket_resolved],
+    roles: %{
+      request: :ticket_created,
+      result: :ticket_analyzed,
+      summary: :ticket_resolved
+    }
+  },
+  orchestration: %{
+    classify_fn: &MyApp.classify/1,
+    spawn_specialists: [:analyzer, :responder],
+    aggregation_fn: &MyApp.aggregate/2
+  }
+}
+```
+
 ## Consume Results
 
 Subscribe to summaries if you want push-style notifications:

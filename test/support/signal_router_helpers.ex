@@ -123,12 +123,11 @@ defmodule Synapse.TestSupport.SignalRouterHelpers do
   Asserts that at least one signal exists for the topic.
   """
   def assert_signal_exists(router, topic) do
-    case replay_signals(router, topic) do
-      [signal | _] ->
-        signal
+    signals = replay_signals(router, topic)
 
-      [] ->
-        flunk("Expected to find a signal for #{inspect(topic)}, but history is empty")
+    case List.first(signals) do
+      nil -> flunk("Expected to find a signal for #{inspect(topic)}, but history is empty")
+      signal -> signal
     end
   end
 
