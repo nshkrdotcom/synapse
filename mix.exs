@@ -4,7 +4,7 @@ defmodule Synapse.MixProject do
   def project do
     [
       app: :synapse,
-      version: "0.1.0",
+      version: "0.1.1",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -92,8 +92,8 @@ defmodule Synapse.MixProject do
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/nshkrdotcom/synapse",
-        "Changelog" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.0/CHANGELOG.md",
-        "License" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.0/LICENSE"
+        "Changelog" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.1/CHANGELOG.md",
+        "License" => "https://github.com/nshkrdotcom/synapse/blob/v0.1.1/LICENSE"
       },
       files: [
         "lib",
@@ -109,7 +109,7 @@ defmodule Synapse.MixProject do
   defp docs do
     [
       main: "readme",
-      source_ref: "v0.1.0",
+      source_ref: "v0.1.1",
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       assets: %{"assets" => "assets"}
     ]

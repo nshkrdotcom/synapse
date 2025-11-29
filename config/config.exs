@@ -19,6 +19,51 @@ config :synapse, Synapse.Orchestrator.Runtime,
   include_types: :all,
   reconcile_interval: 1_000
 
+# Signal Registry Configuration
+config :synapse, Synapse.Signal.Registry,
+  topics: [
+    task_request: [
+      type: "synapse.task.request",
+      schema: [
+        task_id: [type: :string, required: true, doc: "Unique task identifier"],
+        payload: [type: :map, default: %{}, doc: "Task-specific payload data"],
+        metadata: [type: :map, default: %{}, doc: "Arbitrary metadata"],
+        labels: [type: {:list, :string}, default: [], doc: "Labels for routing/filtering"],
+        priority: [
+          type: {:in, [:low, :normal, :high, :urgent]},
+          default: :normal,
+          doc: "Task priority"
+        ]
+      ]
+    ],
+    task_result: [
+      type: "synapse.task.result",
+      schema: [
+        task_id: [type: :string, required: true, doc: "Task identifier this result belongs to"],
+        agent: [type: :string, required: true, doc: "Agent/worker that produced this result"],
+        status: [type: {:in, [:ok, :error, :partial]}, default: :ok, doc: "Result status"],
+        output: [type: :map, default: %{}, doc: "Result output data"],
+        metadata: [type: :map, default: %{}, doc: "Execution metadata"]
+      ]
+    ],
+    task_summary: [
+      type: "synapse.task.summary",
+      schema: [
+        task_id: [type: :string, required: true, doc: "Task identifier"],
+        status: [type: :atom, default: :complete, doc: "Overall task status"],
+        results: [type: {:list, :map}, default: [], doc: "Aggregated results"],
+        metadata: [type: :map, default: %{}, doc: "Summary metadata"]
+      ]
+    ],
+    worker_ready: [
+      type: "synapse.worker.ready",
+      schema: [
+        worker_id: [type: :string, required: true, doc: "Worker identifier"],
+        capabilities: [type: {:list, :string}, default: [], doc: "Worker capabilities"]
+      ]
+    ]
+  ]
+
 # Configures Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

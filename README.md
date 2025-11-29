@@ -10,7 +10,7 @@
 [![Elixir](https://img.shields.io/badge/elixir-~%3E%201.15-purple.svg)](https://elixir-lang.org/)
 [![License](https://img.shields.io/hexpm/l/synapse.svg)](LICENSE)
 
-Version: v0.1.0 (2025-11-11)
+Version: v0.1.1 (2025-11-29)
 
 Synapse is a headless, declarative multi‑agent runtime for code review orchestration. It exposes a signal bus API (`Synapse.SignalRouter`) and a workflow engine with Postgres persistence so you can submit review work, fan it out to specialists, negotiate conflicts, and consume structured summaries — all without a Phoenix UI.
 
@@ -78,6 +78,35 @@ Publish a `:review_request` signal from CI, a script, or an iex session:
 ```
 
 The coordinator workflow classifies the request, spawns security/performance specialists as needed, and persists every step to `workflow_executions`.
+
+## Custom Signal Domains
+
+Synapse supports custom signal domains beyond code review. Define your own signals in config:
+
+```elixir
+# config/config.exs
+config :synapse, Synapse.Signal.Registry,
+  topics: [
+    ticket_created: [
+      type: "support.ticket.created",
+      schema: [
+        ticket_id: [type: :string, required: true],
+        customer_id: [type: :string, required: true],
+        subject: [type: :string, required: true],
+        priority: [type: {:in, [:low, :medium, :high]}, default: :medium]
+      ]
+    ]
+  ]
+```
+
+Or register at runtime:
+
+```elixir
+Synapse.Signal.register_topic(:my_event,
+  type: "my.domain.event",
+  schema: [id: [type: :string, required: true]]
+)
+```
 
 ## Consume Results
 

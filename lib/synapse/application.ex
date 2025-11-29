@@ -14,6 +14,7 @@ defmodule Synapse.Application do
 
     children =
       [
+        Synapse.Signal.Registry,
         Synapse.Repo,
         {Synapse.Runtime, runtime_opts}
       ] ++

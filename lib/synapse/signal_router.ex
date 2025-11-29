@@ -315,10 +315,15 @@ defmodule Synapse.SignalRouter do
   defp maybe_merge_metadata(map, meta), do: Map.merge(map, meta)
 
   defp ensure_topic!(state, topic) do
-    if Map.has_key?(state.topic_index, topic) do
-      state
-    else
-      raise InvalidTopicError, topic: topic
+    cond do
+      Map.has_key?(state.topic_index, topic) ->
+        state
+
+      topic in Signal.topics() ->
+        subscribe_topic(state, topic)
+
+      true ->
+        raise InvalidTopicError, topic: topic
     end
   end
 
@@ -327,17 +332,40 @@ defmodule Synapse.SignalRouter do
       Enum.reduce(Signal.topics(), %{}, fn topic, acc ->
         type = Signal.type(topic)
 
-        {:ok, sub_id} =
-          Jido.Signal.Bus.subscribe(
-            state.bus,
-            type,
-            dispatch: {:pid, target: self(), delivery_mode: :async}
-          )
+        case Map.fetch(acc, topic) do
+          {:ok, _} ->
+            acc
 
-        Map.put(acc, topic, sub_id)
+          :error ->
+            {:ok, sub_id} =
+              Jido.Signal.Bus.subscribe(
+                state.bus,
+                type,
+                dispatch: {:pid, target: self(), delivery_mode: :async}
+              )
+
+            Map.put(acc, topic, sub_id)
+        end
       end)
 
     %{state | bus_subscriptions: bus_subscriptions}
+  end
+
+  defp subscribe_topic(state, topic) do
+    type = Signal.type(topic)
+
+    {:ok, sub_id} =
+      Jido.Signal.Bus.subscribe(
+        state.bus,
+        type,
+        dispatch: {:pid, target: self(), delivery_mode: :async}
+      )
+
+    %{
+      state
+      | topic_index: Map.put(state.topic_index, topic, MapSet.new()),
+        bus_subscriptions: Map.put(state.bus_subscriptions, topic, sub_id)
+    }
   end
 
   defp dispatch(topic, signal, state) do

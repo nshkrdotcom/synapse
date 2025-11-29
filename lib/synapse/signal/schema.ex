@@ -22,7 +22,7 @@ defmodule Synapse.Signal.Schema do
       @spec validate!(payload() | keyword()) :: payload()
       def validate!(payload) when is_map(payload) do
         payload
-        |> Map.to_list()
+        |> Synapse.Signal.Schema.normalize_payload()
         |> do_validate!()
       end
 
@@ -36,10 +36,38 @@ defmodule Synapse.Signal.Schema do
         |> Map.new()
       rescue
         e in NimbleOptions.ValidationError ->
+          message = Exception.message(e)
+
           reraise ArgumentError,
-                  ["invalid signal payload: ", e.message],
+                  "invalid signal payload: #{message}",
                   __STACKTRACE__
       end
     end
   end
+
+  @doc """
+  Creates a validator function from a NimbleOptions schema definition.
+  """
+  @spec compile_schema(keyword()) :: (map() -> map())
+  def compile_schema(schema_def) when is_list(schema_def) do
+    compiled = NimbleOptions.new!(schema_def)
+
+    fn payload ->
+      try do
+        payload
+        |> normalize_payload()
+        |> NimbleOptions.validate!(compiled)
+        |> Map.new()
+      rescue
+        e in NimbleOptions.ValidationError ->
+          message = Exception.message(e)
+
+          reraise ArgumentError, "invalid signal payload: #{message}", __STACKTRACE__
+      end
+    end
+  end
+
+  @doc false
+  def normalize_payload(payload) when is_map(payload), do: Map.to_list(payload)
+  def normalize_payload(payload) when is_list(payload), do: payload
 end
