@@ -1,80 +1,35 @@
 defmodule Synapse.Actions.Performance.CheckMemoryUsage do
   @moduledoc """
-  Detects memory allocation patterns that may cause performance issues.
+  Deprecated: Use `Synapse.Domains.CodeReview.Actions.CheckMemoryUsage` instead.
 
-  Analyzes diffs for:
-  - Conversion of streams to lists (greedy allocation)
-  - Large list comprehensions
-  - Inefficient Enum operations on large datasets
+  This module is maintained for backward compatibility and will be removed
+  in a future release.
   """
 
-  use Jido.Action,
-    name: "check_memory_usage",
-    description: "Analyzes diffs for memory allocation issues",
-    schema: [
-      diff: [type: :string, required: true],
-      files: [type: {:list, :string}, required: true],
-      metadata: [type: :map, default: %{}]
-    ]
+  @behaviour Jido.Action
 
-  require Logger
+  @deprecated "Use Synapse.Domains.CodeReview.Actions.CheckMemoryUsage instead"
+  alias Synapse.Domains.CodeReview.Actions.CheckMemoryUsage, as: Impl
 
-  @impl true
-  def run(params, _context) do
-    findings = analyze_diff(params.diff, params.files)
-    confidence = if length(findings) > 0, do: 0.75, else: 0.85
+  defdelegate name(), to: Impl
+  defdelegate description(), to: Impl
+  defdelegate category(), to: Impl
+  defdelegate tags(), to: Impl
+  defdelegate vsn(), to: Impl
+  defdelegate schema(), to: Impl
+  defdelegate output_schema(), to: Impl
+  defdelegate validate_params(params), to: Impl
+  defdelegate validate_output(output), to: Impl
+  defdelegate to_json(), to: Impl
+  defdelegate to_tool(), to: Impl
+  defdelegate __action_metadata__(), to: Impl
 
-    recommended_actions =
-      if length(findings) > 0 do
-        [
-          "Use Stream instead of Enum.to_list for large datasets",
-          "Process data in chunks to reduce memory footprint",
-          "Consider lazy evaluation for expensive operations"
-        ]
-      else
-        []
-      end
+  defdelegate on_before_validate_params(params), to: Impl
+  defdelegate on_after_validate_params(params), to: Impl
+  defdelegate on_before_validate_output(output), to: Impl
+  defdelegate on_after_validate_output(output), to: Impl
+  defdelegate on_after_run(result), to: Impl
+  defdelegate on_error(params, error, context, opts), to: Impl
 
-    {:ok,
-     %{
-       findings: findings,
-       confidence: confidence,
-       recommended_actions: recommended_actions
-     }}
-  end
-
-  defp analyze_diff("", _files), do: []
-
-  defp analyze_diff(diff, files) do
-    patterns = memory_issue_patterns()
-
-    diff
-    |> String.split("\n")
-    |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "+"))
-    |> Enum.flat_map(fn line ->
-      if Enum.any?(patterns, &Regex.match?(&1, line)) do
-        [
-          %{
-            type: :memory_hotspot,
-            severity: :medium,
-            file: hd(files ++ ["unknown"]),
-            summary: "Greedy memory allocation pattern detected",
-            recommendation: "Use Stream for lazy evaluation"
-          }
-        ]
-      else
-        []
-      end
-    end)
-    |> Enum.uniq_by(&{&1.type, &1.file})
-  end
-
-  defp memory_issue_patterns do
-    [
-      ~r/Enum\.to_list/,
-      ~r/Repo\.all\(/,
-      # Pattern: Stream -> Enum.to_list
-      ~r/\|>\s*Enum\.to_list\(\)/
-    ]
-  end
+  defdelegate run(params, context), to: Impl
 end

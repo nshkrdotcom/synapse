@@ -3,29 +3,36 @@
 ## [0.1.1] - 2025-11-29
 
 ### Added
-- Dynamic signal registry (`Synapse.Signal.Registry`) replacing hardcoded signal topics
-- Runtime signal topic registration via `Synapse.Signal.register_topic/2`
-- Configuration-based signal topic definition in `config/config.exs`
-- Generic signal types: `:task_request`, `:task_result`, `:task_summary`, `:worker_ready`
-- Signal `roles` configuration in agent config for orchestrators
+- **Domain-agnostic signal layer**: Dynamic signal registry replacing hardcoded topics
+- `Synapse.Signal.Registry` for runtime topic management
+- `Synapse.Signal.register_topic/2` for runtime signal registration
+- Configuration-based signal topic definition
+- Generic core signals: `:task_request`, `:task_result`, `:task_summary`, `:worker_ready`
+- Signal `roles` configuration for orchestrator agents
 - `initial_state` support in orchestrator agent config
-- Synapse.Domains.CodeReview module encapsulating code review functionality
+- `Synapse.Domains.CodeReview` module encapsulating code review functionality
+- Custom domains documentation guide
+- Migration guide from v0.1.0
 
 ### Changed
-- `Synapse.Signal` now delegates to `Synapse.Signal.Registry`
-- Signal topics are loaded from application config on startup
+- `Synapse.Signal` delegates to `Synapse.Signal.Registry`
 - `SignalRouter` works with dynamically registered topics
 - `AgentConfig` validates topics against dynamic registry and supports roles
-- `RunConfig` dispatches based on configurable `signals.roles`
+- `RunConfig` uses config-driven signal dispatch
 - Orchestrator state uses generic keys (`tasks` instead of `reviews`)
 - Code review actions moved to `Synapse.Domains.CodeReview.Actions.*`
 
 ### Deprecated
-- Direct use of `:review_request`, `:review_result`, `:review_summary` signals
-  (still supported via legacy aliases, will be moved to optional domain in future release)
-- State keys `reviews`, `fast_path`, `deep_review` (use `tasks`, `routed`, `dispatched`)
-- Synapse.Signal.ReviewRequest, Synapse.Signal.ReviewResult, etc., modules.
-- Action modules under Synapse.Actions.Review, Synapse.Actions.Security, Synapse.Actions.Performance.
+- `Synapse.Signal.ReviewRequest` module (use dynamic registration)
+- `Synapse.Signal.ReviewResult` module
+- `Synapse.Signal.ReviewSummary` module
+- `Synapse.Actions.Review.*` (use `Synapse.Domains.CodeReview.Actions.*`)
+- `Synapse.Actions.Security.*` (use `Synapse.Domains.CodeReview.Actions.*`)
+- `Synapse.Actions.Performance.*` (use `Synapse.Domains.CodeReview.Actions.*`)
+
+### Migration
+- Existing code review users should add `config :synapse, :domains, [Synapse.Domains.CodeReview]`
+- See [Migration Guide](docs/guides/migration-0.1.1.md) for details
 
 ## v0.1.0 (2025-11-11)
 

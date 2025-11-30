@@ -64,6 +64,9 @@ config :synapse, Synapse.Signal.Registry,
     ]
   ]
 
+# Auto-register domains on startup (for backward compatibility)
+config :synapse, :domains, [Synapse.Domains.CodeReview]
+
 # Configures Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

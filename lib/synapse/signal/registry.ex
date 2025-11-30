@@ -9,6 +9,8 @@ defmodule Synapse.Signal.Registry do
 
   use GenServer
 
+  require Logger
+
   alias Synapse.Signal.Schema
 
   @typedoc "Canonical signal topic"
@@ -28,7 +30,7 @@ defmodule Synapse.Signal.Registry do
   Options:
     * `:name` - Registry name (defaults to `#{inspect(__MODULE__)}`)
     * `:topics` - Topics to preload instead of application config
-    * `:legacy?` - Whether to register legacy review signals (defaults to true)
+    * `:domains` - Domains to auto-register during startup (defaults to config :synapse, :domains)
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -150,9 +152,10 @@ defmodule Synapse.Signal.Registry do
     :persistent_term.put(pt_key(name), state)
     :persistent_term.put(pt_key(self()), state)
 
-    state
-    |> load_config_topics(opts)
-    |> maybe_register_legacy(opts)
+    state =
+      state
+      |> load_config_topics(opts)
+      |> register_configured_domains(opts)
 
     {:ok, state}
   end
@@ -239,18 +242,59 @@ defmodule Synapse.Signal.Registry do
     state
   end
 
-  defp maybe_register_legacy(state, opts) do
-    legacy? =
-      case Keyword.fetch(opts, :legacy?) do
+  defp register_configured_domains(state, opts) do
+    domains =
+      case Keyword.fetch(opts, :domains) do
         {:ok, value} -> value
-        :error -> Application.get_env(:synapse, :legacy_signals, true)
+        :error -> Application.get_env(:synapse, :domains, [])
       end
 
-    if legacy? do
-      register_topics(state, legacy_topics(), on_error: :ignore)
-    end
+    Enum.each(domains, fn domain ->
+      case Code.ensure_loaded(domain) do
+        {:module, _} ->
+          cond do
+            function_exported?(domain, :register, 1) ->
+              register_domain(domain, state.name)
+
+            function_exported?(domain, :register, 0) ->
+              register_domain(domain, nil)
+
+            true ->
+              Logger.warning(
+                "Domain #{inspect(domain)} is configured but does not implement register/0 or register/1"
+              )
+          end
+
+        {:error, reason} ->
+          Logger.warning("Failed to load domain #{inspect(domain)}: #{inspect(reason)}")
+      end
+    end)
 
     state
+  end
+
+  defp register_domain(domain, registry_name) do
+    result =
+      case registry_name do
+        nil -> domain.register()
+        _ -> domain.register(registry_name)
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, :already_registered} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to register domain #{inspect(domain)}: #{inspect(reason)}")
+
+      other ->
+        Logger.warning(
+          "Domain #{inspect(domain)} returned unexpected value from register: #{inspect(other)}"
+        )
+    end
   end
 
   defp register_topics(state, topics, opts) when is_list(topics) do
@@ -360,27 +404,6 @@ defmodule Synapse.Signal.Registry do
   end
 
   defp normalize_schema(_schema), do: {:error, :invalid_schema}
-
-  defp legacy_topics do
-    [
-      review_request: [
-        type: "review.request",
-        schema: Synapse.Signal.ReviewRequest
-      ],
-      review_result: [
-        type: "review.result",
-        schema: Synapse.Signal.ReviewResult
-      ],
-      review_summary: [
-        type: "review.summary",
-        schema: Synapse.Signal.ReviewSummary
-      ],
-      specialist_ready: [
-        type: "review.specialist_ready",
-        schema: Synapse.Signal.SpecialistReady
-      ]
-    ]
-  end
 
   defp pt_key(name), do: {__MODULE__, name}
 end

@@ -48,6 +48,28 @@ defmodule Synapse.Signal.RegistryTest do
 
       assert {:ok, %{type: "configured.topic"}} = Registry.get_topic(name, :configured_topic)
     end
+
+    test "auto-registers configured domains" do
+      previous_domains = Application.get_env(:synapse, :domains, [])
+      Application.put_env(:synapse, :domains, [Synapse.Domains.CodeReview])
+
+      name = :"registry_domain_#{System.unique_integer([:positive])}"
+      {:ok, pid} = Registry.start_link(name: name)
+
+      on_exit(fn ->
+        Application.put_env(:synapse, :domains, previous_domains)
+
+        if Process.alive?(pid) do
+          try do
+            GenServer.stop(pid)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
+
+      assert {:ok, %{type: "review.request"}} = Registry.get_topic(name, :review_request)
+    end
   end
 
   describe "register_topic/2" do
