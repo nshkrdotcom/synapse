@@ -1,44 +1,15 @@
 defmodule Synapse.Signal.ReviewSummary do
   @moduledoc """
-  Schema for `review.summary` signals emitted by the coordinator.
+  DEPRECATED: Review summary signals are now registered dynamically via
+  `Synapse.Domains.CodeReview.register/0`.
+
+  This module remains for backward compatibility and will be removed in a
+  future release.
   """
 
-  use Synapse.Signal.Schema,
-    schema: [
-      review_id: [
-        type: :string,
-        required: true,
-        doc: "Review identifier"
-      ],
-      status: [
-        type: :atom,
-        default: :complete,
-        doc: "Overall status for the review workflow"
-      ],
-      severity: [
-        type: :atom,
-        default: :none,
-        doc: "Max severity across all findings"
-      ],
-      findings: [
-        type: {:list, :map},
-        default: [],
-        doc: "Combined findings ordered by severity"
-      ],
-      recommendations: [
-        type: {:list, :any},
-        default: [],
-        doc: "Recommended actions for follow-up"
-      ],
-      escalations: [
-        type: {:list, :string},
-        default: [],
-        doc: "Reason(s) for triggering escalation"
-      ],
-      metadata: [
-        type: :map,
-        default: %{},
-        doc: "Coordinator metadata (decision path, runtime stats, etc.)"
-      ]
-    ]
+  @deprecated "Use Synapse.Domains.CodeReview.register/0 instead"
+  def schema, do: raise("Synapse.Signal.ReviewSummary is deprecated")
+
+  @deprecated "Use Synapse.Domains.CodeReview.register/0 instead"
+  def validate!(_payload), do: raise("Synapse.Signal.ReviewSummary is deprecated")
 end

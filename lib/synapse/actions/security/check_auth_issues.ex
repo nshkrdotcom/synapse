@@ -1,130 +1,35 @@
 defmodule Synapse.Actions.Security.CheckAuthIssues do
   @moduledoc """
-  Detects authentication and authorization issues in code diffs.
+  Deprecated: Use `Synapse.Domains.CodeReview.Actions.CheckAuthIssues` instead.
 
-  Analyzes diffs for patterns indicating auth/authz risks:
-  - Removed authentication plugs or guards
-  - Bypassed authorization checks
-  - Weakened permission requirements
-  - Missing access control
-
-  Returns findings with severity ratings and remediation recommendations.
+  This module is maintained for backward compatibility and will be removed
+  in a future release.
   """
 
-  use Jido.Action,
-    name: "check_auth_issues",
-    description: "Analyzes diffs for authentication and authorization vulnerabilities",
-    schema: [
-      diff: [
-        type: :string,
-        required: true,
-        doc: "Unified diff content to analyze"
-      ],
-      files: [
-        type: {:list, :string},
-        required: true,
-        doc: "List of files modified in the diff"
-      ],
-      metadata: [
-        type: :map,
-        default: %{},
-        doc: "Additional context"
-      ]
-    ]
+  @behaviour Jido.Action
 
-  require Logger
+  @deprecated "Use Synapse.Domains.CodeReview.Actions.CheckAuthIssues instead"
+  alias Synapse.Domains.CodeReview.Actions.CheckAuthIssues, as: Impl
 
-  @impl true
-  def run(params, _context) do
-    findings = analyze_diff(params.diff, params.files)
-    confidence = calculate_confidence(params.diff, findings)
+  defdelegate name(), to: Impl
+  defdelegate description(), to: Impl
+  defdelegate category(), to: Impl
+  defdelegate tags(), to: Impl
+  defdelegate vsn(), to: Impl
+  defdelegate schema(), to: Impl
+  defdelegate output_schema(), to: Impl
+  defdelegate validate_params(params), to: Impl
+  defdelegate validate_output(output), to: Impl
+  defdelegate to_json(), to: Impl
+  defdelegate to_tool(), to: Impl
+  defdelegate __action_metadata__(), to: Impl
 
-    recommended_actions =
-      if length(findings) > 0 do
-        [
-          "Restore removed authentication guards",
-          "Ensure authorization checks are in place",
-          "Review access control requirements for affected endpoints"
-        ]
-      else
-        []
-      end
+  defdelegate on_before_validate_params(params), to: Impl
+  defdelegate on_after_validate_params(params), to: Impl
+  defdelegate on_before_validate_output(output), to: Impl
+  defdelegate on_after_validate_output(output), to: Impl
+  defdelegate on_after_run(result), to: Impl
+  defdelegate on_error(params, error, context, opts), to: Impl
 
-    result = %{
-      findings: findings,
-      confidence: confidence,
-      recommended_actions: recommended_actions
-    }
-
-    Logger.debug("Auth issues check completed",
-      findings_count: length(findings),
-      files: params.files
-    )
-
-    {:ok, result}
-  end
-
-  defp analyze_diff("", _files), do: []
-
-  defp analyze_diff(diff, files) do
-    lines = String.split(diff, "\n")
-
-    lines
-    |> Enum.with_index()
-    |> Enum.filter(fn {line, _idx} ->
-      # Check removed lines (starting with -)
-      String.starts_with?(String.trim_leading(line), "-")
-    end)
-    |> Enum.flat_map(fn {line, idx} ->
-      detect_auth_issue_in_line(line, idx, files)
-    end)
-    |> Enum.uniq_by(&{&1.type, &1.file})
-  end
-
-  defp detect_auth_issue_in_line(line, _idx, files) do
-    patterns = auth_issue_patterns()
-
-    has_auth_issue? =
-      Enum.any?(patterns, fn pattern ->
-        Regex.match?(pattern, line)
-      end)
-
-    if has_auth_issue? do
-      file = determine_file(files)
-
-      [
-        %{
-          type: :auth_bypass,
-          severity: :high,
-          file: file,
-          summary: "Authentication or authorization control removed - potential security bypass",
-          recommendation: "Restore removed authentication guards"
-        }
-      ]
-    else
-      []
-    end
-  end
-
-  defp determine_file([]), do: "unknown"
-  defp determine_file([file | _]), do: file
-
-  defp calculate_confidence("", []), do: 1.0
-  defp calculate_confidence(_diff, []), do: 0.9
-  defp calculate_confidence(_diff, _findings), do: 0.85
-
-  defp auth_issue_patterns do
-    [
-      # Removed authentication plugs
-      ~r/plug\s+:require_auth/i,
-      ~r/plug\s+:require_admin/i,
-      ~r/plug\s+:authenticate/i,
-      # Removed authorization checks
-      ~r/authorize/i,
-      ~r/can\?/i,
-      ~r/has_permission/i,
-      # Removed guards
-      ~r/when\s+.*is_admin/i
-    ]
-  end
+  defdelegate run(params, context), to: Impl
 end

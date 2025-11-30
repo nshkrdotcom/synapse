@@ -12,13 +12,13 @@
 
 Version: v0.1.1 (2025-11-29)
 
-Synapse is a headless, declarative multi‑agent runtime for code review orchestration. It exposes a signal bus API (`Synapse.SignalRouter`) and a workflow engine with Postgres persistence so you can submit review work, fan it out to specialists, negotiate conflicts, and consume structured summaries — all without a Phoenix UI.
+Synapse is a headless, declarative multi‑agent orchestration framework. It provides a domain‑agnostic signal bus, workflow engine with Postgres persistence, and a configurable agent runtime for building domain-specific multi‑agent systems. A code review domain ships as a reference implementation; register it or build your own domains using the signal registry.
 
 Highlights
 
+- Domain‑agnostic signal registry with runtime topic registration
 - Declarative orchestrator runtime (no GenServer boilerplate)
-- Signal bus with typed topics and contract enforcement
-- Specialist agents defined via actions + `state_schema`
+- Signal roles for orchestrator agents and configurable actions
 - Workflow engine with persistence and audit trail (`workflow_executions`)
 - LLM gateway powered by `Req` with OpenAI and Gemini providers
 - Telemetry throughout (router, workflows, LLM requests)
@@ -58,7 +58,7 @@ Highlights
 
 ## Submit a Review Request
 
-Publish a `:review_request` signal from CI, a script, or an iex session:
+With `Synapse.Domains.CodeReview` registered, publish a `:review_request` signal from CI, a script, or an iex session:
 
 ```elixir
 {:ok, _signal} =
@@ -79,9 +79,9 @@ Publish a `:review_request` signal from CI, a script, or an iex session:
 
 The coordinator workflow classifies the request, spawns security/performance specialists as needed, and persists every step to `workflow_executions`.
 
-## Custom Signal Domains
+## Custom Domains
 
-Synapse supports custom signal domains beyond code review. Define your own signals in config:
+Synapse is domain-agnostic. Define your own signals in config:
 
 ```elixir
 # config/config.exs
@@ -107,6 +107,19 @@ Synapse.Signal.register_topic(:my_event,
   schema: [id: [type: :string, required: true]]
 )
 ```
+
+See [docs/guides/custom-domains.md](docs/guides/custom-domains.md) for a full walkthrough.
+
+## Code Review Domain
+
+To enable the built-in code review domain (security/performance specialists, review signals), register it via config:
+
+```elixir
+# config/config.exs
+config :synapse, :domains, [Synapse.Domains.CodeReview]
+```
+
+You can also call `Synapse.Domains.CodeReview.register/0` during application startup if you prefer manual control.
 
 ## Agent Configuration
 
@@ -166,14 +179,22 @@ Example snippet:
 %{
   id: :coordinator,
   type: :orchestrator,
-  actions: [Synapse.Actions.Review.ClassifyChange],
+  actions: [Synapse.Domains.CodeReview.Actions.ClassifyChange],
   orchestration: %{
     classify_fn: &MyStrategies.classify/1,
     spawn_specialists: [:security_specialist, :performance_specialist],
     aggregation_fn: &MyStrategies.aggregate/2,
     negotiate_fn: &MyStrategies.resolve_conflicts/2
   },
-  signals: %{subscribes: [:review_request, :review_result], emits: [:review_summary]},
+  signals: %{
+    subscribes: [:review_request, :review_result],
+    emits: [:review_summary],
+    roles: %{
+      request: :review_request,
+      result: :review_result,
+      summary: :review_summary
+    }
+  },
   state_schema: [review_count: [type: :non_neg_integer, default: 0]]
 }
 ```
@@ -362,6 +383,8 @@ Dialyzer and other pre-commit checks are available via `mix precommit`.
 - Multi‑agent framework docs: `docs_new/20251028/multi_agent_framework/README.md`
 - Workflow engine and persistence: `docs_new/workflows/engine.md` and ADRs in `docs_new/adr/`
 - Post‑Phoenix direction: `docs_new/20251109/README.md`
+- Custom domains guide: `docs/guides/custom-domains.md`
+- Migration guide: `docs/guides/migration-0.1.1.md`
 
 ## Changelog
 
@@ -369,7 +392,7 @@ See `CHANGELOG.md`.
 
 ## Tags
 
-elixir • otp • jido • req • multi‑agent • orchestrator • workflows • llm • openai • gemini • postgres • telemetry
+elixir • otp • beam • erlang-vm • concurrency • fault-tolerance • supervision • jido • req • multi-agent • agent-orchestration • multi-agent-systems • orchestrator • workflows • llm • openai • gemini • postgres • telemetry • ai
 
 ## License
 

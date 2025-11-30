@@ -1,76 +1,35 @@
 defmodule Synapse.Actions.Performance.ProfileHotPath do
   @moduledoc """
-  Profiles potential hot paths in code changes.
+  Deprecated: Use `Synapse.Domains.CodeReview.Actions.ProfileHotPath` instead.
 
-  Identifies frequently called functions or code paths that may benefit
-  from optimization. Uses heuristics and metadata hints to estimate
-  execution frequency.
+  This module is maintained for backward compatibility and will be removed
+  in a future release.
   """
 
-  use Jido.Action,
-    name: "profile_hot_path",
-    description: "Identifies potential performance hotspots in changes",
-    schema: [
-      diff: [type: :string, required: true],
-      files: [type: {:list, :string}, required: true],
-      metadata: [type: :map, default: %{}]
-    ]
+  @behaviour Jido.Action
 
-  require Logger
+  @deprecated "Use Synapse.Domains.CodeReview.Actions.ProfileHotPath instead"
+  alias Synapse.Domains.CodeReview.Actions.ProfileHotPath, as: Impl
 
-  @impl true
-  def run(params, _context) do
-    hot_functions = Map.get(params.metadata, :hot_functions, [])
-    findings = analyze_diff(params.diff, params.files, hot_functions)
+  defdelegate name(), to: Impl
+  defdelegate description(), to: Impl
+  defdelegate category(), to: Impl
+  defdelegate tags(), to: Impl
+  defdelegate vsn(), to: Impl
+  defdelegate schema(), to: Impl
+  defdelegate output_schema(), to: Impl
+  defdelegate validate_params(params), to: Impl
+  defdelegate validate_output(output), to: Impl
+  defdelegate to_json(), to: Impl
+  defdelegate to_tool(), to: Impl
+  defdelegate __action_metadata__(), to: Impl
 
-    confidence = 0.7
-    # Heuristic-based, lower confidence
+  defdelegate on_before_validate_params(params), to: Impl
+  defdelegate on_after_validate_params(params), to: Impl
+  defdelegate on_before_validate_output(output), to: Impl
+  defdelegate on_after_validate_output(output), to: Impl
+  defdelegate on_after_run(result), to: Impl
+  defdelegate on_error(params, error, context, opts), to: Impl
 
-    recommended_actions =
-      if length(findings) > 0 do
-        [
-          "Profile actual execution to confirm hotspot",
-          "Consider caching frequently called operations",
-          "Optimize algorithms in hot code paths"
-        ]
-      else
-        []
-      end
-
-    {:ok,
-     %{
-       findings: findings,
-       confidence: confidence,
-       recommended_actions: recommended_actions
-     }}
-  end
-
-  defp analyze_diff("", _files, _hot_functions), do: []
-
-  defp analyze_diff(diff, files, hot_functions) do
-    added_lines =
-      diff
-      |> String.split("\n")
-      |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "+"))
-
-    # Check if any hot functions are called in added code
-    hot_calls =
-      Enum.filter(hot_functions, fn func_name ->
-        Enum.any?(added_lines, &String.contains?(&1, func_name))
-      end)
-
-    if length(hot_calls) > 0 do
-      [
-        %{
-          type: :hot_path_modified,
-          severity: :medium,
-          file: hd(files ++ ["unknown"]),
-          summary: "Modified code in potential hot path: #{Enum.join(hot_calls, ", ")}",
-          recommendation: "Profile actual execution to confirm impact"
-        }
-      ]
-    else
-      []
-    end
-  end
+  defdelegate run(params, context), to: Impl
 end

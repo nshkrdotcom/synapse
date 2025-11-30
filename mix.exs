@@ -98,6 +98,7 @@ defmodule Synapse.MixProject do
       files: [
         "lib",
         "priv",
+        "docs",
         "mix.exs",
         "README.md",
         "CHANGELOG.md",
@@ -110,7 +111,13 @@ defmodule Synapse.MixProject do
     [
       main: "readme",
       source_ref: "v0.1.1",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      extras: [
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "docs/guides/custom-domains.md",
+        "docs/guides/migration-0.1.1.md"
+      ],
       assets: %{"assets" => "assets"}
     ]
   end

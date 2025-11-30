@@ -1,44 +1,35 @@
 defmodule Synapse.Actions.Review.DecideEscalation do
   @moduledoc """
-  Determines whether a critic review should be escalated to a human reviewer or
-  auto-approved.
+  Deprecated: Use `Synapse.Domains.CodeReview.Actions.DecideEscalation` instead.
 
-  The action inspects the critic's confidence score plus the `should_escalate`
-  flag emitted by `Synapse.Actions.CriticReview`. Callers can override the
-  escalation threshold per request.
+  This module is maintained for backward compatibility and will be removed
+  in a future release.
   """
 
-  use Jido.Action,
-    name: "decide_escalation",
-    description: "Decides whether to escalate a critic review",
-    schema: [
-      review: [type: :map, required: true, doc: "CriticReview payload"],
-      threshold: [type: :float, default: 0.7, doc: "Confidence threshold"],
-      metadata: [type: :map, default: %{}, doc: "Optional contextual metadata"]
-    ]
+  @behaviour Jido.Action
 
-  @impl true
-  def run(%{review: review} = params, _context) do
-    threshold = Map.get(params, :threshold, 0.7)
-    confidence = Map.get(review, :confidence, 0.0)
-    escalate_flag = Map.get(review, :should_escalate, false)
+  @deprecated "Use Synapse.Domains.CodeReview.Actions.DecideEscalation instead"
+  alias Synapse.Domains.CodeReview.Actions.DecideEscalation, as: Impl
 
-    {decision, reason} =
-      cond do
-        escalate_flag -> {:escalate, "Critic requested escalation"}
-        confidence < threshold -> {:escalate, "Confidence #{confidence} below #{threshold}"}
-        true -> {:auto_approve, "Confidence #{confidence} meets threshold"}
-      end
+  defdelegate name(), to: Impl
+  defdelegate description(), to: Impl
+  defdelegate category(), to: Impl
+  defdelegate tags(), to: Impl
+  defdelegate vsn(), to: Impl
+  defdelegate schema(), to: Impl
+  defdelegate output_schema(), to: Impl
+  defdelegate validate_params(params), to: Impl
+  defdelegate validate_output(output), to: Impl
+  defdelegate to_json(), to: Impl
+  defdelegate to_tool(), to: Impl
+  defdelegate __action_metadata__(), to: Impl
 
-    result = %{
-      decision: decision,
-      escalate?: decision == :escalate,
-      reason: reason,
-      confidence: confidence,
-      review: review,
-      metadata: Map.get(params, :metadata, %{})
-    }
+  defdelegate on_before_validate_params(params), to: Impl
+  defdelegate on_after_validate_params(params), to: Impl
+  defdelegate on_before_validate_output(output), to: Impl
+  defdelegate on_after_validate_output(output), to: Impl
+  defdelegate on_after_run(result), to: Impl
+  defdelegate on_error(params, error, context, opts), to: Impl
 
-    {:ok, result}
-  end
+  defdelegate run(params, context), to: Impl
 end

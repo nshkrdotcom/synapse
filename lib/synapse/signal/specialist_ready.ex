@@ -1,30 +1,15 @@
 defmodule Synapse.Signal.SpecialistReady do
   @moduledoc """
-  Schema for `review.specialist_ready` signals emitted by specialists when
-  they finish bootstrapping.
+  DEPRECATED: Specialist readiness is now defined dynamically by registering
+  the Code Review domain via `Synapse.Domains.CodeReview.register/0`.
+
+  This module remains for documentation purposes and will be removed in a
+  future release.
   """
 
-  use Synapse.Signal.Schema,
-    schema: [
-      agent: [
-        type: :string,
-        required: true,
-        doc: "Specialist identifier"
-      ],
-      router: [
-        type: :atom,
-        required: true,
-        doc: "Router instance used by the specialist"
-      ],
-      timestamp: [
-        type: :any,
-        default: nil,
-        doc: "UTC timestamp of readiness"
-      ],
-      context: [
-        type: :map,
-        default: %{},
-        doc: "Additional readiness context (supervisor, runtime id, etc.)"
-      ]
-    ]
+  @deprecated "Use Synapse.Domains.CodeReview.register/0 instead"
+  def schema, do: raise("Synapse.Signal.SpecialistReady is deprecated")
+
+  @deprecated "Use Synapse.Domains.CodeReview.register/0 instead"
+  def validate!(_payload), do: raise("Synapse.Signal.SpecialistReady is deprecated")
 end
