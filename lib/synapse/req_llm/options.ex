@@ -211,26 +211,28 @@ defmodule Synapse.ReqLLM.Options do
     Enum.reduce_while(profiles, {:ok, config}, fn {name, profile_config}, {:ok, acc} ->
       case validate_profile(profile_config) do
         {:ok, validated_profile} ->
-          # Replace profile with validated version
-          updated_profiles =
-            Keyword.update!(acc, :profiles, fn profs ->
-              Keyword.put(profs, name, validated_profile)
-            end)
-
-          {:cont, {:ok, updated_profiles}}
+          {:cont, {:ok, put_validated_profile(acc, name, validated_profile)}}
 
         {:error, %NimbleOptions.ValidationError{} = error} ->
-          {:halt,
-           {:error,
-            NimbleOptions.ValidationError.exception(
-              keys_path: [:profiles, name],
-              message: error.message
-            )}}
+          {:halt, {:error, profile_error(name, error)}}
 
         {:error, message} ->
           {:halt, {:error, "Profile #{inspect(name)}: #{message}"}}
       end
     end)
+  end
+
+  defp put_validated_profile(config, name, validated_profile) do
+    Keyword.update!(config, :profiles, fn profs ->
+      Keyword.put(profs, name, validated_profile)
+    end)
+  end
+
+  defp profile_error(name, error) do
+    NimbleOptions.ValidationError.exception(
+      keys_path: [:profiles, name],
+      message: error.message
+    )
   end
 
   @doc """

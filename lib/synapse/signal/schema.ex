@@ -12,6 +12,8 @@ defmodule Synapse.Signal.Schema do
     schema_definition = Keyword.fetch!(opts, :schema)
 
     quote bind_quoted: [schema_definition: schema_definition] do
+      alias Synapse.Signal.Schema, as: SignalSchema
+
       @schema_definition schema_definition
       @schema NimbleOptions.new!(@schema_definition)
       @type payload :: map()
@@ -22,7 +24,7 @@ defmodule Synapse.Signal.Schema do
       @spec validate!(payload() | keyword()) :: payload()
       def validate!(payload) when is_map(payload) do
         payload
-        |> Synapse.Signal.Schema.normalize_payload()
+        |> SignalSchema.normalize_payload()
         |> do_validate!()
       end
 

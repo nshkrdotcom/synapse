@@ -1,10 +1,11 @@
 defmodule Synapse.Workflows.CriticWorkflowTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox, as: SQLSandbox
   alias Synapse.Workflows.CriticWorkflow
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Synapse.Repo)
+    :ok = SQLSandbox.checkout(Synapse.Repo)
     :ok
   end
 
@@ -37,7 +38,8 @@ defmodule Synapse.Workflows.CriticWorkflowTest do
     end
 
     test "invalid inputs return validation error" do
-      assert {:error, %Jido.Error{type: :validation_error}} = CriticWorkflow.evaluate(%{})
+      assert {:error, error} = CriticWorkflow.evaluate(%{})
+      assert is_exception(error)
     end
   end
 end

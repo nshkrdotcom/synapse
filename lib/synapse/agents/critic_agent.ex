@@ -36,19 +36,21 @@ defmodule Synapse.Agents.CriticAgent do
   def on_after_run(agent, result, _directives) do
     Logger.debug("CriticAgent: Review completed")
 
+    # Extract result from result map if available, otherwise use defaults
+    result = result || %{confidence: 0, issues: [], should_escalate: false}
     now = DateTime.utc_now()
 
     history_entry = %{
       timestamp: now,
-      confidence: result.confidence,
-      issues_found: length(result.issues),
-      escalated: result.should_escalate
+      confidence: Map.get(result, :confidence, 0),
+      issues_found: length(Map.get(result, :issues, [])),
+      escalated: Map.get(result, :should_escalate, false)
     }
 
     fossil_entry = %{
       timestamp: now,
-      confidence: result.confidence,
-      escalated: result.should_escalate,
+      confidence: Map.get(result, :confidence, 0),
+      escalated: Map.get(result, :should_escalate, false),
       summary: build_summary(result)
     }
 
@@ -58,8 +60,7 @@ defmodule Synapse.Agents.CriticAgent do
         review_count: agent.state.review_count + 1,
         review_history: Enum.take([history_entry | agent.state.review_history], 100),
         decision_fossils: Enum.take([fossil_entry | agent.state.decision_fossils], 50)
-      },
-      []
+      }
     )
   end
 
@@ -92,7 +93,7 @@ defmodule Synapse.Agents.CriticAgent do
           ]
       end
 
-    set(agent, %{learned_patterns: updated_patterns}, [])
+    set(agent, %{learned_patterns: updated_patterns})
   end
 
   @doc """
@@ -107,8 +108,7 @@ defmodule Synapse.Agents.CriticAgent do
       agent,
       %{
         scar_tissue: Enum.take([entry | agent.state.scar_tissue], 50)
-      },
-      []
+      }
     )
   end
 
@@ -119,16 +119,17 @@ defmodule Synapse.Agents.CriticAgent do
 
   defp build_summary(result) do
     issues =
-      result.issues
+      result
+      |> Map.get(:issues, [])
       |> Enum.join("; ")
       |> String.slice(0, 140)
 
-    cond do
-      issues == "" ->
-        "Confidence #{Float.round(result.confidence * 100, 1)}% – no issues detected."
+    confidence = Map.get(result, :confidence, 0)
 
-      true ->
-        "Confidence #{Float.round(result.confidence * 100, 1)}% – issues: #{issues}"
+    if issues == "" do
+      "Confidence #{Float.round(confidence * 100, 1)}% – no issues detected."
+    else
+      "Confidence #{Float.round(confidence * 100, 1)}% – issues: #{issues}"
     end
   end
 end

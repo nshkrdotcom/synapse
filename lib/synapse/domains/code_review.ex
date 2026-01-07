@@ -58,12 +58,18 @@ defmodule Synapse.Domains.CodeReview do
   """
   @spec register(atom() | pid()) :: :ok | {:error, term()}
   def register(registry) do
-    with :ok <- register_review_request(registry),
-         :ok <- register_review_result(registry),
-         :ok <- register_review_summary(registry),
-         :ok <- register_specialist_ready(registry) do
-      :ok
-    end
+    [
+      &register_review_request/1,
+      &register_review_result/1,
+      &register_review_summary/1,
+      &register_specialist_ready/1
+    ]
+    |> Enum.reduce_while(:ok, fn register_fn, :ok ->
+      case register_fn.(registry) do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   @doc """

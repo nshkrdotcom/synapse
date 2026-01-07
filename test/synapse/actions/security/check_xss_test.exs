@@ -14,7 +14,7 @@ defmodule Synapse.Actions.Security.CheckXSSTest do
 
       assert {:ok, result} = CheckXSS.run(params, %{})
 
-      assert length(result.findings) > 0
+      assert result.findings != []
       finding = hd(result.findings)
       assert finding.type == :xss
       assert finding.severity in [:high, :medium]
@@ -41,7 +41,7 @@ defmodule Synapse.Actions.Security.CheckXSSTest do
       }
 
       assert {:ok, result} = CheckXSS.run(params, %{})
-      assert length(result.recommended_actions) > 0
+      assert result.recommended_actions != []
       assert hd(result.recommended_actions) =~ ~r/escap|sanitiz|raw/i
     end
 

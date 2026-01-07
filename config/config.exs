@@ -7,6 +7,9 @@
 # General application configuration
 import Config
 
+# jido and jido_signal both define Jido.Signal.TraceContext; ignore redefinition warnings.
+Code.compiler_options(ignore_module_conflict: true)
+
 config :synapse,
   ecto_repos: [Synapse.Repo],
   generators: [timestamp_type: :utc_datetime]
@@ -70,7 +73,43 @@ config :synapse, :domains, [Synapse.Domains.CodeReview]
 # Configures Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [
+    :request_id,
+    :agent_id,
+    :reason,
+    :router,
+    :config,
+    :topic,
+    :workflow,
+    :status,
+    :config_id,
+    :review_id,
+    :severity,
+    :decision_path,
+    :duration_ms,
+    :finding_count,
+    :recommendation_count,
+    :specialists,
+    :escalation_count,
+    :negotiation_count,
+    :module,
+    :pid,
+    :profile,
+    :error_type,
+    :error_message,
+    :type,
+    :path,
+    :summary,
+    :failed_step,
+    :findings_count,
+    :confidence,
+    :files,
+    :language,
+    :tokens,
+    :prompt_length,
+    :rationale,
+    :error
+  ]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

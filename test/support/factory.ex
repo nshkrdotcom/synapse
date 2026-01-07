@@ -5,6 +5,8 @@ defmodule Synapse.TestSupport.Factory do
   signals, and other test entities.
   """
 
+  alias Synapse.TestSupport.Fixtures.DiffSamples
+
   @doc """
   Generates a review request signal payload.
 
@@ -24,7 +26,7 @@ defmodule Synapse.TestSupport.Factory do
   """
   def build_review_request(opts \\ []) do
     review_id = Keyword.get(opts, :review_id, "review_#{:rand.uniform(100_000)}")
-    diff = Keyword.get(opts, :diff, Synapse.TestSupport.Fixtures.DiffSamples.clean_diff())
+    diff = Keyword.get(opts, :diff, DiffSamples.clean_diff())
     files_changed = Keyword.get(opts, :files_changed, 3)
     labels = Keyword.get(opts, :labels, [])
     intent = Keyword.get(opts, :intent, "feature")

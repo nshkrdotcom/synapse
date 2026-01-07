@@ -12,13 +12,13 @@ defmodule Synapse.TestSupport.FakeReqLLM do
   @doc """
   Sets the queue of responses the fake LLM will return.
 
-  Each entry should be either `{:ok, map}` or `{:error, %Jido.Error{}}`.
+  Each entry should be either `{:ok, map}` or `{:error, exception}`.
   """
   def set_responses(responses) when is_list(responses) do
     normalized =
       Enum.map(responses, fn
         {:ok, response} -> {:ok, response}
-        {:error, %Error{} = error} -> {:error, error}
+        {:error, %{__exception__: true} = error} -> {:error, error}
         {:error, message} when is_binary(message) -> {:error, Error.execution_error(message)}
       end)
 

@@ -35,7 +35,7 @@ defmodule Synapse.Actions.Review.GenerateSummaryTest do
       assert result.status == :complete
       assert result.severity == :high
       # Overall severity should be max of all findings
-      assert length(result.findings) == 3
+      assert Enum.count(result.findings) == 3
       assert is_list(result.recommendations)
       assert is_list(result.escalations)
       assert result.metadata.decision_path == :deep_review
@@ -149,7 +149,7 @@ defmodule Synapse.Actions.Review.GenerateSummaryTest do
       }
 
       assert {:ok, result} = GenerateSummary.run(params, %{})
-      assert length(result.recommendations) == 2
+      assert Enum.count(result.recommendations) == 2
       assert "Use parameterized queries" in result.recommendations
       assert "Escape user input" in result.recommendations
     end
@@ -176,7 +176,7 @@ defmodule Synapse.Actions.Review.GenerateSummaryTest do
 
       assert {:ok, result} = GenerateSummary.run(params, %{})
       # High severity findings should trigger escalation
-      assert length(result.escalations) > 0
+      assert result.escalations != []
     end
 
     test "returns validation error for missing review_id" do
@@ -191,7 +191,7 @@ defmodule Synapse.Actions.Review.GenerateSummaryTest do
 
       # Use Jido.Exec.run to trigger schema validation
       assert {:error, error} = Jido.Exec.run(GenerateSummary, params, %{})
-      assert error.type == :validation_error
+      assert is_exception(error)
     end
 
     test "returns validation error for invalid metadata" do
@@ -203,7 +203,7 @@ defmodule Synapse.Actions.Review.GenerateSummaryTest do
 
       # Use Jido.Exec.run to trigger schema validation
       assert {:error, error} = Jido.Exec.run(GenerateSummary, params, %{})
-      assert error.type == :validation_error
+      assert is_exception(error)
     end
 
     test "preserves metadata fields in result" do

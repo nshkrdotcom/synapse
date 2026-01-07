@@ -7,7 +7,7 @@ defmodule Synapse.Workflow.Engine do
   audit trails for both success and failure scenarios.
   """
 
-  alias Jido.{Exec, Error}
+  alias Jido.Exec
   alias Synapse.Workflow.Persistence.Snapshot
   alias Synapse.Workflow.Spec
   alias Synapse.Workflow.Spec.Step
@@ -124,73 +124,99 @@ defmodule Synapse.Workflow.Engine do
 
     case Exec.run(step.action, params, exec_context) do
       {:ok, result} ->
-        duration = System.monotonic_time(:microsecond) - start_monotonic
-        finish_dt = DateTime.utc_now()
-
-        :telemetry.execute(
-          [:synapse, :workflow, :step, :stop],
-          %{duration_us: duration, attempt: attempt},
+        handle_step_success(
+          state,
+          step,
+          result,
+          attempt,
+          start_dt,
+          start_monotonic,
           telemetry_meta
         )
 
-        updated_state =
-          record_success(state, step, result, attempt, duration, start_dt, finish_dt)
-
-        persist_state(updated_state, :running, %{last_step_id: step.id, last_attempt: attempt})
-
-        {:ok, updated_state}
-
       {:error, error} ->
-        duration = System.monotonic_time(:microsecond) - start_monotonic
-        finish_dt = DateTime.utc_now()
+        handle_step_error(state, step, attempt, start_dt, start_monotonic, telemetry_meta, error)
+    end
+  end
 
-        :telemetry.execute(
-          [:synapse, :workflow, :step, :exception],
-          %{duration_us: duration, attempt: attempt},
-          Map.put(telemetry_meta, :error, error)
-        )
+  defp handle_step_success(
+         state,
+         step,
+         result,
+         attempt,
+         start_dt,
+         start_monotonic,
+         telemetry_meta
+       ) do
+    duration = System.monotonic_time(:microsecond) - start_monotonic
+    finish_dt = DateTime.utc_now()
 
-        max_attempts = Map.get(step.retry, :max_attempts, 1)
+    :telemetry.execute(
+      [:synapse, :workflow, :step, :stop],
+      %{duration_us: duration, attempt: attempt},
+      telemetry_meta
+    )
 
-        if attempt < max_attempts do
-          do_execute_step(step, state, attempt + 1)
-        else
-          continue? = step.on_error == :continue
+    updated_state =
+      record_success(state, step, result, attempt, duration, start_dt, finish_dt)
 
-          failed_state =
-            record_failure(state, step, attempt, duration, start_dt, finish_dt, error)
+    persist_state(updated_state, :running, %{last_step_id: step.id, last_attempt: attempt})
 
-          serialized_error = serialize_error(error)
+    {:ok, updated_state}
+  end
 
-          if continue? do
-            updated_state =
-              failed_state
-              |> put_step_result(step.id, %{status: :error, error: error})
-              |> mark_step_completed(step.id)
+  defp handle_step_error(state, step, attempt, start_dt, start_monotonic, telemetry_meta, error) do
+    duration = System.monotonic_time(:microsecond) - start_monotonic
+    finish_dt = DateTime.utc_now()
 
-            persist_state(updated_state, :running, %{
-              last_step_id: step.id,
-              last_attempt: attempt,
-              error: serialized_error
-            })
+    :telemetry.execute(
+      [:synapse, :workflow, :step, :exception],
+      %{duration_us: duration, attempt: attempt},
+      Map.put(telemetry_meta, :error, error)
+    )
 
-            {:ok, updated_state}
-          else
-            persist_state(failed_state, :failed, %{
-              last_step_id: step.id,
-              last_attempt: attempt,
-              error: serialized_error
-            })
+    max_attempts = Map.get(step.retry, :max_attempts, 1)
 
-            failure = %{
-              failed_step: step.id,
-              error: error,
-              attempts: attempt
-            }
+    if attempt < max_attempts do
+      do_execute_step(step, state, attempt + 1)
+    else
+      finalize_step_failure(state, step, attempt, duration, start_dt, finish_dt, error)
+    end
+  end
 
-            {:error, failed_state, failure}
-          end
-        end
+  defp finalize_step_failure(state, step, attempt, duration, start_dt, finish_dt, error) do
+    failed_state =
+      record_failure(state, step, attempt, duration, start_dt, finish_dt, error)
+
+    serialized_error = serialize_error(error)
+
+    if step.on_error == :continue do
+      updated_state =
+        failed_state
+        |> put_step_result(step.id, %{status: :error, error: error})
+        |> mark_step_completed(step.id)
+
+      persist_state(updated_state, :running, %{
+        last_step_id: step.id,
+        last_attempt: attempt,
+        error: serialized_error
+      })
+
+      {:ok, updated_state}
+    else
+      persist_state(failed_state, :failed, %{
+        last_step_id: step.id,
+        last_attempt: attempt,
+        error: serialized_error
+      })
+
+      failure = %{
+        failed_step: step.id,
+        error: error,
+        attempts: attempt
+      }
+
+      {:error, failed_state, failure}
     end
   end
 
@@ -435,20 +461,6 @@ defmodule Synapse.Workflow.Engine do
   defp normalize_step_id(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_step_id(value), do: value
 
-  defp serialize_error(%Error{} = error) do
-    metadata =
-      error
-      |> Map.from_struct()
-      |> Map.drop([:__struct__, :type, :message])
-      |> sanitize_metadata()
-
-    %{
-      type: error.type,
-      message: error.message,
-      metadata: metadata
-    }
-  end
-
   defp serialize_error(%{__struct__: module} = error) do
     %{type: module, message: Exception.message(error)}
   end
@@ -458,21 +470,6 @@ defmodule Synapse.Workflow.Engine do
   defp maybe_format_audit_error(nil), do: nil
   defp maybe_format_audit_error(error) when is_struct(error), do: serialize_error(error)
   defp maybe_format_audit_error(error), do: error
-
-  defp sanitize_metadata(metadata) when is_map(metadata) do
-    case Map.get(metadata, :stacktrace) do
-      nil ->
-        metadata
-
-      stacktrace when is_list(stacktrace) ->
-        Map.put(metadata, :stacktrace, Enum.map(stacktrace, &Exception.format_stacktrace_entry/1))
-
-      _other ->
-        Map.delete(metadata, :stacktrace)
-    end
-  end
-
-  # All current callers pass a map; fallback removed to satisfy dialyzer
 
   defp sanitize_audit_step(entry) do
     Map.update(entry, :error, nil, fn
@@ -492,7 +489,6 @@ defmodule Synapse.Workflow.Engine do
 
   defp sanitize_value(%DateTime{} = value), do: value
   defp sanitize_value(%NaiveDateTime{} = value), do: value
-  defp sanitize_value(%Error{} = error), do: serialize_error(error)
 
   defp sanitize_value(value) when is_struct(value) do
     value

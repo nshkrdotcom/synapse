@@ -4,8 +4,8 @@ defmodule Synapse.Agents.SimpleExecutorTest do
   import ExUnit.CaptureLog
   import Synapse.TestSupport.AgentHelpers
 
-  alias Synapse.Agents.SimpleExecutor
   alias Synapse.Actions.Echo
+  alias Synapse.Agents.SimpleExecutor
 
   describe "SimpleExecutor agent" do
     test "can start agent server" do

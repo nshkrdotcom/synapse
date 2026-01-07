@@ -15,7 +15,7 @@ defmodule Synapse.Workflows.SecuritySpecialistWorkflowTest do
         metadata: %{}
       })
 
-    assert length(results) == 3
+    assert Enum.count(results) == 3
 
     assert Enum.any?(results, fn result ->
              Enum.any?(result.findings, &(&1.type == :sql_injection))

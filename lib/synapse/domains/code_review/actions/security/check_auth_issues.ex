@@ -38,9 +38,10 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckAuthIssues do
   def run(params, _context) do
     findings = analyze_diff(params.diff, params.files)
     confidence = calculate_confidence(params.diff, findings)
+    findings_count = Enum.count(findings)
 
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         [
           "Restore removed authentication guards",
           "Ensure authorization checks are in place",
@@ -57,7 +58,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckAuthIssues do
     }
 
     Logger.debug("Auth issues check completed",
-      findings_count: length(findings),
+      findings_count: findings_count,
       files: params.files
     )
 

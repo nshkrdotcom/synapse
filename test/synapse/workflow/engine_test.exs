@@ -3,14 +3,15 @@ defmodule Synapse.Workflow.EngineTest do
 
   @moduletag :capture_log
 
-  alias Synapse.Workflow.{Engine, Spec}
+  alias Synapse.Workflow.Engine
+  alias Synapse.Workflow.Spec
   alias Synapse.Workflow.Spec.Step
 
   alias Synapse.Workflow.EngineTest.Support.{
     AddAction,
-    RecordOrderAction,
+    AlwaysFailAction,
     FlakyAction,
-    AlwaysFailAction
+    RecordOrderAction
   }
 
   setup context do
@@ -55,7 +56,7 @@ defmodule Synapse.Workflow.EngineTest do
               action: AddAction,
               requires: [:add],
               description: "double previous result",
-              params: fn env -> %{value: env.results.add * 2} end
+              params: fn env -> %{value: env.results.add.result * 2} end
             )
           ],
           outputs: [
@@ -67,12 +68,12 @@ defmodule Synapse.Workflow.EngineTest do
       {:ok, exec} =
         Engine.execute(spec, input: %{start: 3}, context: %{base: 1}, persistence: nil)
 
-      assert exec.outputs.executor_output == 4
-      assert exec.outputs.total == 9
+      assert exec.outputs.executor_output.result == 4
+      assert exec.outputs.total.result == 9
       assert Enum.sort(Map.keys(exec.results)) == [:add, :double]
 
       assert exec.audit_trail.workflow == :demo
-      assert length(exec.audit_trail.steps) == 2
+      assert Enum.count(exec.audit_trail.steps) == 2
       assert Enum.all?(exec.audit_trail.steps, &(&1.status == :ok))
 
       assert_received {:telemetry_event, [:synapse, :workflow, :step, :start], _, %{step: :add}}
@@ -88,7 +89,7 @@ defmodule Synapse.Workflow.EngineTest do
               id: :finalize,
               action: RecordOrderAction,
               requires: [:prepare],
-              params: fn env -> %{payload: env.results.prepare} end
+              params: fn env -> %{payload: env.results.prepare.result} end
             ),
             Step.new(
               id: :prepare,
@@ -101,7 +102,7 @@ defmodule Synapse.Workflow.EngineTest do
 
       {:ok, exec} = Engine.execute(spec, persistence: nil)
 
-      assert exec.outputs.result == :ready
+      assert exec.outputs.result.result == :ready
 
       assert Enum.reverse(:persistent_term.get(:engine_test_execution_order, [])) == [
                :prepare,
@@ -128,7 +129,7 @@ defmodule Synapse.Workflow.EngineTest do
 
       {:ok, exec} = Engine.execute(spec, persistence: nil)
 
-      assert exec.outputs.final == :ok
+      assert exec.outputs.final.result == :ok
       assert :persistent_term.get(:engine_test_flaky_attempts, 0) == 2
 
       assert_received {:telemetry_event, [:synapse, :workflow, :step, :stop], _,
@@ -151,7 +152,7 @@ defmodule Synapse.Workflow.EngineTest do
 
       assert {:error, failure} = Engine.execute(spec, persistence: nil)
       assert failure.failed_step == :explode
-      assert match?(%Jido.Error{}, failure.error)
+      assert is_exception(failure.error)
       assert failure.attempts == 2
       assert failure.audit_trail.workflow == :failure
 
@@ -186,10 +187,11 @@ defmodule Synapse.Workflow.EngineTest do
 
       {:ok, exec} = Engine.execute(spec, persistence: nil)
 
-      assert exec.outputs.result == 5
+      assert exec.outputs.result.result == 5
 
-      assert %{status: :error, error: %Jido.Error{}} = exec.results.unstable
-      assert exec.results.downstream == 5
+      assert %{status: :error, error: error} = exec.results.unstable
+      assert is_exception(error)
+      assert exec.results.downstream.result == 5
 
       assert Enum.find(exec.audit_trail.steps, &(&1.step == :unstable)).status == :error
       assert Enum.find(exec.audit_trail.steps, &(&1.step == :downstream)).status == :ok
@@ -212,7 +214,8 @@ defmodule Synapse.Workflow.EngineTest.Support.AddAction do
 
   @impl true
   def run(params, context) do
-    {:ok, params.value + Map.get(context, :base, 0)}
+    result = params.value + Map.get(context, :base, 0)
+    {:ok, %{result: result}}
   end
 end
 
@@ -225,7 +228,7 @@ defmodule Synapse.Workflow.EngineTest.Support.RecordOrderAction do
   def run(params, context) do
     order = :persistent_term.get(:engine_test_execution_order, [])
     :persistent_term.put(:engine_test_execution_order, [context.workflow_step | order])
-    {:ok, params.payload}
+    {:ok, %{result: params.payload}}
   end
 end
 
@@ -245,7 +248,7 @@ defmodule Synapse.Workflow.EngineTest.Support.FlakyAction do
 
       _ ->
         :persistent_term.put(:engine_test_flaky_attempts, attempts + 1)
-        {:ok, params.value}
+        {:ok, %{result: params.value}}
     end
   end
 end

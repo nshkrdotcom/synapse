@@ -23,8 +23,8 @@ defmodule Synapse.Agents.SimpleExecutor do
   end
 
   @impl true
-  def on_after_run(agent, _result, _context) do
+  def on_after_run(agent, _result, _directives) do
     Logger.debug("SimpleExecutor: action completed successfully")
-    set(agent, %{execution_count: agent.state.execution_count + 1}, [])
+    set(agent, %{execution_count: agent.state.execution_count + 1})
   end
 end

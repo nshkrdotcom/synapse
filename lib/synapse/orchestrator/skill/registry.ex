@@ -46,10 +46,9 @@ defmodule Synapse.Orchestrator.Skill.Registry do
   @spec metadata_summary(pid() | atom()) :: String.t()
   def metadata_summary(server \\ __MODULE__) do
     list(server)
-    |> Enum.map(fn skill ->
+    |> Enum.map_join("\n", fn skill ->
       "- #{skill.name}: #{skill.description}\n  (Load: bash cat #{skill.instructions_path})"
     end)
-    |> Enum.join("\n")
   end
 
   # GenServer callbacks -------------------------------------------------------
@@ -110,14 +109,15 @@ defmodule Synapse.Orchestrator.Skill.Registry do
     source =
       if String.contains?(dir, ".claude"), do: :claude, else: :synapse
 
-    with {:ok, entries} <- File.ls(dir) do
-      entries
-      |> Enum.map(&Path.join(dir, &1))
-      |> Enum.filter(&File.dir?/1)
-      |> Enum.map(&load_skill(&1, source))
-      |> Enum.filter(&match?({:ok, _}, &1))
-      |> Enum.map(fn {:ok, skill} -> skill end)
-    else
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.map(&Path.join(dir, &1))
+        |> Enum.filter(&File.dir?/1)
+        |> Enum.map(&load_skill(&1, source))
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map(fn {:ok, skill} -> skill end)
+
       {:error, reason} ->
         Logger.debug("Unable to read skills directory", path: dir, reason: inspect(reason))
         []

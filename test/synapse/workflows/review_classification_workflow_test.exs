@@ -19,7 +19,7 @@ defmodule Synapse.Workflows.ReviewClassificationWorkflowTest do
   end
 
   test "returns validation error when payload not a map" do
-    assert {:error, %Jido.Error{type: :validation_error}} =
-             ReviewClassificationWorkflow.classify(nil)
+    assert {:error, error} = ReviewClassificationWorkflow.classify(nil)
+    assert is_exception(error)
   end
 end

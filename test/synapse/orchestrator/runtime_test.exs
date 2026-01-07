@@ -2,6 +2,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
   use ExUnit.Case, async: false
 
   alias Synapse.Orchestrator.Runtime
+  alias Synapse.Orchestrator.RuntimeTest.TestOrchestration
   alias Synapse.TestSupport.SignalRouterHelpers, as: RouterHelpers
 
   @moduletag :capture_log
@@ -60,7 +61,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
          router: router}
       )
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     summary = Runtime.skill_metadata(runtime)
     assert summary =~ "demo-skill"
@@ -84,7 +85,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     runtime =
       start_supervised!({Runtime, config_source: path, reconcile_interval: 50, router: router})
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     assert {:ok, config} = Runtime.get_agent_config(runtime, :test_agent)
     assert config.id == :test_agent
@@ -117,7 +118,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     runtime =
       start_supervised!({Runtime, config_source: path, reconcile_interval: 50, router: router})
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     assert {:ok, status} = Runtime.agent_status(runtime, :status_agent)
     assert is_pid(status.pid)
@@ -150,10 +151,10 @@ defmodule Synapse.Orchestrator.RuntimeTest do
         actions: [Runtime.Action],
         signals: canonical_signals(),
         orchestration: %{
-          classify_fn: &Synapse.Orchestrator.RuntimeTest.TestOrchestration.classify/1,
+          classify_fn: &TestOrchestration.classify/1,
           spawn_specialists: [],
-          aggregation_fn: &Synapse.Orchestrator.RuntimeTest.TestOrchestration.aggregate/2,
-          fast_path_fn: &Synapse.Orchestrator.RuntimeTest.TestOrchestration.fast_path/2
+          aggregation_fn: &TestOrchestration.aggregate/2,
+          fast_path_fn: &TestOrchestration.fast_path/2
         }
       }
     ])
@@ -190,7 +191,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     runtime =
       start_supervised!({Runtime, config_source: path, reconcile_interval: 50, router: router})
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 2 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 2 end)
 
     health = Runtime.health_check(runtime)
     assert health.total == 2
@@ -232,7 +233,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     assert Process.alive?(pid)
 
     agents = Runtime.list_agents(runtime)
-    assert length(agents) == 1
+    assert Enum.count(agents) == 1
     assert hd(agents).agent_id == :dynamic_agent
 
     assert {:ok, config} = Runtime.get_agent_config(runtime, :dynamic_agent)
@@ -252,7 +253,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     runtime =
       start_supervised!({Runtime, config_source: path, reconcile_interval: 50, router: router})
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     duplicate_config = %{
       id: :existing_agent,
@@ -292,7 +293,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     runtime =
       start_supervised!({Runtime, config_source: path, reconcile_interval: 50, router: router})
 
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     assert :ok = Runtime.remove_agent(runtime, :removable_agent)
 
@@ -325,7 +326,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
     }
 
     assert {:ok, _pid} = Runtime.add_agent(runtime, config)
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
 
     # Remove the agent
     assert :ok = Runtime.remove_agent(runtime, :temporary_agent)
@@ -333,7 +334,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
 
     # Add it again
     assert {:ok, _pid} = Runtime.add_agent(runtime, config)
-    assert eventually(fn -> Runtime.list_agents(runtime) |> length() == 1 end)
+    assert eventually(fn -> Runtime.list_agents(runtime) |> Enum.count() == 1 end)
   end
 
   test "list_skills returns all available skills", %{
@@ -354,7 +355,7 @@ defmodule Synapse.Orchestrator.RuntimeTest do
 
     skills = Runtime.list_skills(runtime)
     assert is_list(skills)
-    assert length(skills) == 1
+    assert Enum.count(skills) == 1
 
     skill = hd(skills)
     assert skill.id == "demo-skill"

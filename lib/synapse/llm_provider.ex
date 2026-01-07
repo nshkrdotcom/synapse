@@ -31,7 +31,7 @@ defmodule Synapse.LLMProvider do
       end
   """
 
-  alias Jido.Error
+  @type error_t :: Exception.t()
 
   @typedoc """
   Response data structure returned by providers.
@@ -98,12 +98,12 @@ defmodule Synapse.LLMProvider do
   ## Returns
 
     * `{:ok, response_data}` - Successfully parsed response
-    * `{:error, Jido.Error.t()}` - Parsing failed or response format invalid
+    * `{:error, Exception.t()}` - Parsing failed or response format invalid
   """
   @callback parse_response(
               response :: Req.Response.t(),
               metadata :: request_metadata()
-            ) :: {:ok, response_data()} | {:error, Error.t()}
+            ) :: {:ok, response_data()} | {:error, error_t()}
 
   @doc """
   Translates provider-specific errors into Jido.Error format.
@@ -118,12 +118,12 @@ defmodule Synapse.LLMProvider do
 
   ## Returns
 
-    * `Jido.Error.t()` with appropriate type (:execution_error, :config_error, etc.)
+    * An exception struct with appropriate type (:execution_error, :config_error, etc.)
   """
   @callback translate_error(
               response_or_error :: Req.Response.t() | {:error, term()},
               metadata :: request_metadata()
-            ) :: Error.t()
+            ) :: error_t()
 
   @doc """
   Returns the list of features supported by this provider.

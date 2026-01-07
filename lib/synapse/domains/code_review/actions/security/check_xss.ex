@@ -38,9 +38,10 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckXSS do
   def run(params, _context) do
     findings = analyze_diff(params.diff, params.files)
     confidence = calculate_confidence(params.diff, findings)
+    findings_count = Enum.count(findings)
 
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         [
           "Remove 'raw/1' calls and use proper HTML escaping",
           "Sanitize user-generated content before rendering",
@@ -57,7 +58,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckXSS do
     }
 
     Logger.debug("XSS check completed",
-      findings_count: length(findings),
+      findings_count: findings_count,
       files: params.files
     )
 

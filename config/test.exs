@@ -12,3 +12,5 @@ config :synapse, Synapse.Repo,
   pool_size: 10
 
 config :synapse, Synapse.Workflow.Engine, persistence: nil
+
+config :synapse, :suppress_reqllm_warnings, true

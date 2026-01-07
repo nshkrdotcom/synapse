@@ -3,10 +3,12 @@ defmodule Synapse.Workflow.Persistence.PostgresTest do
 
   @moduletag :capture_log
 
-  alias Synapse.Workflow.{Engine, Execution, Spec}
-  alias Synapse.Workflow.Spec.Step
+  alias Synapse.Workflow.Engine
+  alias Synapse.Workflow.Execution
   alias Synapse.Workflow.Persistence.Postgres
   alias Synapse.Workflow.Persistence.Snapshot
+  alias Synapse.Workflow.Spec
+  alias Synapse.Workflow.Spec.Step
 
   @request_id "test-request"
 

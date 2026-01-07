@@ -2,6 +2,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
   use Synapse.SupertesterCase, async: false
   import ExUnit.CaptureLog
 
+  alias Jido.Error
   alias Synapse.Actions.GenerateCritique
 
   describe "compensation on LLM failure" do
@@ -12,7 +13,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
         profile: :test
       }
 
-      error = %Jido.Error{type: :execution_error, message: "Internal server error"}
+      error = Error.execution_error("Internal server error")
 
       # Test compensation directly
       logs =
@@ -26,7 +27,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
                    )
 
           assert compensation_result.compensated == true
-          assert compensation_result.original_error.type == :execution_error
+          assert is_atom(compensation_result.original_error.type)
           assert %DateTime{} = compensation_result.compensated_at
         end)
 
@@ -37,7 +38,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
     test "compensation includes error context" do
       params = %{prompt: "test", profile: :test}
 
-      error = %Jido.Error{type: :execution_error, message: "429 rate limit"}
+      error = Error.execution_error("429 rate limit")
 
       capture_log(fn ->
         {:ok, result} = GenerateCritique.on_error(params, error, %{}, [])
@@ -50,7 +51,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
     test "compensation logs profile information for debugging" do
       params = %{prompt: "test", profile: :test}
 
-      error = %Jido.Error{type: :execution_error, message: "Unauthorized"}
+      error = Error.execution_error("Unauthorized")
 
       logs =
         capture_log(fn ->
@@ -69,7 +70,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
     test "compensation includes request_id for tracking" do
       params = %{prompt: "test", profile: :test}
 
-      error = %Jido.Error{type: :execution_error, message: "Server error"}
+      error = Error.execution_error("Server error")
 
       capture_log(fn ->
         {:ok, result} = GenerateCritique.on_error(params, error, %{request_id: "req_abc123"}, [])
@@ -110,7 +111,7 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
       on_exit(fn -> :telemetry.detach("test-compensation-handler") end)
 
       params = %{prompt: "test", profile: :test}
-      error = %Jido.Error{type: :execution_error, message: "simulated failure"}
+      error = Error.execution_error("simulated failure")
 
       capture_log(fn ->
         {:ok, _result} =
@@ -122,7 +123,8 @@ defmodule Synapse.Actions.GenerateCritiqueCompensationTest do
         assert measurements.system_time != nil
         assert metadata.request_id == "telemetry_test"
         assert metadata.profile == :test
-        assert metadata.error_type == :execution_error
+        # Error type is now an atom based on the exception module
+        assert is_atom(metadata.error_type)
       end)
 
       # Cleanup

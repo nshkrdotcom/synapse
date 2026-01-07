@@ -3,14 +3,16 @@ defmodule Synapse.Orchestrator.Actions.RunConfigTest do
 
   @moduletag :capture_log
 
+  alias Ecto.Adapters.SQL.Sandbox, as: SQLSandbox
   alias Jido.{Exec, Signal}
-  alias Synapse.Orchestrator.AgentConfig
   alias Synapse.Orchestrator.Actions.RunConfig
+  alias Synapse.Orchestrator.AgentConfig
+  alias Synapse.Repo
   alias Synapse.SignalRouter
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Synapse.Repo)
-    Ecto.Adapters.SQL.Sandbox.mode(Synapse.Repo, {:shared, self()})
+    :ok = SQLSandbox.checkout(Repo)
+    SQLSandbox.mode(Repo, {:shared, self()})
   end
 
   defmodule TestAction do
@@ -36,7 +38,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfigTest do
   end
 
   defp base_config(actions) do
-    %Synapse.Orchestrator.AgentConfig{
+    %AgentConfig{
       id: :demo_agent,
       type: :specialist,
       signals: %{subscribes: [], emits: []},
@@ -56,17 +58,13 @@ defmodule Synapse.Orchestrator.Actions.RunConfigTest do
     assert response.result.payload.value == 1
   end
 
-  alias Jido.Error
-
   test "wraps failing actions without aborting workflow" do
     {:ok, response} =
       Exec.run(RunConfig, %{_config: base_config([FailingAction]), value: 5}, %{})
 
-    assert [
-             {:error, FailingAction, %Error{message: message}}
-           ] = response.results
-
-    assert message == "boom"
+    assert [{:error, FailingAction, error}] = response.results
+    assert is_exception(error)
+    assert Exception.message(error) =~ "boom"
     assert response.audit_trail.status in [:completed, :ok]
   end
 

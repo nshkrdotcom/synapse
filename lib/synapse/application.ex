@@ -5,18 +5,22 @@ defmodule Synapse.Application do
 
   use Application
 
+  alias Synapse.Application.Orchestrator, as: OrchestratorApp
+  alias Synapse.{Repo, Runtime, Telemetry}
+  alias Synapse.Signal.Registry, as: SignalRegistry
+
   @impl true
   def start(_type, _args) do
-    Synapse.Telemetry.attach_orchestrator_summary_handler()
-    runtime_opts = Application.get_env(:synapse, Synapse.Runtime, [])
-    runtime_name = Keyword.get(runtime_opts, :name, Synapse.Runtime)
+    Telemetry.attach_orchestrator_summary_handler()
+    runtime_opts = Application.get_env(:synapse, Runtime, [])
+    runtime_name = Keyword.get(runtime_opts, :name, Runtime)
     orchestrator_config = Application.get_env(:synapse, Synapse.Orchestrator.Runtime, [])
 
     children =
       [
-        Synapse.Signal.Registry,
-        Synapse.Repo,
-        {Synapse.Runtime, runtime_opts}
+        SignalRegistry,
+        Repo,
+        {Runtime, runtime_opts}
       ] ++
         orchestrator_children(orchestrator_config, runtime_name) ++
         [
@@ -33,7 +37,7 @@ defmodule Synapse.Application do
   def config_change(_changed, _new, _removed), do: :ok
 
   defp orchestrator_children(config, runtime_name) do
-    case Synapse.Application.Orchestrator.child_spec(config, runtime_name) do
+    case OrchestratorApp.child_spec(config, runtime_name) do
       nil -> []
       spec -> [spec]
     end

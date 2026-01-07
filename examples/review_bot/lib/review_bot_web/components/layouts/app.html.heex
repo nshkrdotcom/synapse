@@ -1,0 +1,22 @@
+<header class="site-header">
+  <div class="container">
+    <.link navigate={~p"/"} class="logo">
+      ReviewBot
+    </.link>
+    <nav>
+      <.link navigate={~p"/"} class="nav-link">Reviews</.link>
+      <.link navigate={~p"/reviews/new"} class="nav-link">New Review</.link>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <.flash_group flash={@flash} />
+  <%= @inner_content %>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <p>Powered by Synapse Multi-Agent Framework</p>
+  </div>
+</footer>

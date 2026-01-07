@@ -20,7 +20,7 @@ Highlights
 - Declarative orchestrator runtime (no GenServer boilerplate)
 - Signal roles for orchestrator agents and configurable actions
 - Workflow engine with persistence and audit trail (`workflow_executions`)
-- LLM gateway powered by `Req` with OpenAI and Gemini providers
+- LLM gateway powered by Altar.AI (optional) with ReqLLM fallback
 - Telemetry throughout (router, workflows, LLM requests)
 
 ## Quick Start
@@ -55,6 +55,12 @@ Highlights
    ```
 
    This boots `Synapse.Runtime`, the signal router, the orchestrator runtime (reading `priv/orchestrator_agents.exs`), and the workflow engine with Postgres persistence. The application is OTP‑only — no Phoenix endpoint is required.
+
+5. **Run the Altar.AI integration example (optional)**
+
+   ```bash
+   mix run examples/altar_ai_integration.exs
+   ```
 
 ## Submit a Review Request
 
@@ -168,6 +174,19 @@ Synapse.Workflow.Execution
 ```
 
 Each execution record includes the workflow name, step-by-step audit trail, accumulated results, and the final status, so you can drive dashboards or rerun failed work.
+
+## AI Integration (Altar.AI)
+
+Synapse can delegate LLM operations to `altar_ai` via the compatibility layer:
+
+```elixir
+alias Altar.AI.Integrations.Synapse, as: LLM
+
+{:ok, response} = LLM.chat_completion(%{prompt: "Hello"}, profile: :openai)
+```
+
+`Synapse.ReqLLM` remains available but is deprecated and will be removed in a
+future release.
 
 ## Orchestrator & Specialists
 

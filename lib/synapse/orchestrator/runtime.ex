@@ -111,7 +111,7 @@ defmodule Synapse.Orchestrator.Runtime do
   @doc """
   Dynamically adds an agent to the runtime.
   """
-  @spec add_agent(pid(), map() | keyword()) :: {:ok, pid()} | {:error, term()}
+  @spec add_agent(GenServer.server(), map() | keyword()) :: {:ok, pid()} | {:error, term()}
   def add_agent(server, config) do
     GenServer.call(server, {:add_agent, config})
   end
@@ -260,24 +260,7 @@ defmodule Synapse.Orchestrator.Runtime do
   def handle_call({:add_agent, config_input}, _from, state) do
     case AgentConfig.new(config_input) do
       {:ok, config} ->
-        # Check if agent already exists
-        if Enum.any?(state.agent_configs, &(&1.id == config.id)) do
-          {:reply, {:error, :agent_already_exists}, state}
-        else
-          # Add to configs and trigger reconciliation
-          new_configs = [config | state.agent_configs]
-          new_state = %{state | agent_configs: new_configs}
-          reconciled_state = reconcile_state(new_state)
-
-          # Get the spawned agent pid
-          case Map.get(reconciled_state.running_agents, config.id) do
-            nil ->
-              {:reply, {:error, :spawn_failed}, reconciled_state}
-
-            running_agent ->
-              {:reply, {:ok, running_agent.pid}, reconciled_state}
-          end
-        end
+        add_agent_config(config, state)
 
       {:error, error} ->
         {:reply, {:error, error}, state}
@@ -286,18 +269,12 @@ defmodule Synapse.Orchestrator.Runtime do
 
   @impl true
   def handle_call({:remove_agent, agent_id}, _from, state) do
-    # Check if agent exists in config
     case Enum.find(state.agent_configs, &(&1.id == agent_id)) do
       nil ->
         {:reply, {:error, :not_found}, state}
 
       _config ->
-        # Remove from configs and trigger reconciliation (which will stop the agent)
-        new_configs = Enum.reject(state.agent_configs, &(&1.id == agent_id))
-        new_state = %{state | agent_configs: new_configs}
-        reconciled_state = reconcile_state(new_state)
-
-        {:reply, :ok, reconciled_state}
+        {:reply, :ok, remove_agent_config(state, agent_id)}
     end
   end
 
@@ -361,6 +338,30 @@ defmodule Synapse.Orchestrator.Runtime do
 
   # Internal helpers ----------------------------------------------------------
 
+  defp add_agent_config(config, state) do
+    if Enum.any?(state.agent_configs, &(&1.id == config.id)) do
+      {:reply, {:error, :agent_already_exists}, state}
+    else
+      state
+      |> Map.update!(:agent_configs, &[config | &1])
+      |> reconcile_state()
+      |> reply_with_spawned_agent(config.id)
+    end
+  end
+
+  defp reply_with_spawned_agent(state, agent_id) do
+    case Map.get(state.running_agents, agent_id) do
+      nil -> {:reply, {:error, :spawn_failed}, state}
+      running_agent -> {:reply, {:ok, running_agent.pid}, state}
+    end
+  end
+
+  defp remove_agent_config(state, agent_id) do
+    state
+    |> Map.update!(:agent_configs, fn configs -> Enum.reject(configs, &(&1.id == agent_id)) end)
+    |> reconcile_state()
+  end
+
   defp schedule_reconcile(interval) do
     Process.send_after(self(), :reconcile, interval)
   end
@@ -411,50 +412,10 @@ defmodule Synapse.Orchestrator.Runtime do
   end
 
   defp reconcile_state(%State{} = state) do
-    desired = Map.new(state.agent_configs, &{&1.id, &1})
+    desired = desired_agents(state)
 
-    {running_agents, monitors} =
-      Enum.reduce(desired, {state.running_agents, state.monitors}, fn {agent_id, config},
-                                                                      {agents_acc, monitors_acc} ->
-        case Map.get(agents_acc, agent_id) do
-          %RunningAgent{} = running ->
-            needs_restart? =
-              running.config != config or not Process.alive?(running.pid)
-
-            if needs_restart? do
-              Logger.info("Restarting agent", agent_id: agent_id)
-              cleanup_agent(running)
-
-              start_agent(
-                config,
-                state,
-                Map.delete(agents_acc, agent_id),
-                monitors_acc,
-                running.spawn_count + 1,
-                running.metadata
-              )
-            else
-              updated = %{running | config: config}
-              {Map.put(agents_acc, agent_id, updated), monitors_acc}
-            end
-
-          nil ->
-            start_agent(config, state, agents_acc, monitors_acc, 1, %{})
-        end
-      end)
-
-    # stop agents that are no longer desired
-    {running_agents, monitors} =
-      Enum.reduce(state.running_agents, {running_agents, monitors}, fn {agent_id, agent},
-                                                                       {agents_acc, monitors_acc} ->
-        if Map.has_key?(desired, agent_id) do
-          {agents_acc, monitors_acc}
-        else
-          Logger.info("Stopping agent removed from config", agent_id: agent_id)
-          cleanup_agent(agent)
-          {Map.delete(agents_acc, agent_id), Map.delete(monitors_acc, agent.monitor_ref)}
-        end
-      end)
+    {running_agents, monitors} = reconcile_desired_agents(desired, state)
+    {running_agents, monitors} = stop_removed_agents(desired, state, running_agents, monitors)
 
     %{
       state
@@ -469,6 +430,67 @@ defmodule Synapse.Orchestrator.Runtime do
 
   defp filter_configs(configs, types) when is_list(types) do
     Enum.filter(configs, &(&1.type in types))
+  end
+
+  defp desired_agents(state) do
+    Map.new(state.agent_configs, &{&1.id, &1})
+  end
+
+  defp reconcile_desired_agents(desired, state) do
+    Enum.reduce(desired, {state.running_agents, state.monitors}, fn {agent_id, config},
+                                                                    {agents_acc, monitors_acc} ->
+      reconcile_agent(agent_id, config, state, agents_acc, monitors_acc)
+    end)
+  end
+
+  defp reconcile_agent(agent_id, config, state, agents_acc, monitors_acc) do
+    case Map.get(agents_acc, agent_id) do
+      %RunningAgent{} = running ->
+        maybe_restart_agent(agent_id, running, config, state, agents_acc, monitors_acc)
+
+      nil ->
+        start_agent(config, state, agents_acc, monitors_acc, 1, %{})
+    end
+  end
+
+  defp maybe_restart_agent(agent_id, running, config, state, agents_acc, monitors_acc) do
+    if needs_restart?(running, config) do
+      Logger.info("Restarting agent", agent_id: agent_id)
+      cleanup_agent(running)
+
+      start_agent(
+        config,
+        state,
+        Map.delete(agents_acc, agent_id),
+        monitors_acc,
+        running.spawn_count + 1,
+        running.metadata
+      )
+    else
+      updated = %{running | config: config}
+      {Map.put(agents_acc, agent_id, updated), monitors_acc}
+    end
+  end
+
+  defp needs_restart?(running, config) do
+    running.config != config or not Process.alive?(running.pid)
+  end
+
+  defp stop_removed_agents(desired, state, running_agents, monitors) do
+    Enum.reduce(state.running_agents, {running_agents, monitors}, fn {agent_id, agent},
+                                                                     {agents_acc, monitors_acc} ->
+      stop_removed_agent(desired, agent_id, agent, agents_acc, monitors_acc)
+    end)
+  end
+
+  defp stop_removed_agent(desired, agent_id, agent, agents_acc, monitors_acc) do
+    if Map.has_key?(desired, agent_id) do
+      {agents_acc, monitors_acc}
+    else
+      Logger.info("Stopping agent removed from config", agent_id: agent_id)
+      cleanup_agent(agent)
+      {Map.delete(agents_acc, agent_id), Map.delete(monitors_acc, agent.monitor_ref)}
+    end
   end
 
   defp start_agent(config, state, agents_acc, monitors_acc, spawn_count, metadata) do
@@ -501,9 +523,10 @@ defmodule Synapse.Orchestrator.Runtime do
   defp default_router do
     Synapse.SignalRouter.fetch().name
   rescue
-    _ ->
-      raise ArgumentError,
-            "SignalRouter must be started or provided via :router when starting the orchestrator runtime"
+    _error ->
+      reraise ArgumentError,
+              "SignalRouter must be started or provided via :router when starting the orchestrator runtime",
+              __STACKTRACE__
   end
 
   defp cleanup_agent(%RunningAgent{} = agent) do

@@ -30,7 +30,7 @@ defmodule Synapse.Workflows.PerformanceSpecialistWorkflowTest do
         language: "elixir"
       })
 
-    assert length(results) == 3
+    assert Enum.count(results) == 3
 
     assert Enum.any?(results, fn result ->
              Enum.any?(result.findings, &(&1.type == :high_complexity))

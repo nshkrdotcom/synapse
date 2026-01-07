@@ -26,7 +26,7 @@ defmodule Synapse.Domains.CodeReview.Actions.ProfileHotPath do
     confidence = 0.7
 
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         [
           "Profile actual execution to confirm hotspot",
           "Consider caching frequently called operations",
@@ -57,7 +57,7 @@ defmodule Synapse.Domains.CodeReview.Actions.ProfileHotPath do
         Enum.any?(added_lines, &String.contains?(&1, func_name))
       end)
 
-    if length(hot_calls) > 0 do
+    if hot_calls != [] do
       [
         %{
           type: :hot_path_modified,

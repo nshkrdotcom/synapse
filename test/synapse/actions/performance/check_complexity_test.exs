@@ -14,7 +14,7 @@ defmodule Synapse.Actions.Performance.CheckComplexityTest do
 
       assert {:ok, result} = CheckComplexity.run(params, %{})
 
-      assert length(result.findings) > 0
+      assert result.findings != []
       finding = hd(result.findings)
       assert finding.type in [:high_complexity, :complexity_hotspot]
       assert finding.severity in [:low, :medium, :high]

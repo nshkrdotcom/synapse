@@ -13,7 +13,7 @@ defmodule Synapse.Actions.Performance.CheckMemoryUsageTest do
       }
 
       assert {:ok, result} = CheckMemoryUsage.run(params, %{})
-      assert length(result.findings) > 0
+      assert result.findings != []
       finding = hd(result.findings)
       assert finding.type in [:memory_hotspot, :greedy_allocation]
       assert finding.severity in [:medium, :high]

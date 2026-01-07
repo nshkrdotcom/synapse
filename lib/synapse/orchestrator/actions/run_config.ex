@@ -142,12 +142,10 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     Enum.map(step_defs, fn %{id: id, module: module} ->
       entry = Map.get(results_map, id)
 
-      cond do
-        match?(%{status: :error}, entry) ->
-          {:error, module, Map.get(entry, :error)}
-
-        true ->
-          {:ok, module, entry}
+      if match?(%{status: :error}, entry) do
+        {:error, module, Map.get(entry, :error)}
+      else
+        {:ok, module, entry}
       end
     end)
   end
@@ -232,21 +230,34 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     emits = Map.get(params, :_emits, config.signals.emits || [])
     orchestration = Map.get(config, :orchestration) || %{}
     roles = get_signal_roles(config)
+
+    case route_orchestrator_signal(signal, roles) do
+      :request ->
+        handle_orchestrator_request(config, orchestration, state, signal, router, emits, roles)
+
+      :result ->
+        handle_orchestrator_result(config, orchestration, state, signal, router, roles)
+
+      :ignore ->
+        {:ok, %{state: state}}
+    end
+  end
+
+  defp route_orchestrator_signal(nil, _roles), do: :ignore
+
+  defp route_orchestrator_signal(signal, roles) do
     request_type = role_type(roles.request)
     result_type = role_type(roles.result)
 
     cond do
-      is_nil(signal) ->
-        {:ok, %{state: state}}
-
       not is_nil(request_type) and signal.type == request_type ->
-        handle_orchestrator_request(config, orchestration, state, signal, router, emits, roles)
+        :request
 
       not is_nil(result_type) and signal.type == result_type ->
-        handle_orchestrator_result(config, orchestration, state, signal, router, roles)
+        :result
 
       true ->
-        {:ok, %{state: state}}
+        :ignore
     end
   end
 
@@ -313,49 +324,38 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     classification = call_callable(classify_fn, [task_data])
     path = classification_path(classification)
 
-    state =
-      state
-      |> increment_stat(:total)
+    state = increment_stat(state, :total)
 
-    cond do
-      path in [:fast_path, :routed] ->
-        handle_routed_task(
-          config,
-          orchestration,
-          state,
-          task_data,
-          classification,
-          signal,
-          router,
-          emits,
-          roles
-        )
+    context = %{
+      config: config,
+      orchestration: orchestration,
+      state: state,
+      task_data: task_data,
+      classification: classification,
+      signal: signal,
+      router: router,
+      emits: emits,
+      roles: roles
+    }
 
-      true ->
-        handle_dispatched_task(
-          config,
-          orchestration,
-          state,
-          task_data,
-          classification,
-          signal,
-          router,
-          roles
-        )
+    if path in [:fast_path, :routed] do
+      handle_routed_task(context)
+    else
+      handle_dispatched_task(context)
     end
   end
 
-  defp handle_routed_task(
-         config,
-         orchestration,
-         state,
-         task_data,
-         classification,
-         signal,
-         router,
-         emits,
-         roles
-       ) do
+  defp handle_routed_task(%{
+         config: config,
+         orchestration: orchestration,
+         state: state,
+         task_data: task_data,
+         classification: classification,
+         signal: signal,
+         router: router,
+         emits: emits,
+         roles: roles
+       }) do
     fast_path_fn = Map.get(orchestration, :fast_path_fn)
     state = increment_stat(state, :routed)
 
@@ -376,16 +376,16 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     {:ok, %{state: state}}
   end
 
-  defp handle_dispatched_task(
-         config,
-         orchestration,
-         state,
-         task_data,
-         classification,
-         signal,
-         router,
-         roles
-       ) do
+  defp handle_dispatched_task(%{
+         config: config,
+         orchestration: orchestration,
+         state: state,
+         task_data: task_data,
+         classification: classification,
+         signal: signal,
+         router: router,
+         roles: roles
+       }) do
     spawn_spec = Map.get(orchestration, :spawn_specialists)
     specialists = resolve_specialists(spawn_spec, task_data, classification)
 
@@ -562,7 +562,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     arity =
       case :erlang.fun_info(fun, :arity) do
         {:arity, value} when is_integer(value) -> value
-        _ -> length(args)
+        _ -> Enum.count(args)
       end
 
     apply(fun, Enum.take(args, arity))
@@ -645,31 +645,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
   end
 
   defp emit_summary_telemetry(config_id, summary) do
-    metadata = Map.get(summary, :metadata, %{})
-    duration_ms = metadata[:duration_ms] || metadata["duration_ms"] || 0
-    specialists = metadata[:specialists_resolved] || metadata["specialists_resolved"] || []
-    negotiations = metadata[:negotiations] || metadata["negotiations"] || []
-    findings = Map.get(summary, :findings, []) || []
-    recommendations = Map.get(summary, :recommendations, []) || []
-
-    measurements = %{
-      duration_ms: duration_ms,
-      finding_count: length(findings),
-      recommendation_count: length(recommendations)
-    }
-
-    event_metadata =
-      %{
-        config_id: config_id,
-        task_id: summary_task_id(summary),
-        status: Map.get(summary, :status, :unknown) || :unknown,
-        severity: Map.get(summary, :severity, :none) || :none,
-        decision_path: metadata[:decision_path] || metadata["decision_path"],
-        specialists: specialists,
-        escalations: Map.get(summary, :escalations, []) || [],
-        negotiations: negotiations
-      }
-      |> maybe_put_review_id(summary)
+    {measurements, event_metadata} = summary_telemetry_payload(config_id, summary)
 
     :telemetry.execute(
       [:synapse, :workflow, :orchestrator, :summary],
@@ -683,6 +659,48 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
         summary: Map.take(summary, [:task_id, :review_id, :status, :severity]),
         reason: Exception.message(error)
       )
+  end
+
+  defp summary_telemetry_payload(config_id, summary) do
+    metadata = Map.get(summary, :metadata, %{})
+    duration_ms = metadata_value(metadata, :duration_ms, 0)
+    specialists = metadata_value(metadata, :specialists_resolved, [])
+    negotiations = metadata_value(metadata, :negotiations, [])
+    findings = summary_list(summary, :findings)
+    recommendations = summary_list(summary, :recommendations)
+
+    measurements = %{
+      duration_ms: duration_ms,
+      finding_count: Enum.count(findings),
+      recommendation_count: Enum.count(recommendations)
+    }
+
+    event_metadata =
+      %{
+        config_id: config_id,
+        task_id: summary_task_id(summary),
+        status: summary_value(summary, :status, :unknown),
+        severity: summary_value(summary, :severity, :none),
+        decision_path: metadata_value(metadata, :decision_path, nil),
+        specialists: List.wrap(specialists),
+        escalations: List.wrap(summary_list(summary, :escalations)),
+        negotiations: List.wrap(negotiations)
+      }
+      |> maybe_put_review_id(summary)
+
+    {measurements, event_metadata}
+  end
+
+  defp metadata_value(metadata, key, default) do
+    Map.get(metadata, key) || Map.get(metadata, Atom.to_string(key)) || default
+  end
+
+  defp summary_value(summary, key, default) do
+    Map.get(summary, key) || Map.get(summary, Atom.to_string(key)) || default
+  end
+
+  defp summary_list(summary, key) do
+    summary_value(summary, key, [])
   end
 
   defp summary_task_id(summary) do

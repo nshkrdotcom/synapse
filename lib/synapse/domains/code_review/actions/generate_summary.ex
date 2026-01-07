@@ -70,7 +70,7 @@ defmodule Synapse.Domains.CodeReview.Actions.GenerateSummary do
       review_id: params.review_id,
       status: status,
       severity: severity,
-      findings_count: length(sorted_findings)
+      findings_count: Enum.count(sorted_findings)
     )
 
     {:ok, result}
@@ -112,7 +112,7 @@ defmodule Synapse.Domains.CodeReview.Actions.GenerateSummary do
   end
 
   defp generate_escalations(_metadata, findings, :complete, :high) do
-    if length(findings) > 0 do
+    if findings != [] do
       ["High severity findings detected - recommend thorough human review"]
     else
       []

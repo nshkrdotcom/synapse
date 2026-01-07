@@ -1,5 +1,26 @@
 defmodule Synapse.ReqLLM do
   @moduledoc """
+  DEPRECATED: Use `Altar.AI.Client` or `Altar.AI.Integrations.Synapse` instead.
+
+  This module will be removed in Synapse v0.3.0.
+
+  ## Migration
+
+  Replace calls to this module with the unified Altar.AI interface:
+
+      # Before
+      Synapse.ReqLLM.chat_completion(%{prompt: "Hello"}, profile: :openai)
+
+      # After
+      Altar.AI.Integrations.Synapse.chat_completion(%{prompt: "Hello"}, profile: :openai)
+
+  Or use the lower-level Altar.AI.Client directly:
+
+      # Direct client usage
+      Altar.AI.Client.chat_completion(%{messages: [...]}, profile: :openai)
+
+  ## Legacy Documentation
+
   Thin wrapper around Req for issuing chat-completion requests to multiple LLM providers.
 
   Configuration lives under `:synapse, #{inspect(__MODULE__)}` and supports:
@@ -99,6 +120,7 @@ defmodule Synapse.ReqLLM do
   See `docs/20251028/remediation/telemetry_documentation.md` for details on attaching handlers.
   """
 
+  alias Altar.AI.Integrations.Synapse, as: AltarSynapse
   alias Jido.Error
   alias Synapse.ReqLLM.Options
 
@@ -121,8 +143,50 @@ defmodule Synapse.ReqLLM do
     "auth_header_prefix" => :auth_header_prefix
   }
 
+  @deprecated "Use Altar.AI.Integrations.Synapse.chat_completion/2 instead"
   @spec chat_completion(map(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def chat_completion(params, opts \\ []) when is_map(params) and is_list(opts) do
+    # Emit deprecation warning (only once per process to avoid spam)
+    unless Process.get(:synapse_reqllm_deprecation_warned) || suppress_warnings?() do
+      IO.warn(
+        "Synapse.ReqLLM.chat_completion/2 is deprecated. " <>
+          "Use Altar.AI.Integrations.Synapse.chat_completion/2 instead.",
+        []
+      )
+
+      Process.put(:synapse_reqllm_deprecation_warned, true)
+    end
+
+    # Delegate to Altar.AI if available, otherwise fall back to legacy implementation
+    if altar_ai_available?() do
+      delegate_to_altar_ai(params, opts)
+    else
+      chat_completion_legacy(params, opts)
+    end
+  end
+
+  @doc false
+  @spec legacy_chat_completion(map(), keyword()) :: {:ok, map()} | {:error, Error.t()}
+  def legacy_chat_completion(params, opts \\ []) when is_map(params) and is_list(opts) do
+    chat_completion_legacy(params, opts)
+  end
+
+  defp altar_ai_available? do
+    # Allow tests to force legacy implementation via application env
+    not Application.get_env(:synapse, :force_legacy_req_llm, false) and
+      Code.ensure_loaded?(Altar.AI.Integrations.Synapse) and
+      function_exported?(Altar.AI.Integrations.Synapse, :chat_completion, 2)
+  end
+
+  defp delegate_to_altar_ai(params, opts) do
+    AltarSynapse.chat_completion(params, opts)
+  end
+
+  defp suppress_warnings? do
+    Application.get_env(:synapse, :suppress_reqllm_warnings, false)
+  end
+
+  defp chat_completion_legacy(params, opts) when is_map(params) and is_list(opts) do
     request_id = generate_request_id()
     start_time = System.monotonic_time()
 
@@ -184,6 +248,7 @@ defmodule Synapse.ReqLLM do
 
         {:error, error} ->
           duration = System.monotonic_time() - start_time
+          {error_type, error_message} = extract_error_info(error)
 
           :telemetry.execute(
             [:synapse, :llm, :request, :exception],
@@ -193,8 +258,8 @@ defmodule Synapse.ReqLLM do
               profile: profile_name,
               model: model,
               provider: determine_provider(profile_config),
-              error_type: error.type,
-              error_message: error.message
+              error_type: error_type,
+              error_message: error_message
             }
           )
 
@@ -204,14 +269,15 @@ defmodule Synapse.ReqLLM do
       {:error, error} ->
         # Configuration or early validation errors - emit exception without profile info
         duration = System.monotonic_time() - start_time
+        {error_type, error_message} = extract_error_info(error)
 
         :telemetry.execute(
           [:synapse, :llm, :request, :exception],
           %{duration: duration},
           %{
             request_id: request_id,
-            error_type: error.type,
-            error_message: error.message
+            error_type: error_type,
+            error_message: error_message
           }
         )
 
@@ -250,63 +316,63 @@ defmodule Synapse.ReqLLM do
   end
 
   defp normalize_config(config) do
-    # Handle legacy single-profile format (backwards compatibility)
-    config =
-      if Keyword.has_key?(config, :base_url) and not Keyword.has_key?(config, :profiles) do
-        # Legacy format: convert to profiles format
-        profile_keys = [
-          :base_url,
-          :api_key,
-          :model,
-          :allowed_models,
-          :system_prompt,
-          :plug,
-          :plug_owner,
-          :endpoint,
-          :req_options,
-          :temperature,
-          :max_tokens,
-          :retry,
-          :payload_format,
-          :provider_module,
-          :auth_header,
-          :auth_header_prefix
-        ]
+    config
+    |> normalize_legacy_config()
+    |> normalize_profiles()
+    |> validate_config()
+  end
 
-        profile = Keyword.take(config, profile_keys)
-        global_keys = [:system_prompt, :default_model]
+  defp normalize_legacy_config(config) do
+    if Keyword.has_key?(config, :base_url) and not Keyword.has_key?(config, :profiles) do
+      profile_keys = [
+        :base_url,
+        :api_key,
+        :model,
+        :allowed_models,
+        :system_prompt,
+        :plug,
+        :plug_owner,
+        :endpoint,
+        :req_options,
+        :temperature,
+        :max_tokens,
+        :retry,
+        :payload_format,
+        :provider_module,
+        :auth_header,
+        :auth_header_prefix
+      ]
 
+      profile = Keyword.take(config, profile_keys)
+      global_keys = [:system_prompt, :default_model]
+
+      config
+      |> Keyword.drop(profile_keys)
+      |> Keyword.take(global_keys)
+      |> Keyword.put(:profiles, default: profile)
+      |> Keyword.put(:default_profile, :default)
+    else
+      config
+    end
+  end
+
+  defp normalize_profiles(config) do
+    case Keyword.get(config, :profiles) do
+      nil ->
         config
-        |> Keyword.drop(profile_keys)
-        |> Keyword.take(global_keys)
-        |> Keyword.put(:profiles, default: profile)
-        |> Keyword.put(:default_profile, :default)
-      else
-        # Convert map profiles to keyword list if needed
-        if profiles = Keyword.get(config, :profiles) do
-          if is_map(profiles) do
-            Keyword.put(config, :profiles, Map.to_list(profiles))
-          else
-            config
-          end
-        else
-          config
-        end
-      end
 
-    # Validate using NimbleOptions
+      profiles when is_map(profiles) ->
+        Keyword.put(config, :profiles, Map.to_list(profiles))
+
+      _ ->
+        config
+    end
+  end
+
+  defp validate_config(config) do
     case Options.validate_global(config) do
       {:ok, validated} ->
-        # Convert validated keyword list profiles to map for backwards compatibility
-        profiles = Keyword.get(validated, :profiles, []) |> Map.new()
-
-        {:ok,
-         %{
-           profiles: profiles,
-           default_profile: Keyword.get(validated, :default_profile),
-           system_prompt: Keyword.get(validated, :system_prompt),
-           default_model: Keyword.get(validated, :default_model)
-         }}
+        {:ok, build_config(validated)}
 
       {:error, %NimbleOptions.ValidationError{} = error} ->
         {:error, Error.config_error("Synapse.ReqLLM: #{Exception.message(error)}")}
@@ -314,6 +380,17 @@ defmodule Synapse.ReqLLM do
       {:error, message} ->
         {:error, Error.config_error("Synapse.ReqLLM: #{message}")}
     end
+  end
+
+  defp build_config(validated) do
+    profiles = validated |> Keyword.get(:profiles, []) |> Map.new()
+
+    %{
+      profiles: profiles,
+      default_profile: Keyword.get(validated, :default_profile),
+      system_prompt: Keyword.get(validated, :system_prompt),
+      default_model: Keyword.get(validated, :default_model)
+    }
   end
 
   defp resolve_profile(config, opts) do
@@ -367,8 +444,7 @@ defmodule Synapse.ReqLLM do
   defp available_profiles(profiles) do
     profiles
     |> Map.keys()
-    |> Enum.map(&inspect/1)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", &inspect/1)
   end
 
   defp normalize_profile_config(profile_config) do
@@ -646,4 +722,29 @@ defmodule Synapse.ReqLLM do
   end
 
   defp extract_token_usage(_), do: nil
+
+  # Helper to extract error info from Jido exceptions
+  defp extract_error_info(%{__exception__: true} = error) do
+    {error_type_from_exception(error), Exception.message(error)}
+  end
+
+  defp extract_error_info(%{type: type, message: message}) do
+    {type, message}
+  end
+
+  defp extract_error_info(error) when is_binary(error) do
+    {:unknown, error}
+  end
+
+  defp extract_error_info(error) do
+    {:unknown, inspect(error)}
+  end
+
+  defp error_type_from_exception(%{__struct__: module}) do
+    module
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+    |> String.to_atom()
+  end
 end

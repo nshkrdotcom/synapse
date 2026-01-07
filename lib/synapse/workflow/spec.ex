@@ -212,16 +212,18 @@ defmodule Synapse.Workflow.Spec do
   defp validate_dependencies!(steps) do
     id_set = MapSet.new(Enum.map(steps, & &1.id))
 
-    Enum.each(steps, fn step ->
-      Enum.each(step.requires, fn dependency ->
-        unless MapSet.member?(id_set, dependency) do
-          raise ArgumentError,
-                "workflow step #{inspect(step.id)} requires unknown dependency #{inspect(dependency)}"
-        end
-      end)
-    end)
+    Enum.each(steps, &validate_step_dependencies(&1, id_set))
 
     steps
+  end
+
+  defp validate_step_dependencies(step, id_set) do
+    Enum.each(step.requires, fn dependency ->
+      unless MapSet.member?(id_set, dependency) do
+        raise ArgumentError,
+              "workflow step #{inspect(step.id)} requires unknown dependency #{inspect(dependency)}"
+      end
+    end)
   end
 
   defp validate_outputs!(outputs, steps) do

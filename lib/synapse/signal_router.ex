@@ -8,6 +8,8 @@ defmodule Synapse.SignalRouter do
   use GenServer
   require Logger
 
+  alias Jido.Signal, as: JidoSignal
+  alias Jido.Signal.Bus, as: SignalBus
   alias Synapse.{AgentRegistry, Signal}
 
   defstruct [
@@ -62,7 +64,7 @@ defmodule Synapse.SignalRouter do
     * `:meta` - metadata map merged into the signal struct
   """
   @spec publish(atom(), Signal.topic(), map(), keyword()) ::
-          {:ok, Jido.Signal.t()} | {:error, term()}
+          {:ok, JidoSignal.t()} | {:error, term()}
   def publish(router \\ __MODULE__, topic, payload, opts \\ []) do
     %{bus: bus, name: router_name} = fetch(router)
 
@@ -77,7 +79,7 @@ defmodule Synapse.SignalRouter do
         )
       end)
 
-    case Jido.Signal.Bus.publish(bus, [signal]) do
+    case SignalBus.publish(bus, [signal]) do
       {:ok, _records} -> {:ok, signal}
       {:error, reason} -> {:error, reason}
     end
@@ -104,20 +106,20 @@ defmodule Synapse.SignalRouter do
   @doc """
   Replays historical signals for the given topic.
   """
-  @spec replay(atom(), Signal.topic(), keyword()) :: {:ok, [Jido.Signal.t()]} | {:error, term()}
+  @spec replay(atom(), Signal.topic(), keyword()) :: {:ok, [JidoSignal.t()]} | {:error, term()}
   def replay(router \\ __MODULE__, topic, opts \\ []) do
     %{bus: bus} = fetch(router)
     type = Signal.type(topic)
     since = Keyword.get(opts, :since, DateTime.add(DateTime.utc_now(), -3600, :second))
     limit = Keyword.get(opts, :limit, 100)
 
-    Jido.Signal.Bus.replay(bus, type, since, limit: limit)
+    SignalBus.replay(bus, type, since, limit: limit)
   end
 
   @doc """
   Dispatches a review request to a specialist identified by registry id.
   """
-  @spec cast_to_specialist(atom(), AgentRegistry.agent_id(), Jido.Signal.t(), keyword()) ::
+  @spec cast_to_specialist(atom(), AgentRegistry.agent_id(), JidoSignal.t(), keyword()) ::
           :ok | {:error, term()}
   def cast_to_specialist(router \\ __MODULE__, specialist_id, signal, opts \\ []) do
     %{registry: default_registry} = fetch(router)
@@ -141,14 +143,14 @@ defmodule Synapse.SignalRouter do
   @doc """
   Acknowledges a signal delivery (placeholder hook for future durability).
   """
-  @spec ack(atom(), Jido.Signal.t()) :: :ok
+  @spec ack(atom(), JidoSignal.t()) :: :ok
   def ack(_router \\ __MODULE__, _signal), do: :ok
 
   @doc """
   Retries a publish with the provided payload and options.
   """
   @spec retry(atom(), Signal.topic(), map(), keyword()) ::
-          {:ok, Jido.Signal.t()} | {:error, term()}
+          {:ok, JidoSignal.t()} | {:error, term()}
   def retry(router \\ __MODULE__, topic, payload, opts \\ []) do
     publish(router, topic, payload, opts)
   end
@@ -175,7 +177,7 @@ defmodule Synapse.SignalRouter do
     bus_opts = Keyword.get(opts, :bus_opts, [])
 
     {:ok, _pid} =
-      Jido.Signal.Bus.start_link(Keyword.merge([name: bus_name], bus_opts))
+      SignalBus.start_link(Keyword.merge([name: bus_name], bus_opts))
 
     state = %__MODULE__{
       name: name,
@@ -239,14 +241,14 @@ defmodule Synapse.SignalRouter do
   end
 
   @impl true
-  def handle_info({:signal, %Jido.Signal{} = signal}, state) do
-    with {:ok, topic} <- Signal.topic_from_type(signal.type) do
-      payload = Map.get(signal, :data) || %{}
-      validated = Signal.validate!(topic, payload)
-      updated_signal = %{signal | data: validated}
+  def handle_info({:signal, %JidoSignal{} = signal}, state) do
+    case Signal.topic_from_type(signal.type) do
+      {:ok, topic} ->
+        payload = Map.get(signal, :data) || %{}
+        validated = Signal.validate!(topic, payload)
+        updated_signal = %{signal | data: validated}
+        dispatch(topic, updated_signal, state)
 
-      dispatch(topic, updated_signal, state)
-    else
       :error ->
         Logger.warning("SignalRouter received unknown signal type", type: signal.type)
     end
@@ -257,20 +259,14 @@ defmodule Synapse.SignalRouter do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     case Map.pop(state.monitor_index, ref) do
-      {nil, _} ->
-        {:noreply, state}
+      {nil, monitor_index} ->
+        {:noreply, %{state | monitor_index: monitor_index}}
 
       {subscription_id, monitor_index} ->
         {entry, subscribers} = Map.pop(state.subscribers, subscription_id)
 
         topic_index =
-          if entry do
-            Map.update!(state.topic_index, entry.topic, fn ids ->
-              MapSet.delete(ids, subscription_id)
-            end)
-          else
-            state.topic_index
-          end
+          remove_subscription_from_topic(state.topic_index, entry, subscription_id)
 
         {:noreply,
          %{
@@ -285,7 +281,7 @@ defmodule Synapse.SignalRouter do
   @impl true
   def terminate(_reason, state) do
     Enum.each(state.bus_subscriptions, fn {_topic, sub_id} ->
-      Jido.Signal.Bus.unsubscribe(state.bus, sub_id)
+      SignalBus.unsubscribe(state.bus, sub_id)
     end)
 
     :ok
@@ -305,7 +301,7 @@ defmodule Synapse.SignalRouter do
       |> maybe_put(:subject, Keyword.get(opts, :subject))
       |> maybe_merge_metadata(Keyword.get(opts, :meta, %{}))
 
-    {:ok, signal} = Jido.Signal.new(attrs)
+    {:ok, signal} = JidoSignal.new(attrs)
     signal
   end
 
@@ -347,7 +343,7 @@ defmodule Synapse.SignalRouter do
 
           :error ->
             {:ok, sub_id} =
-              Jido.Signal.Bus.subscribe(
+              SignalBus.subscribe(
                 state.bus,
                 type,
                 dispatch: {:pid, target: self(), delivery_mode: :async}
@@ -364,7 +360,7 @@ defmodule Synapse.SignalRouter do
     type = Signal.type(topic)
 
     {:ok, sub_id} =
-      Jido.Signal.Bus.subscribe(
+      SignalBus.subscribe(
         state.bus,
         type,
         dispatch: {:pid, target: self(), delivery_mode: :async}
@@ -392,6 +388,14 @@ defmodule Synapse.SignalRouter do
       %{count: delivery_count},
       %{topic: topic, router: state.name}
     )
+  end
+
+  defp remove_subscription_from_topic(topic_index, nil, _subscription_id), do: topic_index
+
+  defp remove_subscription_from_topic(topic_index, entry, subscription_id) do
+    Map.update!(topic_index, entry.topic, fn ids ->
+      MapSet.delete(ids, subscription_id)
+    end)
   end
 
   defp router_key(name), do: {__MODULE__, name}

@@ -47,9 +47,8 @@ defmodule Synapse.Signal.Registry do
 
   def register_topic(registry, topic, config) when is_atom(topic) do
     with {:ok, tables} <- fetch_tables(registry),
-         {:ok, normalized} <- normalize_topic_config(config),
-         :ok <- do_register_topic(tables, topic, normalized) do
-      :ok
+         {:ok, normalized} <- normalize_topic_config(config) do
+      do_register_topic(tables, topic, normalized)
     end
   end
 
@@ -84,12 +83,14 @@ defmodule Synapse.Signal.Registry do
   """
   @spec list_topics(atom() | pid()) :: [topic()]
   def list_topics(registry \\ __MODULE__) do
-    with {:ok, tables} <- fetch_tables(registry) do
-      tables.topics_table
-      |> :ets.tab2list()
-      |> Enum.map(fn {topic, _config} -> topic end)
-    else
-      {:error, _} -> []
+    case fetch_tables(registry) do
+      {:ok, tables} ->
+        tables.topics_table
+        |> :ets.tab2list()
+        |> Enum.map(fn {topic, _config} -> topic end)
+
+      {:error, _} ->
+        []
     end
   end
 
@@ -108,13 +109,15 @@ defmodule Synapse.Signal.Registry do
   """
   @spec topic_from_type(atom() | pid(), String.t()) :: {:ok, topic()} | :error
   def topic_from_type(registry \\ __MODULE__, type) when is_binary(type) do
-    with {:ok, tables} <- fetch_tables(registry) do
-      case :ets.lookup(tables.types_table, type) do
-        [{^type, topic}] -> {:ok, topic}
-        [] -> :error
-      end
-    else
-      {:error, _} -> :error
+    case fetch_tables(registry) do
+      {:ok, tables} ->
+        case :ets.lookup(tables.types_table, type) do
+          [{^type, topic}] -> {:ok, topic}
+          [] -> :error
+        end
+
+      {:error, _} ->
+        :error
     end
   end
 
@@ -125,10 +128,12 @@ defmodule Synapse.Signal.Registry do
   """
   @spec validate!(atom() | pid(), topic(), map()) :: map()
   def validate!(registry \\ __MODULE__, topic, payload) when is_map(payload) do
-    registry
-    |> fetch_topic!(topic)
-    |> Map.fetch!(:validator)
-    |> apply([payload])
+    validator =
+      registry
+      |> fetch_topic!(topic)
+      |> Map.fetch!(:validator)
+
+    validator.(payload)
   end
 
   ## GenServer callbacks
@@ -249,79 +254,76 @@ defmodule Synapse.Signal.Registry do
         :error -> Application.get_env(:synapse, :domains, [])
       end
 
-    Enum.each(domains, fn domain ->
-      case Code.ensure_loaded(domain) do
-        {:module, _} ->
-          cond do
-            function_exported?(domain, :register, 1) ->
-              register_domain(domain, state.name)
-
-            function_exported?(domain, :register, 0) ->
-              register_domain(domain, nil)
-
-            true ->
-              Logger.warning(
-                "Domain #{inspect(domain)} is configured but does not implement register/0 or register/1"
-              )
-          end
-
-        {:error, reason} ->
-          Logger.warning("Failed to load domain #{inspect(domain)}: #{inspect(reason)}")
-      end
-    end)
+    Enum.each(domains, &register_domain(&1, state.name))
 
     state
   end
 
   defp register_domain(domain, registry_name) do
-    result =
-      case registry_name do
-        nil -> domain.register()
-        _ -> domain.register(registry_name)
-      end
+    case Code.ensure_loaded(domain) do
+      {:module, _} ->
+        case call_domain_register(domain, registry_name) do
+          :ok ->
+            :ok
 
-    case result do
-      :ok ->
-        :ok
+          {:error, :already_registered} ->
+            :ok
 
-      {:error, :already_registered} ->
-        :ok
+          {:error, :missing_register} ->
+            Logger.warning(
+              "Domain #{inspect(domain)} is configured but does not implement register/0 or register/1"
+            )
+
+          {:error, reason} ->
+            Logger.warning("Failed to register domain #{inspect(domain)}: #{inspect(reason)}")
+
+          other ->
+            Logger.warning(
+              "Domain #{inspect(domain)} returned unexpected value from register: #{inspect(other)}"
+            )
+        end
 
       {:error, reason} ->
-        Logger.warning("Failed to register domain #{inspect(domain)}: #{inspect(reason)}")
+        Logger.warning("Failed to load domain #{inspect(domain)}: #{inspect(reason)}")
+    end
+  end
 
-      other ->
-        Logger.warning(
-          "Domain #{inspect(domain)} returned unexpected value from register: #{inspect(other)}"
-        )
+  defp call_domain_register(domain, registry_name) do
+    cond do
+      function_exported?(domain, :register, 1) ->
+        domain.register(registry_name)
+
+      function_exported?(domain, :register, 0) ->
+        domain.register()
+
+      true ->
+        {:error, :missing_register}
     end
   end
 
   defp register_topics(state, topics, opts) when is_list(topics) do
     Enum.each(topics, fn {topic, config} ->
-      case normalize_topic_config(config) do
-        {:ok, normalized} ->
-          case do_register_topic(state, topic, normalized) do
-            :ok ->
-              :ok
+      result =
+        case normalize_topic_config(config) do
+          {:ok, normalized} -> do_register_topic(state, topic, normalized)
+          {:error, reason} -> {:error, reason}
+        end
 
-            {:error, reason} ->
-              case opts[:on_error] do
-                :ignore ->
-                  :ok
-
-                _ ->
-                  raise ArgumentError, "invalid config for #{inspect(topic)}: #{inspect(reason)}"
-              end
-          end
+      case result do
+        :ok ->
+          :ok
 
         {:error, reason} ->
-          case opts[:on_error] do
-            :ignore -> :ok
-            _ -> raise ArgumentError, "invalid config for #{inspect(topic)}: #{inspect(reason)}"
-          end
+          handle_topic_error(topic, reason, opts)
       end
     end)
+  end
+
+  defp handle_topic_error(topic, reason, opts) do
+    case opts[:on_error] do
+      :ignore -> :ok
+      _ -> raise ArgumentError, "invalid config for #{inspect(topic)}: #{inspect(reason)}"
+    end
   end
 
   defp normalize_topic_config(config) when is_map(config),
@@ -374,11 +376,11 @@ defmodule Synapse.Signal.Registry do
   defp normalize_schema(schema) when is_atom(schema) do
     with {:module, _} <- Code.ensure_loaded(schema),
          true <- function_exported?(schema, :validate!, 1) do
-      validator = fn payload -> apply(schema, :validate!, [payload]) end
+      validator = fn payload -> schema.validate!(payload) end
 
       compiled =
         if function_exported?(schema, :schema, 0) do
-          apply(schema, :schema, [])
+          schema.schema()
         else
           nil
         end

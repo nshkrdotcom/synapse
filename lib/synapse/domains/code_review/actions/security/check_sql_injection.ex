@@ -40,8 +40,10 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckSQLInjection do
 
     confidence = calculate_confidence(params.diff, findings)
 
+    findings_count = Enum.count(findings)
+
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         generate_recommendations(findings)
       else
         []
@@ -54,7 +56,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckSQLInjection do
     }
 
     Logger.debug("SQL injection check completed",
-      findings_count: length(findings),
+      findings_count: findings_count,
       confidence: confidence,
       files: params.files
     )
@@ -86,7 +88,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckSQLInjection do
         Regex.match?(pattern, line)
       end)
 
-    if length(matches) > 0 do
+    if matches != [] do
       file = determine_file_from_line(line, files)
 
       [
@@ -110,7 +112,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckSQLInjection do
 
   defp calculate_confidence("", []), do: 1.0
   defp calculate_confidence(_diff, []), do: 0.9
-  defp calculate_confidence(_diff, findings) when length(findings) > 0, do: 0.85
+  defp calculate_confidence(_diff, findings) when findings != [], do: 0.85
 
   defp generate_recommendations(findings) do
     findings

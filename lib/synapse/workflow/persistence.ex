@@ -18,6 +18,10 @@ defmodule Synapse.Workflow.Persistence do
   @optional_callbacks get_snapshot: 2, delete_snapshot: 2
 
   defmodule Snapshot do
+    @moduledoc """
+    Snapshot payload used by persistence backends to store workflow progress.
+    """
+
     @enforce_keys [
       :request_id,
       :spec_name,

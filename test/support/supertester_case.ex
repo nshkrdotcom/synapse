@@ -5,20 +5,27 @@ defmodule Synapse.SupertesterCase do
 
   defmacro __using__(opts \\ []) do
     async? = Keyword.get(opts, :async, true)
-    isolation = Keyword.get(opts, :isolation, default_isolation(async?))
+    isolation = Keyword.get(opts, :isolation, :basic)
 
     quote do
       use ExUnit.Case, async: unquote(async?)
-      use Supertester.UnifiedTestFoundation, isolation: unquote(isolation)
+
+      alias Ecto.Adapters.SQL.Sandbox, as: SQLSandbox
+      alias Supertester.UnifiedTestFoundation, as: UnifiedTestFoundation
 
       setup tags do
-        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Synapse.Repo)
+        # Setup Supertester isolation
+        {:ok, base_context} =
+          UnifiedTestFoundation.setup_isolation(unquote(isolation), tags)
+
+        # Setup Ecto sandbox
+        :ok = SQLSandbox.checkout(Synapse.Repo)
 
         unless tags[:async] do
-          Ecto.Adapters.SQL.Sandbox.mode(Synapse.Repo, {:shared, self()})
+          SQLSandbox.mode(Synapse.Repo, {:shared, self()})
         end
 
-        :ok
+        {:ok, base_context}
       end
 
       import Supertester.OTPHelpers
@@ -29,6 +36,4 @@ defmodule Synapse.SupertesterCase do
       import Supertester.ChaosHelpers
     end
   end
-
-  defp default_isolation(_), do: :basic
 end

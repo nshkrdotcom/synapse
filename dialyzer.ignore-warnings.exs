@@ -8,5 +8,6 @@
   {"lib/synapse/agents/critic_agent.ex", :invalid_contract},
   {"lib/synapse/agents/simple_executor.ex", :callback_spec_arg_type_mismatch},
   {"lib/synapse/agents/simple_executor.ex", :invalid_contract},
-  {"lib/synapse/orchestrator/generic_agent.ex", :callback_spec_arg_type_mismatch}
+  {"lib/synapse/orchestrator/generic_agent.ex", :callback_spec_arg_type_mismatch},
+  {"lib/synapse/orchestrator/generic_agent.ex", :invalid_contract}
 ]

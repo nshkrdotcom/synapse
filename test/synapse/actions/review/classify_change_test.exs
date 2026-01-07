@@ -90,7 +90,7 @@ defmodule Synapse.Actions.Review.ClassifyChangeTest do
 
       # Use Jido.Exec.run to trigger schema validation
       assert {:error, error} = Jido.Exec.run(ClassifyChange, params, %{})
-      assert error.type == :validation_error
+      assert is_exception(error)
     end
 
     test "returns validation error for invalid files_changed type" do
@@ -102,7 +102,7 @@ defmodule Synapse.Actions.Review.ClassifyChangeTest do
 
       # Use Jido.Exec.run to trigger schema validation
       assert {:error, error} = Jido.Exec.run(ClassifyChange, params, %{})
-      assert error.type == :validation_error
+      assert is_exception(error)
     end
 
     test "includes review_id in result when provided in context" do

@@ -58,7 +58,7 @@ defmodule Synapse.Agents.CriticAgentTest do
       updated_state = get_agent_state(updated)
 
       assert updated_state.learned_patterns != original_state.learned_patterns
-      assert length(updated_state.learned_patterns) == 1
+      assert Enum.count(updated_state.learned_patterns) == 1
     end
   end
 end

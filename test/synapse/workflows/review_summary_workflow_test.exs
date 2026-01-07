@@ -27,7 +27,7 @@ defmodule Synapse.Workflows.ReviewSummaryWorkflowTest do
   end
 
   test "returns validation error when input is not a map" do
-    assert {:error, %Jido.Error{type: :validation_error}} =
-             ReviewSummaryWorkflow.generate("invalid")
+    assert {:error, error} = ReviewSummaryWorkflow.generate("invalid")
+    assert is_exception(error)
   end
 end

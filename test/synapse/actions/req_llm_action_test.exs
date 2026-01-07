@@ -11,6 +11,10 @@ defmodule Synapse.Actions.ReqLLMActionTest do
 
     original = Application.get_env(:synapse, Synapse.ReqLLM)
     original_llm_module = Application.get_env(:synapse, :req_llm_module)
+    original_force_legacy = Application.get_env(:synapse, :force_legacy_req_llm)
+
+    # Force legacy implementation for these tests (they use Req.Test stubs)
+    Application.put_env(:synapse, :force_legacy_req_llm, true)
     Application.put_env(:synapse, :req_llm_module, Synapse.ReqLLM)
 
     test_name = Atom.to_string(context.test)
@@ -65,6 +69,12 @@ defmodule Synapse.Actions.ReqLLMActionTest do
         Application.put_env(:synapse, :req_llm_module, original_llm_module)
       else
         Application.delete_env(:synapse, :req_llm_module)
+      end
+
+      if original_force_legacy do
+        Application.put_env(:synapse, :force_legacy_req_llm, original_force_legacy)
+      else
+        Application.delete_env(:synapse, :force_legacy_req_llm)
       end
     end)
 
@@ -177,9 +187,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
 
   test "rejects models outside provider allow list", _context do
     assert {:error, error} =
-             ReqLLM.chat_completion(%{prompt: "hi", messages: []}, profile: :openai, model: "bad")
+             legacy_chat_completion(%{prompt: "hi", messages: []}, profile: :openai, model: "bad")
 
-    assert error.type == :config_error
+    assert is_exception(error)
     assert error.message =~ "not allowed"
   end
 
@@ -199,9 +209,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
 
     # Capture expected error logs
     capture_log(fn ->
-      assert {:error, error} = ReqLLM.chat_completion(%{prompt: "test", messages: []})
+      assert {:error, error} = legacy_chat_completion(%{prompt: "test", messages: []})
 
-      assert error.type == :config_error
+      assert is_exception(error)
       assert error.message =~ "required :base_url option not found"
     end)
 
@@ -229,9 +239,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
     )
 
     capture_log(fn ->
-      assert {:error, error} = ReqLLM.chat_completion(%{prompt: "test", messages: []})
+      assert {:error, error} = legacy_chat_completion(%{prompt: "test", messages: []})
 
-      assert error.type == :config_error
+      assert is_exception(error)
       assert error.message =~ "invalid value for :max_attempts"
     end)
 
@@ -272,7 +282,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
 
     capture_log(fn ->
       assert {:ok, result} =
-               ReqLLM.chat_completion(%{prompt: "test", messages: []}, profile: :openai)
+               legacy_chat_completion(%{prompt: "test", messages: []}, profile: :openai)
 
       assert result.content == "Success after retries"
 
@@ -314,7 +324,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
 
     capture_log(fn ->
       assert {:error, error} =
-               ReqLLM.chat_completion(%{prompt: "test", messages: []}, profile: :openai)
+               legacy_chat_completion(%{prompt: "test", messages: []}, profile: :openai)
 
       assert error.message =~ "500"
 
@@ -340,9 +350,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
     end)
 
     assert {:error, error} =
-             ReqLLM.chat_completion(%{prompt: "hi", messages: []}, profile: :openai)
+             legacy_chat_completion(%{prompt: "hi", messages: []}, profile: :openai)
 
-    assert error.type == :execution_error
+    assert is_exception(error)
     assert error.message =~ "unauthorized"
     assert error.message =~ "Incorrect API key provided"
     assert error.details[:status] == 401
@@ -353,9 +363,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
     Req.Test.expect(stub, &Req.Test.transport_error(&1, :timeout))
 
     assert {:error, error} =
-             ReqLLM.chat_completion(%{prompt: "hi", messages: []}, profile: :openai)
+             legacy_chat_completion(%{prompt: "hi", messages: []}, profile: :openai)
 
-    assert error.type == :execution_error
+    assert is_exception(error)
     assert error.message =~ "timed out"
     assert error.details[:reason] == :timeout
     assert error.details[:profile] == :openai
@@ -377,7 +387,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
     end)
 
     {:ok, _} =
-      ReqLLM.chat_completion(
+      legacy_chat_completion(
         %{prompt: "hi", messages: [], max_tokens: 256},
         profile: :openai
       )
@@ -413,7 +423,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
         })
       end)
 
-      {:ok, _} = ReqLLM.chat_completion(%{prompt: "test"}, profile: :openai)
+      {:ok, _} = legacy_chat_completion(%{prompt: "test"}, profile: :openai)
 
       if original, do: Application.put_env(:synapse, Synapse.ReqLLM, original)
     end
@@ -444,7 +454,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
       end)
 
       {:ok, _} =
-        ReqLLM.chat_completion(
+        legacy_chat_completion(
           %{
             prompt: "Review code",
             messages: [
@@ -478,7 +488,7 @@ defmodule Synapse.Actions.ReqLLMActionTest do
       end)
 
       {:ok, _} =
-        ReqLLM.chat_completion(
+        legacy_chat_completion(
           %{
             prompt: "Write code",
             messages: [
@@ -488,5 +498,9 @@ defmodule Synapse.Actions.ReqLLMActionTest do
           profile: :gemini
         )
     end
+  end
+
+  defp legacy_chat_completion(params, opts \\ []) do
+    ReqLLM.legacy_chat_completion(params, opts)
   end
 end

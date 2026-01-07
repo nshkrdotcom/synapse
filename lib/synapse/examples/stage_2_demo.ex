@@ -85,6 +85,6 @@ defmodule Synapse.Examples.Stage2Demo do
 
   defp print_summary(summary) do
     IO.puts("\n=== Stage2 Summary ===")
-    IO.inspect(summary, label: "Review Summary")
+    IO.puts("Review Summary: #{inspect(summary)}")
   end
 end

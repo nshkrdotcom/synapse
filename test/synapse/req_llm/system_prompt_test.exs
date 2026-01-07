@@ -52,8 +52,8 @@ defmodule Synapse.ReqLLM.SystemPromptTest do
 
       {system, others} = SystemPrompt.extract_system_messages(messages)
 
-      assert length(system) == 2
-      assert length(others) == 2
+      assert Enum.count(system) == 2
+      assert Enum.count(others) == 2
       assert Enum.all?(system, &(&1["role"] == "system"))
       assert Enum.all?(others, &(&1["role"] in ["user", "assistant"]))
     end
@@ -66,8 +66,8 @@ defmodule Synapse.ReqLLM.SystemPromptTest do
 
       {system, others} = SystemPrompt.extract_system_messages(messages)
 
-      assert length(system) == 1
-      assert length(others) == 1
+      assert Enum.count(system) == 1
+      assert Enum.count(others) == 1
     end
 
     test "returns empty lists when no messages" do
@@ -83,7 +83,7 @@ defmodule Synapse.ReqLLM.SystemPromptTest do
       {system, others} = SystemPrompt.extract_system_messages(messages)
 
       assert system == []
-      assert length(others) == 2
+      assert Enum.count(others) == 2
     end
   end
 

@@ -14,7 +14,7 @@ defmodule Synapse.Actions.Security.CheckAuthIssuesTest do
 
       assert {:ok, result} = CheckAuthIssues.run(params, %{})
 
-      assert length(result.findings) > 0
+      assert result.findings != []
       finding = hd(result.findings)
       assert finding.type == :auth_bypass
       assert finding.severity == :high
@@ -40,7 +40,7 @@ defmodule Synapse.Actions.Security.CheckAuthIssuesTest do
       }
 
       assert {:ok, result} = CheckAuthIssues.run(params, %{})
-      assert length(result.recommended_actions) > 0
+      assert result.recommended_actions != []
       assert hd(result.recommended_actions) =~ ~r/authentication|authorization|guard/i
     end
 

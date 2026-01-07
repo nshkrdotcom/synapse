@@ -46,8 +46,8 @@ defmodule Synapse.Agents.CriticAgentWithHelpersTest do
       assert_agent_state(agent, review_count: 150)
 
       state = get_agent_state(agent)
-      assert length(state.review_history) == 100
-      assert length(state.decision_fossils) <= 50
+      assert Enum.count(state.review_history) == 100
+      assert Enum.count(state.decision_fossils) <= 50
     end
 
     test "learned patterns accumulate over corrections" do
@@ -61,7 +61,7 @@ defmodule Synapse.Agents.CriticAgentWithHelpersTest do
         })
 
       state = get_agent_state(agent)
-      assert length(state.learned_patterns) == 1
+      assert Enum.count(state.learned_patterns) == 1
 
       # Check the structure of learned patterns
       assert [
@@ -116,7 +116,7 @@ defmodule Synapse.Agents.CriticAgentWithHelpersTest do
       assert_agent_state(agent, review_count: 3)
 
       state = get_agent_state(agent)
-      assert length(state.review_history) == 3
+      assert Enum.count(state.review_history) == 3
     end
 
     test "assert_agent_state works with map syntax" do

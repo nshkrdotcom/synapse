@@ -22,10 +22,10 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckMemoryUsage do
   @impl true
   def run(params, _context) do
     findings = analyze_diff(params.diff, params.files)
-    confidence = if length(findings) > 0, do: 0.75, else: 0.85
+    confidence = if findings != [], do: 0.75, else: 0.85
 
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         [
           "Use Stream instead of Enum.to_list for large datasets",
           "Process data in chunks to reduce memory footprint",

@@ -60,9 +60,10 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckComplexity do
     files = Map.get(params, :files, ["unknown"])
     findings = analyze_diff(params.diff, params.thresholds, files)
     confidence = calculate_confidence(params.diff, findings)
+    findings_count = Enum.count(findings)
 
     recommended_actions =
-      if length(findings) > 0 do
+      if findings != [] do
         [
           "Refactor complex functions into smaller, focused units",
           "Consider using pattern matching instead of nested conditionals",
@@ -79,7 +80,7 @@ defmodule Synapse.Domains.CodeReview.Actions.CheckComplexity do
     }
 
     Logger.debug("Complexity check completed",
-      findings_count: length(findings),
+      findings_count: findings_count,
       language: params.language
     )
 
