@@ -10,6 +10,9 @@ defmodule Synapse.SignalRouter do
 
   alias Jido.Signal, as: JidoSignal
   alias Jido.Signal.Bus, as: SignalBus
+  alias Jido.Signal.Trace
+  alias Jido.Signal.Trace.Context
+  alias Jido.Signal.TraceContext
   alias Synapse.{AgentRegistry, Signal}
 
   defstruct [
@@ -62,6 +65,11 @@ defmodule Synapse.SignalRouter do
     * `:source` - logical source URI (defaults to \"/synapse/router\")
     * `:subject` - optional subject string
     * `:meta` - metadata map merged into the signal struct
+    * `:context` - context map added to the NSAI signal extension
+    * `:trace_context` - explicit `Jido.Signal.Trace.Context` to attach
+    * `:propagate_trace` - when true, propagates the current trace context (default: true)
+    * `:ensure_trace` - when true, creates a root trace if none exists
+    * `:causation_id` - optional causation reference for trace propagation
   """
   @spec publish(atom(), Signal.topic(), map(), keyword()) ::
           {:ok, JidoSignal.t()} | {:error, term()}
@@ -291,6 +299,7 @@ defmodule Synapse.SignalRouter do
 
   defp build_signal(topic, payload, opts) do
     validated_payload = Signal.validate!(topic, payload)
+    context_extension = build_context_extension(Keyword.get(opts, :context, %{}))
 
     attrs =
       %{
@@ -302,7 +311,9 @@ defmodule Synapse.SignalRouter do
       |> maybe_merge_metadata(Keyword.get(opts, :meta, %{}))
 
     {:ok, signal} = JidoSignal.new(attrs)
-    signal
+    signal = maybe_put_context_extension(signal, context_extension)
+
+    maybe_apply_trace(signal, opts)
   end
 
   defp maybe_put(map, _key, nil), do: map
@@ -310,6 +321,64 @@ defmodule Synapse.SignalRouter do
 
   defp maybe_merge_metadata(map, meta) when meta in [nil, %{}], do: map
   defp maybe_merge_metadata(map, meta), do: Map.merge(map, meta)
+
+  defp maybe_put_context_extension(signal, extension) do
+    if extension == %{} do
+      signal
+    else
+      case JidoSignal.put_extension(signal, "nsai", extension) do
+        {:ok, updated} ->
+          updated
+
+        {:error, reason} ->
+          Logger.warning("Failed to attach nsai signal context",
+            reason: inspect(reason)
+          )
+
+          signal
+      end
+    end
+  end
+
+  defp build_context_extension(context) when is_map(context) do
+    [
+      :run_id,
+      :work_id,
+      :plan_id,
+      :step_id,
+      :session_id,
+      :actor_id,
+      :actor_type,
+      :tenant_id
+    ]
+    |> Enum.reduce(%{}, fn key, acc ->
+      value = Map.get(context, key) || Map.get(context, Atom.to_string(key))
+
+      if is_nil(value) do
+        acc
+      else
+        Map.put(acc, key, to_string(value))
+      end
+    end)
+  end
+
+  defp build_context_extension(_context), do: %{}
+
+  defp maybe_apply_trace(signal, opts) do
+    cond do
+      trace_context = Keyword.get(opts, :trace_context) ->
+        attach_trace_context(signal, trace_context)
+
+      Keyword.get(opts, :ensure_trace, false) ->
+        ensure_trace(signal)
+
+      Keyword.get(opts, :propagate_trace, true) ->
+        propagate_trace(signal, Keyword.get(opts, :causation_id))
+
+      true ->
+        signal
+    end
+  end
 
   defp validate_topic!(topic) do
     if topic in Signal.topics() do
@@ -399,4 +468,53 @@ defmodule Synapse.SignalRouter do
   end
 
   defp router_key(name), do: {__MODULE__, name}
+
+  defp attach_trace_context(signal, trace_context) do
+    case normalize_trace_context(trace_context) do
+      %Context{} = ctx ->
+        case Trace.put(signal, ctx) do
+          {:ok, traced} -> traced
+          {:error, _} -> signal
+        end
+
+      _ ->
+        signal
+    end
+  end
+
+  defp ensure_trace(signal) do
+    {:ok, traced, _ctx} = Trace.ensure(signal)
+    traced
+  end
+
+  defp propagate_trace(signal, causation_id) do
+    case current_trace_context() do
+      nil ->
+        signal
+
+      %Context{} = ctx ->
+        child_ctx = Trace.child_of(ctx, causation_id)
+
+        case Trace.put(signal, child_ctx) do
+          {:ok, traced} -> traced
+          {:error, _} -> signal
+        end
+    end
+  end
+
+  defp current_trace_context do
+    TraceContext.current()
+    |> normalize_trace_context()
+  end
+
+  defp normalize_trace_context(%Context{} = ctx), do: ctx
+
+  defp normalize_trace_context(%{} = ctx_map) do
+    case Context.from_map(ctx_map) do
+      {:ok, ctx} -> ctx
+      {:error, _} -> nil
+    end
+  end
+
+  defp normalize_trace_context(_), do: nil
 end

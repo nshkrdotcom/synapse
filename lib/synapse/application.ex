@@ -12,6 +12,7 @@ defmodule Synapse.Application do
   @impl true
   def start(_type, _args) do
     Telemetry.attach_orchestrator_summary_handler()
+    register_signal_extensions()
     runtime_opts = Application.get_env(:synapse, Runtime, [])
     runtime_name = Keyword.get(runtime_opts, :name, Runtime)
     orchestrator_config = Application.get_env(:synapse, Synapse.Orchestrator.Runtime, [])
@@ -40,6 +41,12 @@ defmodule Synapse.Application do
     case OrchestratorApp.child_spec(config, runtime_name) do
       nil -> []
       spec -> [spec]
+    end
+  end
+
+  defp register_signal_extensions do
+    if Code.ensure_loaded?(Jido.Signal.Ext.Registry) do
+      Jido.Signal.Ext.Registry.register(Synapse.Signal.Ext.Context)
     end
   end
 end

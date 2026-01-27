@@ -11,6 +11,8 @@ defmodule Synapse.Orchestrator.DynamicAgent do
   require Logger
 
   alias Jido.Exec
+  alias Jido.Signal.Trace
+  alias Jido.Signal.TraceContext
   alias Synapse.Orchestrator.Actions.RunConfig
   alias Synapse.Orchestrator.AgentConfig
   alias Synapse.SignalRouter
@@ -53,7 +55,9 @@ defmodule Synapse.Orchestrator.DynamicAgent do
 
   @impl true
   def handle_info({:signal, signal}, state) do
-    case process_signal(signal, state) do
+    result = with_trace_context(signal, fn -> process_signal(signal, state) end)
+
+    case result do
       {:ok, new_agent_state} ->
         {:noreply, %{state | agent_state: new_agent_state}}
 
@@ -96,7 +100,7 @@ defmodule Synapse.Orchestrator.DynamicAgent do
       |> Map.put(:_signal, signal)
       |> Map.put(:_state, state.agent_state)
 
-    case Exec.run(RunConfig, params, %{}) do
+    case Exec.run(RunConfig, params, %{}, []) do
       {:ok, run_result} ->
         {:ok, extract_agent_state(run_result, state.agent_state)}
 
@@ -141,4 +145,17 @@ defmodule Synapse.Orchestrator.DynamicAgent do
 
   defp extract_agent_state(%{state: new_state}, _current) when is_map(new_state), do: new_state
   defp extract_agent_state(_, current), do: current
+
+  defp with_trace_context(signal, fun) when is_function(fun, 0) do
+    case Trace.get(signal) do
+      %Trace.Context{} = ctx -> TraceContext.set(ctx)
+      _ -> :ok
+    end
+
+    try do
+      fun.()
+    after
+      TraceContext.clear()
+    end
+  end
 end

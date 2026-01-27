@@ -64,10 +64,10 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     end
   end
 
-  defp maybe_emit_signal(nil, _emits, _config_id, _result), do: :ok
-  defp maybe_emit_signal(_router, [], _config_id, _result), do: :ok
+  defp maybe_emit_signal(nil, _emits, _config_id, _result, _context), do: :ok
+  defp maybe_emit_signal(_router, [], _config_id, _result, _context), do: :ok
 
-  defp maybe_emit_signal(router, emits, config_id, result) do
+  defp maybe_emit_signal(router, emits, config_id, result, context) do
     Enum.each(emits, fn topic ->
       try do
         case SignalRouter.publish(
@@ -75,7 +75,8 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
                topic,
                result,
                source: "/synapse/agents/#{config_id}",
-               subject: "synapse://agents/#{config_id}"
+               subject: "synapse://agents/#{config_id}",
+               context: context
              ) do
           {:ok, _signal} ->
             :ok
@@ -156,6 +157,15 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     struct!(AgentConfig, config)
   end
 
+  defp extract_signal_context(%Jido.Signal{} = signal) do
+    Jido.Signal.get_extension(signal, "nsai") ||
+      Map.get(signal, :nsai) ||
+      Map.get(signal, "nsai") ||
+      %{}
+  end
+
+  defp extract_signal_context(_signal), do: %{}
+
   defp generate_request_id do
     System.unique_integer([:positive, :monotonic])
     |> Integer.to_string(36)
@@ -166,6 +176,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     config = params |> Map.fetch!(:_config) |> normalize_config()
     router = Map.get(params, :_router)
     emits = Map.get(params, :_emits, config.signals.emits || [])
+    signal_context = extract_signal_context(Map.get(params, :_signal))
 
     signal_payload =
       params
@@ -178,15 +189,20 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
         generate_request_id()
 
     if spec_info.spec do
+      context =
+        signal_context
+        |> Map.put_new(:request_id, request_id)
+        |> Map.put(:agent_id, config.id)
+
       case Engine.execute(spec_info.spec,
              input: signal_payload,
-             context: %{request_id: request_id, agent_id: config.id}
+             context: context
            ) do
         {:ok, exec} ->
           action_results = normalize_results(spec_info.steps, exec.results)
           result_data = build_result(config, action_results, signal_payload)
 
-          maybe_emit_signal(router, emits, config.id, result_data)
+          maybe_emit_signal(router, emits, config.id, result_data, signal_context)
 
           {:ok,
            %{
@@ -207,7 +223,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
       end
     else
       result_data = build_result(config, [], signal_payload)
-      maybe_emit_signal(router, emits, config.id, result_data)
+      maybe_emit_signal(router, emits, config.id, result_data, signal_context)
 
       {:ok,
        %{
@@ -228,15 +244,33 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
     state = Map.get(params, :_state) || initial_state(config)
     signal = Map.get(params, :_signal)
     emits = Map.get(params, :_emits, config.signals.emits || [])
+    signal_context = extract_signal_context(signal)
     orchestration = Map.get(config, :orchestration) || %{}
     roles = get_signal_roles(config)
 
     case route_orchestrator_signal(signal, roles) do
       :request ->
-        handle_orchestrator_request(config, orchestration, state, signal, router, emits, roles)
+        handle_orchestrator_request(
+          config,
+          orchestration,
+          state,
+          signal,
+          router,
+          emits,
+          roles,
+          signal_context
+        )
 
       :result ->
-        handle_orchestrator_result(config, orchestration, state, signal, router, roles)
+        handle_orchestrator_result(
+          config,
+          orchestration,
+          state,
+          signal,
+          router,
+          roles,
+          signal_context
+        )
 
       :ignore ->
         {:ok, %{state: state}}
@@ -312,7 +346,16 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
 
   defp find_role_topic(_topics, _suffixes), do: nil
 
-  defp handle_orchestrator_request(config, orchestration, state, signal, router, emits, roles) do
+  defp handle_orchestrator_request(
+         config,
+         orchestration,
+         state,
+         signal,
+         router,
+         emits,
+         roles,
+         signal_context
+       ) do
     state = ensure_orchestrator_state(state)
     task_data = Map.new(signal.data)
     classify_fn = Map.get(orchestration, :classify_fn)
@@ -335,7 +378,8 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
       signal: signal,
       router: router,
       emits: emits,
-      roles: roles
+      roles: roles,
+      signal_context: signal_context
     }
 
     if path in [:fast_path, :routed] do
@@ -354,7 +398,8 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
          signal: signal,
          router: router,
          emits: emits,
-         roles: roles
+         roles: roles,
+         signal_context: signal_context
        }) do
     fast_path_fn = Map.get(orchestration, :fast_path_fn)
     state = increment_stat(state, :routed)
@@ -365,9 +410,9 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
 
     summary_topic = summary_topic(roles, emits)
     summary = build_summary(orchestration, [], task_state)
-    publish_summary(router, config.id, summary, task_state.task_id, summary_topic)
+    publish_summary(router, config.id, summary, task_state.task_id, summary_topic, signal_context)
     emit_summary_telemetry(config.id, summary)
-    maybe_emit_signal(router, emits, config.id, summary)
+    maybe_emit_signal(router, emits, config.id, summary, signal_context)
 
     if fast_path_fn do
       call_callable(fast_path_fn, [signal, router])
@@ -384,7 +429,8 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
          classification: classification,
          signal: signal,
          router: router,
-         roles: roles
+         roles: roles,
+         signal_context: signal_context
        }) do
     spawn_spec = Map.get(orchestration, :spawn_specialists)
     specialists = resolve_specialists(spawn_spec, task_data, classification)
@@ -399,13 +445,29 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
       |> put_in([:tasks, task_state.task_id], task_state)
 
     if specialists == [] do
-      complete_task(config, orchestration, updated_state, task_state.task_id, router, roles)
+      complete_task(
+        config,
+        orchestration,
+        updated_state,
+        task_state.task_id,
+        router,
+        roles,
+        signal_context
+      )
     else
       {:ok, %{state: updated_state}}
     end
   end
 
-  defp handle_orchestrator_result(config, orchestration, state, signal, router, roles) do
+  defp handle_orchestrator_result(
+         config,
+         orchestration,
+         state,
+         signal,
+         router,
+         roles,
+         signal_context
+       ) do
     state = ensure_orchestrator_state(state)
     result = Map.new(signal.data)
     task_id = extract_task_id(result)
@@ -425,14 +487,22 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
         pending = get_in(updated_state, [:tasks, task_id, :pending])
 
         if pending == [] do
-          complete_task(config, orchestration, updated_state, task_id, router, roles)
+          complete_task(
+            config,
+            orchestration,
+            updated_state,
+            task_id,
+            router,
+            roles,
+            signal_context
+          )
         else
           {:ok, %{state: updated_state}}
         end
     end
   end
 
-  defp complete_task(config, orchestration, state, task_id, router, roles) do
+  defp complete_task(config, orchestration, state, task_id, router, roles, signal_context) do
     case get_in(state, [:tasks, task_id]) do
       nil ->
         {:ok, %{state: state}}
@@ -455,9 +525,9 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
         summary = build_summary(orchestration, results, task_state)
         summary_topic = summary_topic(roles, Map.get(config.signals, :emits, []))
 
-        publish_summary(router, config.id, summary, task_id, summary_topic)
+        publish_summary(router, config.id, summary, task_id, summary_topic, signal_context)
         emit_summary_telemetry(config.id, summary)
-        maybe_emit_signal(router, config.signals.emits || [], config.id, summary)
+        maybe_emit_signal(router, config.signals.emits || [], config.id, summary, signal_context)
 
         updated_state =
           state
@@ -603,7 +673,7 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
 
   defp ensure_summary_metadata(summary, _task_state), do: summary
 
-  defp publish_summary(router, config_id, summary, task_id, topic) do
+  defp publish_summary(router, config_id, summary, task_id, topic, context) do
     topic = topic || :review_summary
 
     case SignalRouter.publish(
@@ -611,7 +681,8 @@ defmodule Synapse.Orchestrator.Actions.RunConfig do
            topic,
            summary,
            source: "/synapse/agents/#{config_id}",
-           subject: "synapse://agents/#{config_id}/task/#{task_id}"
+           subject: "synapse://agents/#{config_id}/task/#{task_id}",
+           context: context
          ) do
       {:ok, _} ->
         :ok

@@ -133,6 +133,34 @@ entries (status, attempts, duration). On failure the engine returns partial
 results and the failing step, allowing future pause/resume implementations to
 persist and resume executions.
 
+## Compiling Jido Plans
+
+`Synapse.PlanCompiler` converts `Jido.Plan` DAGs into workflow specs, and
+`Synapse.PlanRunner` compiles + executes in one step.
+
+```elixir
+alias Jido.Plan
+alias Synapse.PlanRunner
+alias Synapse.Workflow.Spec
+
+plan =
+  Plan.new(context: %{tenant_id: "acme"})
+  |> Plan.add(:fetch, {MyApp.Actions.Fetch, %{value: 2}})
+  |> Plan.add(:double, {MyApp.Actions.Double, %{value: 4}}, depends_on: :fetch)
+
+{:ok, exec} =
+  PlanRunner.run(plan,
+    name: :demo_plan,
+    outputs: [Spec.output(:result, from: :double, path: [:value])],
+    input: %{},
+    context: %{request_id: "req_plan_demo"}
+  )
+```
+
+Plan compilation maps `depends_on` -> `requires`, lifts instruction options
+(`max_retries`, `backoff`, `timeout`) into step retry/timeout settings, and
+merges plan/instruction context into each step context.
+
 ## Branching & Escalation Example
 
 Branching is expressed via `requires` and conditional `params`:
@@ -167,6 +195,10 @@ steps that only depend on `:critic`.
 - Telemetry events (`start`, `stop`, `exception`) fire per step with metadata
   (`workflow`, `step`, `action`, `attempt`, optional `error`). Attach handlers
   in tests to assert instrumentation.
+- The engine also emits LineageIR trace/span/artifact events, RunIndex run/step
+  writes, and Work job lifecycle events. Configure adapters via
+  `lineage_ir`/`lineage_opts`, `run_index_adapter`/`run_index_opts`, and
+  `work_adapter`/`work_opts` on `Engine.execute/2` or in app config.
 - `Synapse.Workflow.EngineTest` exercises sequential execution, dependency
   ordering, retries, and error surfacing. Use it as a template for future specs.
 

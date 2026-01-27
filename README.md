@@ -20,6 +20,8 @@ Highlights
 - Declarative orchestrator runtime (no GenServer boilerplate)
 - Signal roles for orchestrator agents and configurable actions
 - Workflow engine with persistence and audit trail (`workflow_executions`)
+- Jido plan compiler/runner for turning plans into workflow specs
+- LineageIR spans/artifacts plus RunIndex and Work job emissions
 - LLM gateway powered by Altar.AI (optional) with ReqLLM fallback
 - Telemetry throughout (router, workflows, LLM requests)
 
@@ -48,7 +50,15 @@ Highlights
 
    This boots the runtime, publishes a review request, and prints the resulting summary so you can see the declarative orchestrator in action.
 
-4. **Start the runtime for development**
+4. **Run the Plan compiler demo (optional)**
+
+   ```bash
+   mix run examples/plan_compiler_demo.exs
+   ```
+
+   This compiles a Jido plan into a workflow spec and executes it through the engine.
+
+5. **Start the runtime for development**
 
    ```bash
    iex -S mix
@@ -56,7 +66,7 @@ Highlights
 
    This boots `Synapse.Runtime`, the signal router, the orchestrator runtime (reading `priv/orchestrator_agents.exs`), and the workflow engine with Postgres persistence. The application is OTP‑only — no Phoenix endpoint is required.
 
-5. **Run the Altar.AI integration example (optional)**
+6. **Run the Altar.AI integration example (optional)**
 
    ```bash
    mix run examples/altar_ai_integration.exs
@@ -334,6 +344,35 @@ Further reading
 - Cookbook: `docs_new/workflows/engine.md`
 - ADR: `docs_new/adr/0004-declarative-workflow-engine.md`
 
+## Plan Compiler (Jido.Plan)
+
+Synapse can compile `Jido.Plan` DAGs into workflow specs. Use `Synapse.PlanRunner`
+to compile and execute in one step, or `Synapse.PlanCompiler` if you need to
+inspect/modify the spec before running.
+
+```elixir
+alias Jido.Plan
+alias Synapse.PlanRunner
+alias Synapse.Workflow.Spec
+
+plan =
+  Plan.new(context: %{tenant_id: "acme"})
+  |> Plan.add(:fetch, {MyApp.Actions.Fetch, %{value: 2}})
+  |> Plan.add(:double, {MyApp.Actions.Double, %{value: 4}}, depends_on: :fetch)
+
+{:ok, exec} =
+  PlanRunner.run(plan,
+    name: :demo_plan,
+    outputs: [Spec.output(:result, from: :double, path: [:value])],
+    input: %{},
+    context: %{request_id: "req_plan_demo"}
+  )
+```
+
+Plan compilation maps `depends_on` -> `requires`, applies instruction options
+(`max_retries`, `backoff`, `timeout`), and merges plan/instruction context into
+each workflow step.
+
 ## LLM Providers (Req)
 
 Synapse uses `Req` for HTTP and provides a multi‑provider LLM gateway. Configure at runtime via environment:
@@ -385,6 +424,27 @@ Database configuration for dev can be overridden with `POSTGRES_HOST`, `POSTGRES
 
 Attach your own handlers using `:telemetry.attach/4`.
 
+## Lineage, RunIndex, and Work Events
+
+Workflow execution emits LineageIR trace/span/artifact events, RunIndex run/step
+writes, and NSAI Work job lifecycle events. Configure adapters globally:
+
+```elixir
+config :synapse,
+  lineage_ir: true,
+  run_index_adapter: Synapse.RunIndex.Adapters.Ecto,
+  run_index_repo: Synapse.Repo,
+  work_adapter: Synapse.WorkEmitter.Adapters.Telemetry
+
+config :lineage_ir,
+  sink_adapter: LineageIR.Sink.Adapters.Ecto,
+  ecto_repo: Synapse.Repo
+```
+
+You can override per call via `Engine.execute/2` options:
+`lineage_ir`, `lineage_opts`, `run_index_adapter`, `run_index_opts`,
+`work_adapter`, and `work_opts`.
+
 ## Tests
 
 Run the full suite with:
@@ -403,6 +463,7 @@ Dialyzer and other pre-commit checks are available via `mix precommit`.
 - Workflow engine and persistence: `docs_new/workflows/engine.md` and ADRs in `docs_new/adr/`
 - Post‑Phoenix direction: `docs_new/20251109/README.md`
 - Custom domains guide: `docs/guides/custom-domains.md`
+- Plan compiler guide: `docs/guides/plan-compiler.md`
 - Migration guide: `docs/guides/migration-0.1.1.md`
 
 ## Changelog

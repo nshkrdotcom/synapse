@@ -23,7 +23,9 @@ defmodule Synapse.Workflow.Spec do
             requires: [atom()],
             retry: %{max_attempts: pos_integer(), backoff: non_neg_integer()},
             metadata: map(),
-            on_error: on_error_mode
+            on_error: on_error_mode,
+            opts: keyword(),
+            context: map()
           }
 
     defstruct [
@@ -36,7 +38,9 @@ defmodule Synapse.Workflow.Spec do
       requires: [],
       retry: %{max_attempts: 1, backoff: 0},
       metadata: %{},
-      on_error: :halt
+      on_error: :halt,
+      opts: [],
+      context: %{}
     ]
 
     @doc """
@@ -64,7 +68,9 @@ defmodule Synapse.Workflow.Spec do
           attrs |> Keyword.get(:requires, []) |> List.wrap() |> Enum.map(&normalize_dependency!/1),
         retry: attrs |> Keyword.get(:retry, %{}) |> normalize_retry(),
         metadata: Keyword.get(attrs, :metadata, %{}),
-        on_error: attrs |> Keyword.get(:on_error, :halt) |> normalize_on_error()
+        on_error: attrs |> Keyword.get(:on_error, :halt) |> normalize_on_error(),
+        opts: attrs |> Keyword.get(:opts, []) |> normalize_opts(),
+        context: attrs |> Keyword.get(:context, %{}) |> normalize_context()
       )
     end
 
@@ -82,6 +88,22 @@ defmodule Synapse.Workflow.Spec do
 
     defp normalize_retry(retry) when is_list(retry) do
       to_retry_map(retry)
+    end
+
+    defp normalize_opts(nil), do: []
+    defp normalize_opts(opts) when is_list(opts), do: opts
+    defp normalize_opts(opts) when is_map(opts), do: Map.to_list(opts)
+
+    defp normalize_opts(opts) do
+      raise ArgumentError, "workflow step opts must be a keyword list, got: #{inspect(opts)}"
+    end
+
+    defp normalize_context(nil), do: %{}
+    defp normalize_context(context) when is_map(context), do: context
+    defp normalize_context(context) when is_list(context), do: Map.new(context)
+
+    defp normalize_context(context) do
+      raise ArgumentError, "workflow step context must be a map, got: #{inspect(context)}"
     end
 
     defp to_retry_map(opts) do

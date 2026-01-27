@@ -96,7 +96,7 @@ defmodule Synapse.Workflows.PerformanceSpecialistWorkflow do
     def run(%{action: action} = params, _context) do
       payload = Map.get(params, :payload, %{})
 
-      case Exec.run(action, payload, %{}) do
+      case Exec.run(action, payload, %{}, []) do
         {:ok, result} -> {:ok, %{status: :ok, result: result}}
         {:error, error} -> {:ok, %{status: :error, error: error}}
       end

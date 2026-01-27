@@ -58,6 +58,8 @@ defmodule Synapse.MixProject do
       {:jido, github: "agentjido/jido", branch: "main"},
       {:jido_action, github: "agentjido/jido_action", branch: "main", override: true},
       {:jido_signal, github: "agentjido/jido_signal", branch: "main", override: true},
+      {:lineage_ir, path: "../../North-Shore-AI/lineage_ir"},
+      {:work, path: "../../North-Shore-AI/work"},
       {:req, "~> 0.5"},
       {:nimble_options, "~> 1.0"},
 
@@ -123,6 +125,7 @@ defmodule Synapse.MixProject do
         "CHANGELOG.md",
         "LICENSE",
         "docs/guides/custom-domains.md",
+        "docs/guides/plan-compiler.md",
         "docs/guides/migration-0.1.1.md"
       ],
       assets: %{"assets" => "assets"}
