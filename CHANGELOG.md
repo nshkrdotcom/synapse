@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `Synapse.DelegationRequest` struct for FlowStone delegation handoff
+- `Synapse.DelegationResult` struct for coordination results
+- `Synapse.coordinate/3` entry point for multi-agent coordination
+- `Synapse.CoordinatorSpec` for coordination strategy configuration
+- `Synapse.CoordinationState` for internal coordination state tracking
+- `Synapse.Consensus` module with weighted_vote, unanimous, majority algorithms
+- `Synapse.TimeoutManager` for timeout budget propagation
+- `Synapse.Escalation` for human review escalation requests
+- `Synapse.CoordinationTelemetry` for coordination lifecycle telemetry events
+- Telemetry events: `[:synapse, :coordination, :started]`, `[:synapse, :agent, :invoked]`,
+  `[:synapse, :agent, :completed]`, `[:synapse, :iteration, :completed]`,
+  `[:synapse, :consensus, :checked]`, `[:synapse, :coordination, :completed]`,
+  `[:synapse, :escalation, :triggered]`
+
 ## [0.1.1] - 2025-11-29
 
 ### Added
