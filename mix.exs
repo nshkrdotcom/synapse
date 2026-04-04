@@ -55,18 +55,18 @@ defmodule Synapse.MixProject do
       {:bandit, "~> 1.5"},
       {:ecto_sql, "~> 3.11"},
       {:postgrex, "~> 0.17"},
-      {:jido, github: "agentjido/jido", branch: "main"},
-      {:jido_action, github: "agentjido/jido_action", branch: "main", override: true},
-      {:jido_signal, github: "agentjido/jido_signal", branch: "main", override: true},
-      {:lineage_ir, path: "../../North-Shore-AI/lineage_ir"},
-      {:work, path: "../../North-Shore-AI/work"},
+      {:jido, "~> 2.0.0-rc.1"},
+      {:jido_action, "~> 2.0.0-rc.1"},
+      {:jido_signal, "~> 2.0.0-rc.1"},
+      {:lineage_ir, "~> 0.1"},
+      {:nsai_work, "~> 0.1"},
       {:req, "~> 0.5"},
       {:nimble_options, "~> 1.0"},
 
       # AI Layer (optional, for altar_ai integration)
       {:altar_ai, path: "../altar_ai", optional: true},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:supertester, path: "../supertester", only: :test},
+      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
+      {:supertester, "~> 0.5.1", only: :test},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
@@ -105,6 +105,7 @@ defmodule Synapse.MixProject do
       },
       files: [
         "lib",
+        "assets",
         "priv",
         "docs",
         "mix.exs",
