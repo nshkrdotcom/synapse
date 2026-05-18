@@ -21,3 +21,6 @@ Phase 3 routes:
 - `/tools`
 - `/catalog`
 - `/catalog/:id`
+- `/teams`
+- `/teams/:id`
+- `/arbitration/:id`

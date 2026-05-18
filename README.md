@@ -61,6 +61,18 @@ projections:
 Catalog assignment and marketplace economics stay disabled until a governed
 platform assignment backend is proven.
 
+Phase 7 adds fixture-backed team and arbitration projections:
+
+- `/teams`
+- `/teams/:id`
+- `/arbitration/:id`
+- `Synapse.Teams`
+- `Synapse.Arbitration`
+
+Team control and arbitration memory writes stay disabled because the available
+coordination/hive surfaces are DTO/projection oriented. Final arbitration
+decisions route through the AppKit review surface.
+
 ## Development
 
 ```sh

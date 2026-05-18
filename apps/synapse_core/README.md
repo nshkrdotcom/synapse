@@ -43,3 +43,11 @@ Phase 6 catalog module:
 
 Catalog projections use AppKit model, skill, budget, context-budget, and cost
 DTO surfaces. Assignment and marketplace economics are disabled.
+
+Phase 7 team/arbitration modules:
+
+- `Synapse.Teams`
+- `Synapse.Arbitration`
+
+Coordination and hive projections are fixture-backed DTO views. Mutating team
+control and memory-write paths remain disabled.

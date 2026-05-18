@@ -62,6 +62,12 @@ defmodule SynapseWeb.Layouts do
           >
             Catalog
           </.link>
+          <.link
+            navigate={~p"/teams"}
+            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Teams
+          </.link>
         </nav>
       </div>
     </header>
