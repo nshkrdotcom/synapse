@@ -29,8 +29,8 @@ defmodule DocGenerator.MixProject do
       {:synapse, path: "../.."},
 
       # SDK dependencies for AI providers
-      {:claude_agent_sdk, "~> 0.6.4"},
-      {:codex_sdk, "~> 0.2.1"},
+      {:claude_agent_sdk, "~> 0.11.0"},
+      {:codex_sdk, "~> 0.7.2"},
       {:gemini_ex, "~> 0.7.2"},
 
       # Testing

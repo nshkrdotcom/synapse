@@ -29,7 +29,7 @@ defmodule TestWriter.MixProject do
       {:synapse, path: "../.."},
 
       # SDK dependencies
-      {:codex_sdk, "~> 0.2.1"},
+      {:codex_sdk, "~> 0.7.2"},
 
       # Testing
       {:mox, "~> 1.1", only: :test}

@@ -29,7 +29,7 @@ defmodule ResearchAgent.MixProject do
       {:synapse, path: "../.."},
 
       # AI providers
-      {:claude_agent_sdk, "~> 0.6.4"},
+      {:claude_agent_sdk, "~> 0.11.0"},
       {:gemini_ex, "~> 0.7.2"},
 
       # HTTP client for web search/fetch
