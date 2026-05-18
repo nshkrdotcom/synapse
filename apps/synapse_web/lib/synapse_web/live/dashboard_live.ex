@@ -7,6 +7,7 @@ defmodule SynapseWeb.DashboardLive do
       socket
       |> assign(:page_title, "Dashboard")
       |> assign(:feature_status, Synapse.feature_status())
+      |> assign(:bootstrap_status, Synapse.ProductBootstrap.fixture_status())
       |> assign(:stats, stats())
       |> assign(:recent_runs, recent_runs())
       |> assign(:pending_reviews, pending_reviews())
@@ -27,7 +28,7 @@ defmodule SynapseWeb.DashboardLive do
               </p>
               <h1 class="mt-1 text-2xl font-semibold text-slate-950">NSHKR Agent</h1>
               <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Synapse is running as a headless AppKit product shell. Phase 1 exposes fixture-backed operational projections while lower live surfaces are promoted phase by phase.
+                Synapse is running as a headless AppKit product shell. Product installation, pack, and operational projections remain fixture-backed until AppKit live surfaces are proven for each feature.
               </p>
             </div>
 
@@ -101,9 +102,22 @@ defmodule SynapseWeb.DashboardLive do
             <div class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
               <.icon name="hero-cube-transparent" class="size-5" /> Installation
             </div>
-            <p class="mt-3 text-sm text-slate-600">
-              Bootstrap is fixture-backed until Phase 2 wires the product pack.
-            </p>
+            <dl class="mt-3 space-y-2 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Status</dt>
+                <dd class="font-medium text-slate-950">{@bootstrap_status.status}</dd>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Pack</dt>
+                <dd class="font-medium text-slate-950">
+                  {@bootstrap_status.pack_slug}@{@bootstrap_status.pack_version}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-slate-500">Install</dt>
+                <dd class="font-medium text-slate-950">{@bootstrap_status.installation_id}</dd>
+              </div>
+            </dl>
           </div>
 
           <div id="operations-slo-list" class="rounded border border-slate-200 bg-white p-4">

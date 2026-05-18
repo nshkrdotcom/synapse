@@ -14,15 +14,34 @@ apps/synapse_core  headless product core
 apps/synapse_web   Phoenix and LiveView shell
 ```
 
-Phase 1 exposes a fixture-backed dashboard shell. Later phases wire AppKit
-product pack bootstrap, run intake, turn submission, review, memory/context,
-catalog, evidence, and StackLab acceptance proof.
+Phase 2 adds the neutral product pack and bootstrap layer:
+
+- `Synapse.Config`
+- `Synapse.PlatformContext`
+- `Synapse.ProductProfile`
+- `Synapse.ProductPack`
+- `Synapse.ProductInstallTemplate`
+- `Synapse.DefaultAuthoringBundle`
+- `Synapse.ProductBootstrap`
+
+Installation remains fixture-backed unless an AppKit installation surface is
+explicitly supplied and proven in the calling environment. Later phases wire run
+intake, turn submission, review, memory/context, catalog, evidence, and StackLab
+acceptance proof.
 
 ## Development
 
 ```sh
 mix setup
 mix precommit
+```
+
+This repo uses the same Elixir/Erlang toolchain as the active AppKit and
+Mezzanine packages:
+
+```text
+erlang 28.3
+elixir 1.19.5-otp-28
 ```
 
 Run the web server:

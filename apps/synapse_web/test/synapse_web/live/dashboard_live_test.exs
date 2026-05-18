@@ -10,5 +10,6 @@ defmodule SynapseWeb.DashboardLiveTest do
     assert has_element?(view, "#dashboard-denials")
     assert has_element?(view, "#installation-bootstrap-status")
     assert has_element?(view, "#operations-slo-list")
+    assert has_element?(view, "#installation-bootstrap-status", "nshkr-agent@0.1.0")
   end
 end

@@ -9,6 +9,17 @@
 # move said applications out of the umbrella.
 import Config
 
+config :synapse_core, Synapse.Config,
+  tenant_id: "default",
+  product_slug: "nshkr-agent",
+  product_name: "NSHKR Agent",
+  product_family: "agent_workspace",
+  pack_version: "0.1.0",
+  default_installation_id: "default",
+  bootstrap_mode: :disabled,
+  execution_timeout_ms: 300_000,
+  operator_surface_enabled?: true
+
 config :synapse_web,
   generators: [context_app: :synapse_core]
 

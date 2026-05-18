@@ -4,3 +4,6 @@ Phoenix and LiveView shell for NSHKR Agent.
 
 This app renders product-safe projections from `synapse_core`. It must not
 duplicate AppKit wrapper logic or call lower platform packages directly.
+
+The dashboard currently renders fixture-backed installation and operations
+state from `Synapse.ProductBootstrap.fixture_status/1`.

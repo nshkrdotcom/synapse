@@ -7,15 +7,6 @@ defmodule Synapse do
   connector sessions, or policy kernels.
   """
 
-  @feature_status %{
-    installation: :fixture_backed,
-    runs: :fixture_backed,
-    reviews: :fixture_backed,
-    memory: :disabled,
-    teams: :roadmap,
-    evidence: :fixture_backed
-  }
-
   @spec feature_status() :: map()
-  def feature_status, do: @feature_status
+  def feature_status, do: Synapse.ProductProfile.feature_status()
 end
