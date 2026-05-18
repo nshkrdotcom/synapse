@@ -13,3 +13,5 @@ Phase 3 routes:
 - `/runs`
 - `/runs/new`
 - `/runs/:id`
+- `/reviews`
+- `/reviews/:id`

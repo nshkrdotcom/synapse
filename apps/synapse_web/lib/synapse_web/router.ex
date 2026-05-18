@@ -21,6 +21,8 @@ defmodule SynapseWeb.Router do
     live "/runs", RunIndexLive, :index
     live "/runs/new", RunNewLive, :new
     live "/runs/:id", RunShowLive, :show
+    live "/reviews", ReviewIndexLive, :index
+    live "/reviews/:id", ReviewShowLive, :show
   end
 
   # Other scopes may use custom stacks.

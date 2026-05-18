@@ -23,3 +23,8 @@ Phase 3 run modules:
 - `Synapse.Turns`
 - `Synapse.Fixtures.AgentIntakeBackend`
 - `Synapse.Fixtures.HeadlessBackend`
+
+Phase 4 review modules:
+
+- `Synapse.Reviews`
+- `Synapse.Fixtures.ReviewSurface`

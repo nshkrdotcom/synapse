@@ -38,6 +38,12 @@ defmodule SynapseWeb.Layouts do
           >
             Runs
           </.link>
+          <.link
+            navigate={~p"/reviews"}
+            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Reviews
+          </.link>
         </nav>
       </div>
     </header>

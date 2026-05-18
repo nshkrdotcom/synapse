@@ -31,11 +31,13 @@ Phase 3 adds fixture-backed run and turn workflows over AppKit DTOs:
 - `/runs/:id`
 - `Synapse.AgentRuns`
 - `Synapse.Turns`
+- `Synapse.Reviews`
 
 Installation, run start, turn submission, cancel, and refresh remain
 fixture-backed unless AppKit live backends are explicitly supplied and proven in
-the calling environment. Later phases wire review, memory/context, catalog,
-evidence, and StackLab acceptance proof.
+the calling environment. Review queue/detail/decision are fixture-backed in the
+same way. Later phases wire memory/context, catalog, evidence, and StackLab
+acceptance proof.
 
 ## Development
 
