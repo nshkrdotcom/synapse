@@ -18,6 +18,9 @@ defmodule SynapseWeb.Router do
     pipe_through :browser
 
     live "/", DashboardLive, :index
+    live "/runs", RunIndexLive, :index
+    live "/runs/new", RunNewLive, :new
+    live "/runs/:id", RunShowLive, :show
   end
 
   # Other scopes may use custom stacks.

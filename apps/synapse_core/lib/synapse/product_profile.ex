@@ -8,6 +8,8 @@ defmodule Synapse.ProductProfile do
   @feature_status %{
     installation: :fixture_backed,
     runs: :fixture_backed,
+    turns: :fixture_backed,
+    cancel_refresh: :fixture_backed,
     reviews: :fixture_backed,
     memory: :disabled,
     memory_feedback: :disabled,

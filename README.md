@@ -24,10 +24,18 @@ Phase 2 adds the neutral product pack and bootstrap layer:
 - `Synapse.DefaultAuthoringBundle`
 - `Synapse.ProductBootstrap`
 
-Installation remains fixture-backed unless an AppKit installation surface is
-explicitly supplied and proven in the calling environment. Later phases wire run
-intake, turn submission, review, memory/context, catalog, evidence, and StackLab
-acceptance proof.
+Phase 3 adds fixture-backed run and turn workflows over AppKit DTOs:
+
+- `/runs`
+- `/runs/new`
+- `/runs/:id`
+- `Synapse.AgentRuns`
+- `Synapse.Turns`
+
+Installation, run start, turn submission, cancel, and refresh remain
+fixture-backed unless AppKit live backends are explicitly supplied and proven in
+the calling environment. Later phases wire review, memory/context, catalog,
+evidence, and StackLab acceptance proof.
 
 ## Development
 

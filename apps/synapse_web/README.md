@@ -7,3 +7,9 @@ duplicate AppKit wrapper logic or call lower platform packages directly.
 
 The dashboard currently renders fixture-backed installation and operations
 state from `Synapse.ProductBootstrap.fixture_status/1`.
+
+Phase 3 routes:
+
+- `/runs`
+- `/runs/new`
+- `/runs/:id`

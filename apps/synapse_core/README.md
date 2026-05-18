@@ -16,3 +16,10 @@ Phase 2 public modules:
 - `Synapse.ProductInstallTemplate`
 - `Synapse.DefaultAuthoringBundle`
 - `Synapse.ProductBootstrap`
+
+Phase 3 run modules:
+
+- `Synapse.AgentRuns`
+- `Synapse.Turns`
+- `Synapse.Fixtures.AgentIntakeBackend`
+- `Synapse.Fixtures.HeadlessBackend`
