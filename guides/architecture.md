@@ -63,3 +63,10 @@ accepted, pending, denied, disabled, fixture-backed, and missing evidence.
 StackLab owns the external product acceptance proof. The proof calls Synapse
 product APIs from outside the Synapse repo and records a no-bypass receipt over
 Synapse product code.
+
+StackLab also owns the deterministic live-stack run-slice proof. That proof
+injects the AppKit Mezzanine bridge and Mezzanine AgentLoop runtime adapter from
+outside Synapse, then proves run start, turn submission, await, runtime
+projection, lower/action receipt refs, memory proof refs, and denied
+lower-effect non-submission. Synapse product code still imports only AppKit
+surfaces plus the pure `Mezzanine.Pack` authoring contract.

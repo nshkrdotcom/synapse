@@ -36,6 +36,18 @@ The proof receipt is fixture-backed. It proves the product path, no-bypass
 posture, denial paths, memory/context projection, review decision, evidence,
 and operations projection.
 
+StackLab also owns the deterministic live-stack run slice:
+
+```sh
+cd /home/home/p/g/n/stack_lab
+MIX_ENV=test mix stack_lab.synapse.live_slice --json
+```
+
+That receipt proves explicit AppKit -> Mezzanine AgentLoop run start, turn
+submission, await, runtime projection, lower/action receipt refs, memory proof
+refs, no-bypass, and denied lower-effect non-submission. It does not prove live
+provider behavior or production deployment.
+
 ## Boundary Scans
 
 Project code must stay free of Regex, unsafe dynamic atom creation, and

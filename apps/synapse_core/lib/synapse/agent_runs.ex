@@ -10,6 +10,22 @@ defmodule Synapse.AgentRuns do
   @actor_ref "actor:synapse:operator"
   @default_agent_backend Synapse.Fixtures.AgentIntakeBackend
   @default_headless_backend Synapse.Fixtures.HeadlessBackend
+  @runtime_param_keys [
+    :artifact_policy_ref,
+    :authority_context_ref,
+    :continuation_input,
+    :continuation_policy,
+    :continue_as_new_turn_threshold,
+    :fixture_script,
+    :initial_input,
+    :max_turns,
+    :profile_ref,
+    :session_ref,
+    :timeout_policy,
+    :turn_timeout_ms,
+    :worker_ref,
+    :workspace_ref
+  ]
 
   @fixture_runs [
     %{
@@ -74,10 +90,10 @@ defmodule Synapse.AgentRuns do
     config = Config.load(opts)
     context = product_context(config, opts)
     token = run_token(attrs, opts)
-    request = run_request_attrs(config, attrs, context, token)
+    request = run_request_attrs(config, attrs, context, token, opts)
 
     with {:ok, future} <- AgentIntake.start_agent_run(context, request, agent_opts(opts)) do
-      {:ok, start_view(future, attrs, token)}
+      {:ok, start_view(future, attrs, token, opts)}
     end
   end
 
@@ -107,10 +123,21 @@ defmodule Synapse.AgentRuns do
     AgentIntake.cancel_agent_run(context, run_ref, agent_opts(opts))
   end
 
-  defp start_view(future, attrs, token) do
+  @spec await_run(String.t(), map(), keyword()) :: {:ok, term()} | {:error, term()}
+  def await_run(run_ref_or_id, request \\ %{}, opts \\ [])
+      when is_binary(run_ref_or_id) and is_map(request) and is_list(opts) do
+    config = Config.load(opts)
+    context = product_context(config, opts)
+    run_ref = normalize_run_ref(run_ref_or_id)
+
+    AgentIntake.await_agent_outcome(context, run_ref, request, agent_opts(opts))
+  end
+
+  defp start_view(future, attrs, token, opts) do
     %{
       id: token,
       ref: future.run_ref,
+      workflow_ref: future.workflow_ref,
       subject_ref: "subject://synapse/#{token}",
       title: string_value(attrs, :title, "Untitled agent run"),
       goal_summary: string_value(attrs, :goal_summary, "No goal summary provided"),
@@ -121,12 +148,14 @@ defmodule Synapse.AgentRuns do
       context_pack_ref: "context-pack://pending/#{token}",
       memory_state: :disabled,
       evidence_refs: [future.command_ref],
+      feature_status: feature_status(opts),
       updated_at: DateTime.utc_now() |> DateTime.to_iso8601()
     }
   end
 
-  defp run_request_attrs(config, attrs, context, token) do
+  defp run_request_attrs(config, attrs, context, token, opts) do
     trace_id = context.trace_id
+    runtime_params = runtime_params(opts)
 
     %{
       tenant_ref: "tenant://#{config.tenant_id}",
@@ -142,11 +171,13 @@ defmodule Synapse.AgentRuns do
       correlation_id: "correlation://synapse/#{token}",
       submission_dedupe_key: token,
       initial_input_ref: "payload://synapse/initial/#{token}",
-      params: %{
-        title: string_value(attrs, :title, "Untitled agent run"),
-        goal_summary: string_value(attrs, :goal_summary, "No goal summary provided"),
-        team_template_ref: string_value(attrs, :team_template_ref, "standard_implementation")
-      }
+      params:
+        %{
+          title: string_value(attrs, :title, "Untitled agent run"),
+          goal_summary: string_value(attrs, :goal_summary, "No goal summary provided"),
+          team_template_ref: string_value(attrs, :team_template_ref, "standard_implementation")
+        }
+        |> Map.merge(runtime_params)
     }
   end
 
@@ -159,6 +190,29 @@ defmodule Synapse.AgentRuns do
 
   defp agent_opts(opts), do: Keyword.put_new(opts, :backend, @default_agent_backend)
   defp headless_opts(opts), do: Keyword.put_new(opts, :backend, @default_headless_backend)
+
+  defp feature_status(opts),
+    do:
+      if(Keyword.get(opts, :live_stack?, false),
+        do: :live_stack_deterministic,
+        else: :fixture_backed
+      )
+
+  defp runtime_params(opts) do
+    case Keyword.get(opts, :runtime_params, %{}) do
+      %{} = params ->
+        @runtime_param_keys
+        |> Enum.reduce(%{}, fn key, acc ->
+          case Map.get(params, key, Map.get(params, Atom.to_string(key))) do
+            nil -> acc
+            value -> Map.put(acc, key, value)
+          end
+        end)
+
+      _other ->
+        %{}
+    end
+  end
 
   defp run_token(attrs, opts) do
     explicit = Keyword.get(opts, :run_token) || map_value(attrs, :run_token)

@@ -34,9 +34,11 @@ Synapse currently exposes:
 - evidence, receipt, replay, runtime facts, and operations projections
 - StackLab product acceptance proof
 
-All user-facing behavior is fixture-backed unless a guide or release claim says
-otherwise. Disabled controls are explicit product state, not hidden lower-stack
-failures.
+User-facing UI behavior remains fixture-backed unless a guide or release claim
+says otherwise. The deterministic live-stack run slice is proven by StackLab
+through explicit backend options; it is not the default browser path and not a
+live provider claim. Disabled controls are explicit product state, not hidden
+lower-stack failures.
 
 ## Routes
 
@@ -81,6 +83,13 @@ cd /home/home/p/g/n/stack_lab
 MIX_ENV=test mix stack_lab.synapse.acceptance --json
 ```
 
+Run the deterministic AppKit-to-Mezzanine live-stack run slice:
+
+```sh
+cd /home/home/p/g/n/stack_lab
+MIX_ENV=test mix stack_lab.synapse.live_slice --json
+```
+
 Toolchain:
 
 ```text
@@ -96,8 +105,8 @@ elixir 1.19.5-otp-28
   modules, provider SDKs, or helper-runtime repos directly.
 - Pure `Mezzanine.Pack` authoring contracts are allowed only for product pack
   declaration.
-- Every feature is classified as `live`, `fixture-backed`, `disabled`, or
-  `roadmap`.
+- Every feature is classified as `live`, `live-stack-deterministic`,
+  `fixture-backed`, `disabled`, or `roadmap`.
 - Product code does not handle raw credentials or raw provider payloads.
 - Production processes must be supervised. Synapse currently starts no product
   worker processes of its own.

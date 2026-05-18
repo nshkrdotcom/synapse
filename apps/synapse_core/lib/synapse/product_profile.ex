@@ -21,7 +21,8 @@ defmodule Synapse.ProductProfile do
     arbitration: :roadmap,
     evidence: :fixture_backed,
     operations: :fixture_backed,
-    stack_lab: :roadmap
+    live_run_slice: :live_stack_deterministic,
+    stack_lab: :live_stack_deterministic
   }
 
   @roles [
