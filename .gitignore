@@ -1,65 +1,25 @@
-# Elixir
 /_build/
 /cover/
 /deps/
-examples/**/_build/
-examples/**/deps/
 /doc/
+/.elixir_ls/
 /.fetch
+/.hex/
+/.mix/
+
 erl_crash.dump
-*.ez
 *.beam
+*.ez
+*.tar
+
 /config/*.secret.exs
-.elixir_ls/
+/tmp/
+/apps/*/priv/static/assets/
+/apps/*/priv/static/cache_manifest.json
 
-
-.hex/
-.mix/
-.replit
-
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-.env
-.venv
-venv/
-ENV/
-.python-version
-
-# IDE
+.DS_Store
+Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-#
-priv/
-
-# ALTAR repository
-/ALTAR/
-
-# Synapse Phoenix subdirectory
-/synapse/
-synapse*.tar

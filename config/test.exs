@@ -1,16 +1,22 @@
 import Config
 
+# We don't run a server during test. If one is required,
+# you can enable the server option below.
+config :synapse_web, SynapseWeb.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 4002],
+  secret_key_base: "GdiZbGXS3OOk4eD2d4L/1sDYIH872zOofwLM+PB1ltEEBZ93HGQsCRh/2OzQlDUS",
+  server: false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
-config :synapse, Synapse.Repo,
-  database: System.get_env("POSTGRES_DB_TEST", "synapse_test"),
-  username: System.get_env("POSTGRES_USER", "postgres"),
-  password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-  hostname: System.get_env("POSTGRES_HOST", "localhost"),
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 10
+# Initialize plugs at runtime for faster test compilation
+config :phoenix, :plug_init_mode, :runtime
 
-config :synapse, Synapse.Workflow.Engine, persistence: nil
+# Enable helpful, but potentially expensive runtime checks
+config :phoenix_live_view,
+  enable_expensive_runtime_checks: true
 
-config :synapse, :suppress_reqllm_warnings, true
+# Sort query params output of verified routes for robust url comparisons
+config :phoenix,
+  sort_verified_routes_query_params: true
