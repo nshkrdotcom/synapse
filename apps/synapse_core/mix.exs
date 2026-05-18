@@ -44,6 +44,7 @@ defmodule Synapse.MixProject do
       {:app_kit_hive_surface, path: "../../../app_kit/core/hive_surface"},
       {:app_kit_memory_surface, path: "../../../app_kit/core/memory_surface"},
       {:app_kit_model_surface, path: "../../../app_kit/core/model_surface"},
+      {:app_kit_replay_surface, path: "../../../app_kit/core/replay_surface"},
       {:app_kit_skill_surface, path: "../../../app_kit/core/skill_surface"},
       {:dns_cluster, "~> 0.2.0"},
       {:mezzanine_pack_model, path: "../../../mezzanine/core/pack_model"},

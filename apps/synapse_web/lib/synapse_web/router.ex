@@ -32,6 +32,9 @@ defmodule SynapseWeb.Router do
     live "/teams", TeamIndexLive, :index
     live "/teams/:id", TeamShowLive, :show
     live "/arbitration/:id", ArbitrationShowLive, :show
+    live "/evidence", EvidenceIndexLive, :index
+    live "/evidence/:id", EvidenceShowLive, :show
+    live "/operations", OperationsLive, :index
   end
 
   # Other scopes may use custom stacks.

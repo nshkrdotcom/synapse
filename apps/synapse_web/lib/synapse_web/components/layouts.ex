@@ -68,6 +68,18 @@ defmodule SynapseWeb.Layouts do
           >
             Teams
           </.link>
+          <.link
+            navigate={~p"/evidence"}
+            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Evidence
+          </.link>
+          <.link
+            navigate={~p"/operations"}
+            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Ops
+          </.link>
         </nav>
       </div>
     </header>

@@ -24,3 +24,6 @@ Phase 3 routes:
 - `/teams`
 - `/teams/:id`
 - `/arbitration/:id`
+- `/evidence`
+- `/evidence/:id`
+- `/operations`

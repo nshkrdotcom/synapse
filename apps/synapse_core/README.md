@@ -51,3 +51,10 @@ Phase 7 team/arbitration modules:
 
 Coordination and hive projections are fixture-backed DTO views. Mutating team
 control and memory-write paths remain disabled.
+
+Phase 8 evidence module:
+
+- `Synapse.Evidence`
+
+Evidence, receipt, replay, runtime facts, and operations health are fixture
+projections. Trace export is not used as operational metrics truth.

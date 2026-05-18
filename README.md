@@ -73,6 +73,16 @@ Team control and arbitration memory writes stay disabled because the available
 coordination/hive surfaces are DTO/projection oriented. Final arbitration
 decisions route through the AppKit review surface.
 
+Phase 8 adds fixture-backed evidence, replay, and operations projections:
+
+- `/evidence`
+- `/evidence/:id`
+- `/operations`
+- `Synapse.Evidence`
+
+Operational health is rendered separately from replay and trace export. Missing
+evidence is shown as explicit product state.
+
 ## Development
 
 ```sh
