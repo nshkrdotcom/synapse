@@ -36,8 +36,19 @@ Phase 3 adds fixture-backed run and turn workflows over AppKit DTOs:
 Installation, run start, turn submission, cancel, and refresh remain
 fixture-backed unless AppKit live backends are explicitly supplied and proven in
 the calling environment. Review queue/detail/decision are fixture-backed in the
-same way. Later phases wire memory/context, catalog, evidence, and StackLab
-acceptance proof.
+same way.
+
+Phase 5 adds fixture-backed redacted memory and context-pack projections:
+
+- `/memory`
+- `/memory/:id`
+- `/context-packs/:id`
+- `Synapse.Memory`
+- `Synapse.ContextPacks`
+
+Memory projection construction uses `AppKit.MemorySurface`; feedback writes are
+disabled until a product AppKit memory-write backend exists. Later phases wire
+catalog, teams, evidence, operations, and StackLab acceptance proof.
 
 ## Development
 

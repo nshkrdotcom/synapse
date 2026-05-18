@@ -15,3 +15,6 @@ Phase 3 routes:
 - `/runs/:id`
 - `/reviews`
 - `/reviews/:id`
+- `/memory`
+- `/memory/:id`
+- `/context-packs/:id`

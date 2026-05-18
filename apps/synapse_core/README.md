@@ -28,3 +28,11 @@ Phase 4 review modules:
 
 - `Synapse.Reviews`
 - `Synapse.Fixtures.ReviewSurface`
+
+Phase 5 memory/context modules:
+
+- `Synapse.Memory`
+- `Synapse.ContextPacks`
+
+Memory projections are redacted AppKit DTOs. Context packs remain fixture-backed
+until a final product context-pack surface exists. Feedback writes are disabled.

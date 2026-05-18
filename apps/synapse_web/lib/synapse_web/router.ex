@@ -23,6 +23,9 @@ defmodule SynapseWeb.Router do
     live "/runs/:id", RunShowLive, :show
     live "/reviews", ReviewIndexLive, :index
     live "/reviews/:id", ReviewShowLive, :show
+    live "/memory", MemoryIndexLive, :index
+    live "/memory/:id", MemoryShowLive, :show
+    live "/context-packs/:id", ContextPackShowLive, :show
   end
 
   # Other scopes may use custom stacks.

@@ -44,6 +44,12 @@ defmodule SynapseWeb.Layouts do
           >
             Reviews
           </.link>
+          <.link
+            navigate={~p"/memory"}
+            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Memory
+          </.link>
         </nav>
       </div>
     </header>
