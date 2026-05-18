@@ -18,3 +18,6 @@ Phase 3 routes:
 - `/memory`
 - `/memory/:id`
 - `/context-packs/:id`
+- `/tools`
+- `/catalog`
+- `/catalog/:id`

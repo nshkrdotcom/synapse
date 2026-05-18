@@ -37,7 +37,12 @@ defmodule Synapse.MixProject do
   defp deps do
     [
       {:app_kit_core, path: "../../../app_kit/core/app_kit_core"},
+      {:app_kit_budget_surface, path: "../../../app_kit/core/budget_surface"},
+      {:app_kit_context_budget_surface, path: "../../../app_kit/core/context_budget_surface"},
+      {:app_kit_cost_surface, path: "../../../app_kit/core/cost_surface"},
       {:app_kit_memory_surface, path: "../../../app_kit/core/memory_surface"},
+      {:app_kit_model_surface, path: "../../../app_kit/core/model_surface"},
+      {:app_kit_skill_surface, path: "../../../app_kit/core/skill_surface"},
       {:dns_cluster, "~> 0.2.0"},
       {:mezzanine_pack_model, path: "../../../mezzanine/core/pack_model"},
       {:phoenix_pubsub, "~> 2.1"}

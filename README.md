@@ -50,6 +50,17 @@ Memory projection construction uses `AppKit.MemorySurface`; feedback writes are
 disabled until a product AppKit memory-write backend exists. Later phases wire
 catalog, teams, evidence, operations, and StackLab acceptance proof.
 
+Phase 6 adds read-only tool, model, budget, cost, and catalog eligibility
+projections:
+
+- `/tools`
+- `/catalog`
+- `/catalog/:id`
+- `Synapse.Catalog`
+
+Catalog assignment and marketplace economics stay disabled until a governed
+platform assignment backend is proven.
+
 ## Development
 
 ```sh

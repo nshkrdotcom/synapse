@@ -36,3 +36,10 @@ Phase 5 memory/context modules:
 
 Memory projections are redacted AppKit DTOs. Context packs remain fixture-backed
 until a final product context-pack surface exists. Feedback writes are disabled.
+
+Phase 6 catalog module:
+
+- `Synapse.Catalog`
+
+Catalog projections use AppKit model, skill, budget, context-budget, and cost
+DTO surfaces. Assignment and marketplace economics are disabled.

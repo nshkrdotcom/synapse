@@ -139,7 +139,7 @@ defmodule SynapseWeb.DashboardLive do
       {"Runs", "fixture"},
       {"Reviews", "fixture"},
       {"Memory", "fixture"},
-      {"Teams", "roadmap"}
+      {"Catalog", "fixture"}
     ]
   end
 
