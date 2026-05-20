@@ -45,19 +45,23 @@ defmodule Synapse.Evidence do
   ]
 
   @spec list_evidence(keyword()) :: [map()]
-  def list_evidence(_opts \\ []), do: Enum.map(@evidence_items, &evidence_view!/1)
+  def list_evidence(opts \\ []) do
+    opts
+    |> evidence_items()
+    |> Enum.map(&evidence_view!/1)
+  end
 
   @spec get_evidence(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_evidence(id_or_ref, _opts \\ []) when is_binary(id_or_ref) do
-    case Enum.find(@evidence_items, &(&1.id == id_or_ref or &1.evidence_ref == id_or_ref)) do
+  def get_evidence(id_or_ref, opts \\ []) when is_binary(id_or_ref) do
+    case Enum.find(evidence_items(opts), &(&1.id == id_or_ref or &1.evidence_ref == id_or_ref)) do
       nil -> {:error, :evidence_not_found}
       item -> {:ok, evidence_view!(item)}
     end
   end
 
   @spec get_receipt(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_receipt(receipt_ref, _opts \\ []) when is_binary(receipt_ref) do
-    case Enum.find(@evidence_items, &(&1.receipt_ref == receipt_ref)) do
+  def get_receipt(receipt_ref, opts \\ []) when is_binary(receipt_ref) do
+    case Enum.find(evidence_items(opts), &(&1.receipt_ref == receipt_ref)) do
       nil -> {:error, :receipt_not_found}
       item -> {:ok, receipt_view!(item)}
     end
@@ -199,7 +203,11 @@ defmodule Synapse.Evidence do
           id: "execution://synapse/#{attrs.id}",
           dispatch_state: :accepted
         },
-        metadata: %{evidence_ref: attrs.evidence_ref}
+        metadata: %{
+          "evidence_ref" => attrs.evidence_ref,
+          "trace_ref" => Map.get(attrs, :trace_ref),
+          "trace_summary_hash" => Map.get(attrs, :trace_summary_hash)
+        }
       })
 
     %{
@@ -208,4 +216,52 @@ defmodule Synapse.Evidence do
       receipt: receipt
     }
   end
+
+  defp evidence_items(opts) do
+    @evidence_items ++ governed_effect_items(Keyword.get(opts, :governed_effects, []))
+  end
+
+  defp governed_effect_items(effects) when is_list(effects) do
+    effects
+    |> Enum.map(&governed_effect_item/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp governed_effect_items(_effects), do: []
+
+  defp governed_effect_item(effect) when is_map(effect) do
+    effect_ref = map_value(effect, :effect_ref)
+    receipt_ref = map_value(effect, :receipt_ref)
+    evidence_refs = map_value(effect, :evidence_refs) || []
+
+    evidence_ref =
+      first_binary(evidence_refs) || "evidence://synapse/effects/#{effect_id(effect_ref)}"
+
+    %{
+      id: "governed-effect-#{effect_id(effect_ref)}",
+      evidence_ref: evidence_ref,
+      evidence_kind: "governed_effect",
+      status: if(is_binary(receipt_ref), do: "available", else: "missing"),
+      content_ref: map_value(effect, :content_ref),
+      receipt_ref: receipt_ref,
+      run_ref: map_value(effect, :run_ref) || "run://synapse/governed-effect",
+      trace_ref: map_value(effect, :trace_ref),
+      trace_summary_hash: map_value(effect, :trace_summary_hash)
+    }
+  end
+
+  defp governed_effect_item(_effect), do: nil
+
+  defp first_binary(values) when is_list(values), do: Enum.find(values, &is_binary/1)
+  defp first_binary(_values), do: nil
+
+  defp effect_id(value) when is_binary(value) do
+    value
+    |> String.split("/", trim: true)
+    |> List.last()
+  end
+
+  defp effect_id(_value), do: "unknown"
+
+  defp map_value(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 end

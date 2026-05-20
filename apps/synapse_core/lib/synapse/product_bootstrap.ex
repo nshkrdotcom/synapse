@@ -43,6 +43,24 @@ defmodule Synapse.ProductBootstrap do
     }
   end
 
+  @spec effect_surface_status(keyword() | map()) :: map()
+  def effect_surface_status(overrides \\ []) do
+    opts = backend_options(overrides)
+    effect_surface_loaded? = effect_surface_loaded?()
+    effect_backend_available? = effect_backend_available?(opts)
+    agent_intake_available? = agent_intake_available?(opts)
+    live? = effect_surface_loaded? and effect_backend_available? and agent_intake_available?
+
+    %{
+      status: if(live?, do: :staging_live, else: :fixture_backed),
+      surface: "AppKit.EffectSurface",
+      live?: live?,
+      effect_surface_available?: effect_surface_loaded? and effect_backend_available?,
+      agent_intake_available?: agent_intake_available?,
+      mode: :diagnostic_lane
+    }
+  end
+
   defp run_or_retry(%Config{} = config, opts) do
     case run_bootstrap(config, opts) do
       {:ok, result} ->
@@ -157,6 +175,66 @@ defmodule Synapse.ProductBootstrap do
       live?: truthy?(first_present(attrs, [:live?, "live?", :live, "live"]))
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  defp backend_options(overrides) when is_list(overrides), do: overrides
+  defp backend_options(overrides) when is_map(overrides), do: Map.to_list(overrides)
+
+  defp effect_surface_loaded? do
+    Code.ensure_loaded?(AppKit.EffectSurface) and
+      function_exported?(AppKit.EffectSurface, :propose_effect, 3) and
+      function_exported?(AppKit.EffectSurface, :get_effect_timeline, 3)
+  end
+
+  defp effect_backend_available?(opts) do
+    explicit_backend?(opts, :effect_surface_adapter) or
+      stack_backend?(opts, :effect_surface_backend) or default_bridge_effect_backend?()
+  end
+
+  defp agent_intake_available?(opts) do
+    explicit_backend?(opts, :backend) or
+      explicit_backend?(opts, :agent_intake_backend) or
+      stack_backend?(opts, :agent_intake_backend) or default_bridge_agent_backend?()
+  end
+
+  defp explicit_backend?(opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, backend} when is_atom(backend) -> Code.ensure_loaded?(backend)
+      {:ok, nil} -> false
+      {:ok, _backend} -> true
+      :error -> false
+    end
+  end
+
+  defp stack_backend?(opts, key) do
+    opts
+    |> backend_stacks()
+    |> Enum.any?(fn stack ->
+      case AppKit.BackendStack.fetch(stack, key) do
+        {:ok, backend} when is_atom(backend) -> Code.ensure_loaded?(backend)
+        {:ok, nil} -> false
+        {:ok, _backend} -> true
+        :error -> false
+      end
+    end)
+  end
+
+  defp backend_stacks(opts) do
+    [
+      Keyword.get(opts, :backend_stack),
+      Keyword.get(opts, :app_kit_backend_stack)
+    ]
+    |> Enum.filter(&match?(%AppKit.BackendStack{}, &1))
+  end
+
+  defp default_bridge_effect_backend? do
+    Code.ensure_loaded?(AppKit.Bridges.MezzanineBridge) and
+      function_exported?(AppKit.Bridges.MezzanineBridge, :propose_effect, 3)
+  end
+
+  defp default_bridge_agent_backend? do
+    Code.ensure_loaded?(AppKit.Bridges.MezzanineBridge) and
+      function_exported?(AppKit.Bridges.MezzanineBridge, :start_agent_run, 3)
   end
 
   defp first_present(attrs, keys) do

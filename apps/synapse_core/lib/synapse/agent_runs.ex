@@ -5,11 +5,15 @@ defmodule Synapse.AgentRuns do
 
   alias AppKit.AgentIntake
   alias AppKit.HeadlessSurface
-  alias Synapse.{Config, PlatformContext, ProductBootstrap, ProductPack}
+  alias Synapse.{Config, GovernedEffects, PlatformContext, ProductBootstrap, ProductPack}
 
   @actor_ref "actor:synapse:operator"
   @default_agent_backend Synapse.Fixtures.AgentIntakeBackend
   @default_headless_backend Synapse.Fixtures.HeadlessBackend
+  @diagnostic_lanes %{
+    "echo" => :echo,
+    "probe" => :probe
+  }
   @runtime_param_keys [
     :artifact_policy_ref,
     :authority_context_ref,
@@ -90,10 +94,15 @@ defmodule Synapse.AgentRuns do
     config = Config.load(opts)
     context = product_context(config, opts)
     token = run_token(attrs, opts)
-    request = run_request_attrs(config, attrs, context, token, opts)
 
-    with {:ok, future} <- AgentIntake.start_agent_run(context, request, agent_opts(opts)) do
-      {:ok, start_view(future, attrs, token, opts)}
+    with {:ok, diagnostic_lane} <- diagnostic_lane(attrs, opts) do
+      case diagnostic_lane do
+        nil ->
+          start_default_run(config, context, attrs, token, opts)
+
+        lane ->
+          start_diagnostic_run(config, context, attrs, token, lane, opts)
+      end
     end
   end
 
@@ -133,6 +142,48 @@ defmodule Synapse.AgentRuns do
     AgentIntake.await_agent_outcome(context, run_ref, request, agent_opts(opts))
   end
 
+  defp start_default_run(config, context, attrs, token, opts) do
+    request = run_request_attrs(config, attrs, context, token, opts)
+
+    with {:ok, future} <- AgentIntake.start_agent_run(context, request, agent_opts(opts)) do
+      {:ok, start_view(future, attrs, token, opts)}
+    end
+  end
+
+  defp start_diagnostic_run(config, context, attrs, token, diagnostic_lane, opts) do
+    case ProductBootstrap.effect_surface_status(opts) do
+      %{live?: true} ->
+        start_staged_live_run(config, context, attrs, token, diagnostic_lane, opts)
+
+      _status ->
+        start_default_run(config, context, attrs, token, opts)
+    end
+  end
+
+  defp start_staged_live_run(config, context, attrs, token, diagnostic_lane, opts) do
+    with {:ok, effect_view} <-
+           GovernedEffects.propose_diagnostic_run(context, attrs, token, diagnostic_lane, opts),
+         governed_opts <-
+           Keyword.merge(opts,
+             diagnostic_lane: diagnostic_lane,
+             effect_governance_mode: :staging_live,
+             governed_effect_refs: effect_view.governed_effect_refs
+           ),
+         request <- run_request_attrs(config, attrs, context, token, governed_opts) do
+      case AgentIntake.start_agent_run(context, request, agent_opts(opts)) do
+        {:ok, future} ->
+          {:ok, staged_live_view(future, attrs, token, opts, diagnostic_lane, effect_view)}
+
+        {:error, reason} ->
+          {:ok, failed_staged_live_view(attrs, token, diagnostic_lane, :run_start_failed, reason)}
+      end
+    else
+      {:error, reason} ->
+        {:ok,
+         failed_staged_live_view(attrs, token, diagnostic_lane, :effect_proposal_failed, reason)}
+    end
+  end
+
   defp start_view(future, attrs, token, opts) do
     %{
       id: token,
@@ -149,6 +200,45 @@ defmodule Synapse.AgentRuns do
       memory_state: :disabled,
       evidence_refs: [future.command_ref],
       feature_status: feature_status(opts),
+      updated_at: DateTime.utc_now() |> DateTime.to_iso8601()
+    }
+    |> maybe_put_governed_effect_refs(future.governed_effect_refs)
+  end
+
+  defp staged_live_view(future, attrs, token, opts, diagnostic_lane, effect_view) do
+    future
+    |> start_view(attrs, token, opts)
+    |> Map.merge(%{
+      diagnostic_lane: diagnostic_lane,
+      effect_governance_mode: :staging_live,
+      feature_status: :staging_live,
+      governed_effect_refs: effect_view.governed_effect_refs,
+      governed_effects: [effect_view],
+      evidence_refs:
+        [future.command_ref, effect_view.receipt_ref | effect_view.evidence_refs]
+        |> Enum.filter(&is_binary/1)
+        |> Enum.uniq()
+    })
+  end
+
+  defp failed_staged_live_view(attrs, token, diagnostic_lane, state, reason) do
+    %{
+      id: token,
+      ref: "run://synapse/#{token}",
+      subject_ref: "subject://synapse/#{token}",
+      title: string_value(attrs, :title, "Untitled agent run"),
+      goal_summary: string_value(attrs, :goal_summary, "No goal summary provided"),
+      state: state,
+      surface: "AppKit.EffectSurface",
+      authority_state: :denied,
+      budget_state: :within_limit,
+      context_pack_ref: "context-pack://pending/#{token}",
+      memory_state: :disabled,
+      evidence_refs: [],
+      feature_status: :staging_live_error,
+      diagnostic_lane: diagnostic_lane,
+      effect_governance_mode: :staging_live,
+      error: %{reason: reason},
       updated_at: DateTime.utc_now() |> DateTime.to_iso8601()
     }
   end
@@ -179,6 +269,9 @@ defmodule Synapse.AgentRuns do
         }
         |> Map.merge(runtime_params)
     }
+    |> maybe_put(:effect_governance_mode, Keyword.get(opts, :effect_governance_mode))
+    |> maybe_put(:diagnostic_lane, Keyword.get(opts, :diagnostic_lane))
+    |> maybe_put(:governed_effect_refs, Keyword.get(opts, :governed_effect_refs))
   end
 
   defp product_context(%Config{} = config, opts) do
@@ -188,7 +281,22 @@ defmodule Synapse.AgentRuns do
     PlatformContext.product_context(config, bootstrap.installation_ref, opts)
   end
 
-  defp agent_opts(opts), do: Keyword.put_new(opts, :backend, @default_agent_backend)
+  defp agent_opts(opts) do
+    cond do
+      Keyword.has_key?(opts, :backend) ->
+        opts
+
+      Keyword.has_key?(opts, :agent_intake_backend) ->
+        Keyword.put(opts, :backend, Keyword.fetch!(opts, :agent_intake_backend))
+
+      backend_stack_has?(opts, :agent_intake_backend) ->
+        opts
+
+      true ->
+        Keyword.put(opts, :backend, @default_agent_backend)
+    end
+  end
+
   defp headless_opts(opts), do: Keyword.put_new(opts, :backend, @default_headless_backend)
 
   defp feature_status(opts),
@@ -197,6 +305,15 @@ defmodule Synapse.AgentRuns do
         do: :live_stack_deterministic,
         else: :fixture_backed
       )
+
+  defp diagnostic_lane(attrs, opts) do
+    case Keyword.get(opts, :diagnostic_lane) || map_value(attrs, :diagnostic_lane) do
+      nil -> {:ok, nil}
+      lane when lane in [:echo, :probe] -> {:ok, lane}
+      lane when is_binary(lane) -> Map.fetch(@diagnostic_lanes, lane)
+      _other -> {:error, :invalid_diagnostic_lane}
+    end
+  end
 
   defp runtime_params(opts) do
     case Keyword.get(opts, :runtime_params, %{}) do
@@ -254,4 +371,30 @@ defmodule Synapse.AgentRuns do
   end
 
   defp map_value(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
+
+  defp backend_stack_has?(opts, key) do
+    opts
+    |> backend_stacks()
+    |> Enum.any?(fn stack ->
+      case AppKit.BackendStack.fetch(stack, key) do
+        {:ok, nil} -> false
+        {:ok, _backend} -> true
+        :error -> false
+      end
+    end)
+  end
+
+  defp backend_stacks(opts) do
+    [
+      Keyword.get(opts, :backend_stack),
+      Keyword.get(opts, :app_kit_backend_stack)
+    ]
+    |> Enum.filter(&match?(%AppKit.BackendStack{}, &1))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_put_governed_effect_refs(map, refs) when refs == %{}, do: map
+  defp maybe_put_governed_effect_refs(map, refs), do: Map.put(map, :governed_effect_refs, refs)
 end

@@ -1,8 +1,25 @@
 defmodule Synapse.ProductBootstrapTest do
   use ExUnit.Case, async: true
 
+  alias AppKit.BackendStack
   alias AppKit.Core.InstallResult
   alias Synapse.{ProductBootstrap, ProductPack}
+
+  defmodule AgentBackend do
+    def start_agent_run(_context, _request, _opts), do: {:error, :not_used}
+    def submit_agent_turn(_context, _submission, _opts), do: {:error, :not_used}
+    def cancel_agent_run(_context, _run_ref, _opts), do: {:error, :not_used}
+    def await_agent_outcome(_context, _run_ref, _request, _opts), do: {:error, :not_used}
+  end
+
+  defmodule EffectBackend do
+    @behaviour AppKit.EffectSurface
+
+    def propose_effect(_context, _attrs, _opts), do: {:error, :not_used}
+    def get_effect(_context, _effect_ref, _opts), do: {:error, :not_used}
+    def list_effects(_context, _run_ref, _opts), do: {:error, :not_used}
+    def get_effect_timeline(_context, _effect_ref, _opts), do: {:error, :not_used}
+  end
 
   test "disabled mode returns a product-safe disabled result" do
     assert {:ok, result} = ProductBootstrap.ensure_bootstrapped(bootstrap_mode: :disabled)
@@ -45,5 +62,29 @@ defmodule Synapse.ProductBootstrapTest do
     assert status.status == :fixture_backed
     assert status.surface == "AppKit.InstallationSurface"
     assert status.live? == false
+  end
+
+  test "effect surface status detects injected staged-live capability" do
+    stack =
+      BackendStack.new!(
+        agent_intake_backend: AgentBackend,
+        effect_surface_backend: EffectBackend
+      )
+
+    status = ProductBootstrap.effect_surface_status(backend_stack: stack)
+
+    assert status.status == :staging_live
+    assert status.live? == true
+    assert status.effect_surface_available? == true
+    assert status.agent_intake_available? == true
+  end
+
+  test "effect surface status stays fixture-backed without both live backends" do
+    status = ProductBootstrap.effect_surface_status(effect_surface_adapter: EffectBackend)
+
+    assert status.status == :fixture_backed
+    assert status.live? == false
+    assert status.effect_surface_available? == true
+    assert status.agent_intake_available? == false
   end
 end
