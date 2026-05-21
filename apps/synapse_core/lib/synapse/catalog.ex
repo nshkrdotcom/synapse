@@ -135,20 +135,23 @@ defmodule Synapse.Catalog do
 
   defp skill_projections! do
     Enum.map(skill_manifest_attrs(), fn attrs ->
-      {:ok, projection} = SkillSurface.projection(attrs)
+      {:ok, projection} = SkillSurface.projection(Map.fetch!(attrs, :manifest))
+
       projection
     end)
   end
 
   defp tool_grants! do
-    Enum.map(skill_projections!(), fn skill ->
+    Enum.map(skill_manifest_attrs(), fn attrs ->
+      {:ok, skill} = SkillSurface.projection(Map.fetch!(attrs, :manifest))
+
       %{
         id: skill.skill_ref |> String.split("/", trim: true) |> List.last(),
         skill_ref: skill.skill_ref,
         status: grant_status(skill.skill_ref),
-        tool_refs: skill.tool_refs,
+        tool_refs: Map.fetch!(attrs, :tool_refs),
         capability_refs: skill.capability_refs,
-        budget_profile_ref: skill.budget_profile_ref,
+        budget_profile_ref: Map.fetch!(attrs, :budget_profile_ref),
         redaction_posture: skill.redaction_posture,
         reason_codes: grant_reason_codes(skill.skill_ref)
       }
@@ -281,9 +284,37 @@ defmodule Synapse.Catalog do
   defp skill_manifest(skill_ref, tool_ref, opts) do
     capability_ref = Keyword.fetch!(opts, :capability_ref)
     capability_id = Keyword.fetch!(opts, :capability_id)
+    package_name = skill_ref |> String.split("/", trim: true) |> List.last()
+
+    manifest = %{
+      skill_ref: skill_ref,
+      package_name: package_name,
+      version: "1.0.0",
+      description: "Synapse catalog skill package for #{capability_id}.",
+      entrypoints: [
+        %{
+          name: "invoke",
+          kind: :jido_action,
+          schema_ref: "schema://synapse/catalog/#{capability_id}/input",
+          capability_ref: capability_ref
+        }
+      ],
+      allowed_artifact_posture: :claim_checked,
+      credential_posture: :no_credentials,
+      allowed_runtime_families: [:direct],
+      policy_refs: ["policy://synapse/catalog"],
+      docs_ref: "doc://synapse/catalog/#{capability_id}",
+      tenant_ref: @tenant_ref,
+      installation_ref: @installation_ref,
+      capability_refs: [capability_ref],
+      trace_ref: @trace_ref,
+      release_manifest_ref: "release://synapse/catalog",
+      redaction_posture: :refs_only
+    }
 
     %{
       skill_ref: skill_ref,
+      manifest: Map.put(manifest, :manifest_hash, SkillSurface.canonical_manifest_hash(manifest)),
       version_ref: %{
         skill_ref: skill_ref,
         version_ref: "#{skill_ref}@1",
