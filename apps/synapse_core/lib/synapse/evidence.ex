@@ -243,10 +243,14 @@ defmodule Synapse.Evidence do
       evidence_kind: "governed_effect",
       status: if(is_binary(receipt_ref), do: "available", else: "missing"),
       content_ref: map_value(effect, :content_ref),
+      effect_ref: effect_ref,
+      authority_ref: map_value(effect, :authority_ref),
       receipt_ref: receipt_ref,
       run_ref: map_value(effect, :run_ref) || "run://synapse/governed-effect",
       trace_ref: map_value(effect, :trace_ref),
-      trace_summary_hash: map_value(effect, :trace_summary_hash)
+      trace_summary_hash: map_value(effect, :trace_summary_hash),
+      lifecycle_entries: lifecycle_entries(effect),
+      diagnostic_result: diagnostic_result(effect)
     }
   end
 
@@ -254,6 +258,27 @@ defmodule Synapse.Evidence do
 
   defp first_binary(values) when is_list(values), do: Enum.find(values, &is_binary/1)
   defp first_binary(_values), do: nil
+
+  defp lifecycle_entries(effect) do
+    effect
+    |> map_value(:lifecycle_entries)
+    |> case do
+      entries when is_list(entries) -> entries
+      _other -> []
+    end
+  end
+
+  defp diagnostic_result(effect) do
+    metadata =
+      effect
+      |> map_value(:metadata)
+      |> case do
+        %{} = value -> value
+        _other -> %{}
+      end
+
+    Map.get(metadata, "diagnostic_result", Map.get(metadata, :diagnostic_result))
+  end
 
   defp effect_id(value) when is_binary(value) do
     value

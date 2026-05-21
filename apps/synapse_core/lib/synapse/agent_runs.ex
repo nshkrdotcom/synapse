@@ -59,7 +59,8 @@ defmodule Synapse.AgentRuns do
         run.ref == run_ref_or_id or run.id == run_ref_or_id
       end) || fixture_run(run_ref_or_id)
 
-    Map.merge(run, %{
+    run
+    |> Map.merge(%{
       turns: [
         %{
           ref: "turn://fixture/#{run.id}/initial",
@@ -75,6 +76,7 @@ defmodule Synapse.AgentRuns do
       controls: [:submit_turn, :refresh, :cancel],
       feature_status: :fixture_backed
     })
+    |> maybe_put_staged_live_fixture()
   end
 
   @spec get_run(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -360,6 +362,59 @@ defmodule Synapse.AgentRuns do
       memory_state: :disabled,
       evidence_refs: ["receipt://fixture/start/#{id}"],
       updated_at: "2026-05-18T03:20:00Z"
+    }
+  end
+
+  defp maybe_put_staged_live_fixture(%{id: "staged-live-diagnostic"} = run) do
+    effect = staged_live_effect(run.id)
+
+    Map.merge(run, %{
+      state: :accepted,
+      authority_state: :authorized,
+      feature_status: :staging_live,
+      diagnostic_lane: :echo,
+      effect_governance_mode: :staging_live,
+      governed_effect_refs: Map.fetch!(effect, :governed_effect_refs),
+      governed_effects: [effect],
+      evidence_refs: Map.fetch!(effect, :evidence_refs)
+    })
+  end
+
+  defp maybe_put_staged_live_fixture(run), do: run
+
+  defp staged_live_effect(token) do
+    effect_ref = "effect://synapse/#{token}/echo"
+
+    %{
+      effect_ref: effect_ref,
+      effect_type: "diagnostic.echo",
+      command_ref: "command://synapse/diagnostic/#{token}",
+      tenant_ref: "tenant://default",
+      actor_ref: @actor_ref,
+      installation_ref: "installation://default",
+      status: "completed",
+      trace_ref: "trace://synapse/diagnostic/#{token}",
+      authority_ref: "authority://synapse/effects/diagnostic",
+      receipt_ref: "receipt://synapse/effects/diagnostic",
+      dispatch_ref: "dispatch://synapse/effects/diagnostic",
+      expected_version: 1,
+      run_ref: "run://fixture/#{token}",
+      trace_summary_hash: "sha256:synapse-diagnostic",
+      evidence_refs: ["evidence://synapse/effects/diagnostic"],
+      governed_effect_refs: %{
+        "effect_ref" => effect_ref,
+        "command_ref" => "command://synapse/diagnostic/#{token}",
+        "trace_ref" => "trace://synapse/diagnostic/#{token}",
+        "authority_ref" => "authority://synapse/effects/diagnostic",
+        "receipt_ref" => "receipt://synapse/effects/diagnostic",
+        "dispatch_ref" => "dispatch://synapse/effects/diagnostic"
+      },
+      metadata: %{
+        "diagnostic_lane" => "echo",
+        "diagnostic_result" => %{"status" => "ok", "summary" => "echo"},
+        "product_slug" => "synapse",
+        "trace_summary_hash" => "sha256:synapse-diagnostic"
+      }
     }
   end
 

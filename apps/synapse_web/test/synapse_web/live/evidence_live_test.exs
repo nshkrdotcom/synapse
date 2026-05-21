@@ -23,6 +23,30 @@ defmodule SynapseWeb.EvidenceLiveTest do
     assert has_element?(view, "#missing-evidence", "live_backend_not_proven")
   end
 
+  test "shows governed-effect evidence details", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/evidence/governed-effect-echo")
+
+    assert has_element?(view, "#evidence-detail", "governed_effect")
+
+    assert has_element?(
+             view,
+             "#governed-effect-evidence",
+             "effect://synapse/staged-live-diagnostic/echo"
+           )
+
+    assert has_element?(
+             view,
+             "#governed-effect-evidence",
+             "authority://synapse/effects/diagnostic"
+           )
+
+    assert has_element?(view, "#governed-effect-evidence", "receipt://synapse/effects/diagnostic")
+    assert has_element?(view, "#governed-effect-evidence", "sha256:synapse-diagnostic")
+    assert has_element?(view, "#governed-effect-diagnostic-result", "ok")
+    assert has_element?(view, "#governed-effect-evidence-timeline", "receipt_received")
+    assert has_element?(view, "#governed-effect-evidence-timeline", "completed")
+  end
+
   test "shows operations health without treating trace export as metrics truth", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/operations")
 

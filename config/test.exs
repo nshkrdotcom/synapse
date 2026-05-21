@@ -20,3 +20,39 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+config :synapse_web, SynapseWeb.RunNewLive,
+  diagnostic_run_opts: [
+    backend: Synapse.Fixtures.AgentIntakeBackend,
+    effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend
+  ],
+  governed_effect_opts: [effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend]
+
+config :synapse_web, SynapseWeb.RunShowLive,
+  governed_effect_opts: [effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend]
+
+config :synapse_web, SynapseWeb.EvidenceShowLive,
+  governed_effects: [
+    %{
+      effect_ref: "effect://synapse/staged-live-diagnostic/echo",
+      effect_type: "diagnostic.echo",
+      authority_ref: "authority://synapse/effects/diagnostic",
+      receipt_ref: "receipt://synapse/effects/diagnostic",
+      run_ref: "run://fixture/staged-live-diagnostic",
+      trace_ref: "trace://synapse/diagnostic/staged-live-diagnostic",
+      trace_summary_hash: "sha256:synapse-diagnostic",
+      evidence_refs: ["evidence://synapse/effects/diagnostic"],
+      lifecycle_entries: [
+        %{status: "proposed"},
+        %{status: "authorized"},
+        %{status: "dispatched"},
+        %{status: "receipt_received"},
+        %{status: "reduced"},
+        %{status: "projected"},
+        %{status: "completed"}
+      ],
+      metadata: %{
+        "diagnostic_result" => %{"status" => "ok", "summary" => "echo"}
+      }
+    }
+  ]

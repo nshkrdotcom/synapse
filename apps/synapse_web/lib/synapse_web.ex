@@ -86,6 +86,7 @@ defmodule SynapseWeb do
       import Phoenix.HTML
       # Core UI components
       import SynapseWeb.CoreComponents
+      import SynapseWeb.GovernedEffectComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

@@ -3,13 +3,15 @@ defmodule SynapseWeb.EvidenceShowLive do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
+    opts = evidence_opts()
+
     socket =
-      case Synapse.Evidence.get_evidence(id) do
+      case Synapse.Evidence.get_evidence(id, opts) do
         {:ok, evidence} ->
           socket
           |> assign(:page_title, "Evidence")
           |> assign(:evidence, evidence)
-          |> assign(:receipt, receipt(evidence))
+          |> assign(:receipt, receipt(evidence, opts))
           |> assign(:replay, Synapse.Evidence.replay_bundle())
           |> assign(:error, nil)
 
@@ -40,6 +42,60 @@ defmodule SynapseWeb.EvidenceShowLive do
           </p>
           <h1 class="mt-1 text-2xl font-semibold text-slate-950">{@evidence.evidence_kind}</h1>
           <p class="mt-2 text-sm text-slate-600">{@evidence.status}</p>
+        </section>
+
+        <section
+          :if={@evidence && @evidence.evidence_kind == "governed_effect"}
+          id="governed-effect-evidence"
+          class="rounded border border-slate-200 bg-white p-4"
+        >
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Governed Effect
+          </h2>
+          <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt class="text-slate-500">Effect</dt>
+              <dd class="break-words font-medium text-slate-950">{@evidence.effect_ref}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Authority</dt>
+              <dd class="break-words font-medium text-slate-950">
+                {@evidence.authority_ref || "pending"}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Receipt</dt>
+              <dd class="break-words font-medium text-slate-950">
+                {@evidence.receipt_ref || "pending"}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Trace</dt>
+              <dd class="break-words font-medium text-slate-950">
+                {@evidence.trace_summary_hash || @evidence.trace_ref || "pending"}
+              </dd>
+            </div>
+          </dl>
+
+          <div
+            :if={is_map(@evidence.diagnostic_result)}
+            id="governed-effect-diagnostic-result"
+            class="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+          >
+            {@evidence.diagnostic_result["status"] || @evidence.diagnostic_result[:status]}
+            <span class="text-emerald-700">
+              {@evidence.diagnostic_result["summary"] || @evidence.diagnostic_result[:summary]}
+            </span>
+          </div>
+
+          <ol id="governed-effect-evidence-timeline" class="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+            <li
+              :for={entry <- @evidence.lifecycle_entries || []}
+              class="rounded border border-slate-200 bg-slate-50 px-3 py-2"
+            >
+              {entry_status(entry)}
+            </li>
+          </ol>
         </section>
 
         <section
@@ -79,12 +135,24 @@ defmodule SynapseWeb.EvidenceShowLive do
     """
   end
 
-  defp receipt(%{receipt_ref: nil}), do: nil
+  defp receipt(%{receipt_ref: nil}, _opts), do: nil
 
-  defp receipt(%{receipt_ref: receipt_ref}) do
-    case Synapse.Evidence.get_receipt(receipt_ref) do
+  defp receipt(%{receipt_ref: receipt_ref}, opts) do
+    case Synapse.Evidence.get_receipt(receipt_ref, opts) do
       {:ok, receipt} -> receipt
       {:error, _reason} -> nil
     end
   end
+
+  defp evidence_opts do
+    :synapse_web
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.take([:governed_effects])
+  end
+
+  defp entry_status(entry) when is_map(entry) do
+    Map.get(entry, :status, Map.get(entry, "status", "unknown"))
+  end
+
+  defp entry_status(entry), do: to_string(entry)
 end

@@ -9,6 +9,7 @@ defmodule SynapseWeb.RunShowLive do
           socket
           |> assign(:page_title, "Run")
           |> assign(:run, run)
+          |> assign(:effect_timelines, effect_timelines(run))
           |> assign(:command_result, nil)
           |> assign(:turn_result, nil)
           |> assign(:error, nil)
@@ -17,6 +18,9 @@ defmodule SynapseWeb.RunShowLive do
           socket
           |> assign(:page_title, "Run")
           |> assign(:run, Synapse.AgentRuns.fixture_detail(id))
+          |> then(fn socket ->
+            assign(socket, :effect_timelines, effect_timelines(socket.assigns.run))
+          end)
           |> assign(:command_result, nil)
           |> assign(:turn_result, nil)
           |> assign(:error, inspect(reason))
@@ -105,6 +109,15 @@ defmodule SynapseWeb.RunShowLive do
             <div class="text-xs uppercase tracking-wide text-slate-500">Budget</div>
             <div class="mt-1 text-lg font-semibold text-slate-950">{@run.budget_state}</div>
           </div>
+          <div
+            :if={Map.has_key?(@run, :feature_status)}
+            class="rounded border border-slate-200 bg-white p-4 lg:col-span-3"
+          >
+            <div class="text-xs uppercase tracking-wide text-slate-500">Feature Status</div>
+            <div id="run-feature-status" class="mt-1 text-lg font-semibold text-slate-950">
+              {@run.feature_status}
+            </div>
+          </div>
         </section>
 
         <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -137,6 +150,12 @@ defmodule SynapseWeb.RunShowLive do
                 </li>
               </ol>
             </section>
+
+            <.governed_effect_panel
+              id="run-governed-effects"
+              effects={Map.get(@run, :governed_effects, [])}
+              timelines={@effect_timelines}
+            />
           </div>
 
           <aside class="space-y-4">
@@ -182,4 +201,38 @@ defmodule SynapseWeb.RunShowLive do
     </Layouts.app>
     """
   end
+
+  defp effect_timelines(run) when is_map(run) do
+    opts = governed_effect_opts()
+
+    run
+    |> Map.get(:governed_effects, [])
+    |> Enum.reduce(%{}, fn effect, timelines ->
+      effect_ref = map_value(effect, :effect_ref)
+
+      cond do
+        effect_ref in [nil, ""] -> timelines
+        opts == [] -> timelines
+        true -> put_timeline(timelines, effect_ref, opts)
+      end
+    end)
+  end
+
+  defp effect_timelines(_run), do: %{}
+
+  defp put_timeline(timelines, effect_ref, opts) do
+    case Synapse.GovernedEffects.get_effect_timeline(effect_ref, opts) do
+      {:ok, timeline} -> Map.put(timelines, effect_ref, timeline)
+      {:error, _reason} -> timelines
+    end
+  end
+
+  defp governed_effect_opts do
+    :synapse_web
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:governed_effect_opts, [])
+  end
+
+  defp map_value(attrs, key) when is_map(attrs),
+    do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 end
