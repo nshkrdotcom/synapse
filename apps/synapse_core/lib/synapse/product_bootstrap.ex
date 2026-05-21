@@ -188,13 +188,13 @@ defmodule Synapse.ProductBootstrap do
 
   defp effect_backend_available?(opts) do
     explicit_backend?(opts, :effect_surface_adapter) or
-      stack_backend?(opts, :effect_surface_backend) or default_bridge_effect_backend?()
+      stack_backend?(opts, :effect_surface_backend)
   end
 
   defp agent_intake_available?(opts) do
     explicit_backend?(opts, :backend) or
       explicit_backend?(opts, :agent_intake_backend) or
-      stack_backend?(opts, :agent_intake_backend) or default_bridge_agent_backend?()
+      stack_backend?(opts, :agent_intake_backend)
   end
 
   defp explicit_backend?(opts, key) do
@@ -225,16 +225,6 @@ defmodule Synapse.ProductBootstrap do
       Keyword.get(opts, :app_kit_backend_stack)
     ]
     |> Enum.filter(&match?(%AppKit.BackendStack{}, &1))
-  end
-
-  defp default_bridge_effect_backend? do
-    Code.ensure_loaded?(AppKit.Bridges.MezzanineBridge) and
-      function_exported?(AppKit.Bridges.MezzanineBridge, :propose_effect, 3)
-  end
-
-  defp default_bridge_agent_backend? do
-    Code.ensure_loaded?(AppKit.Bridges.MezzanineBridge) and
-      function_exported?(AppKit.Bridges.MezzanineBridge, :start_agent_run, 3)
   end
 
   defp first_present(attrs, keys) do
