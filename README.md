@@ -27,18 +27,37 @@ Synapse currently exposes:
 
 - installation/bootstrap status
 - run start, run detail, turn submission, cancel, and refresh controls
+- a `staging_live` diagnostic lane that proposes a governed effect through
+  AppKit before starting the run when explicit lower backends are supplied
 - review queue, review detail, and review decisions
 - redacted memory and context-pack projections
 - tool/model grants and catalog eligibility
 - team and arbitration projections
-- evidence, receipt, replay, runtime facts, and operations projections
-- StackLab product acceptance proof
+- governed-effect timelines, evidence refs, receipt refs, replay, runtime
+  facts, and operations projections
+- StackLab product acceptance, live-slice, and staged-live conformance proofs
 
 User-facing UI behavior remains fixture-backed unless a guide or release claim
-says otherwise. The deterministic live-stack run slice is proven by StackLab
-through explicit backend options; it is not the default browser path and not a
-live provider claim. Disabled controls are explicit product state, not hidden
-lower-stack failures.
+says otherwise. The diagnostic lane is `staging_live` only when an explicit
+`AppKit.EffectSurface` backend and an AppKit agent-intake backend are supplied;
+otherwise it falls back to the fixture-backed path. The browser test path uses a
+deterministic governed-effect backend to render the same product states without
+claiming live provider behavior. Disabled controls are explicit product state,
+not hidden lower-stack failures.
+
+The promoted governed-effect path is:
+
+```text
+Synapse UI
+  -> Synapse.AgentRuns / Synapse.GovernedEffects
+  -> AppKit.AgentIntake + AppKit.EffectSurface
+  -> Mezzanine GovernedEffects
+  -> Citadel authority
+  -> Jido diagnostic lane
+  -> Execution Plane diagnostic lane
+  -> Mezzanine projection
+  -> Synapse run/evidence readback
+```
 
 ## Routes
 
@@ -88,6 +107,13 @@ Run the deterministic AppKit-to-Mezzanine live-stack run slice:
 ```sh
 cd /home/home/p/g/n/stack_lab
 MIX_ENV=test mix stack_lab.synapse.live_slice --json
+```
+
+Run the staged-live governed-effect diagnostic proof:
+
+```sh
+cd /home/home/p/g/n/stack_lab
+MIX_ENV=test mix stack_lab.synapse.staged_live.v1 --json
 ```
 
 Toolchain:

@@ -48,21 +48,52 @@ submission, await, runtime projection, lower/action receipt refs, memory proof
 refs, no-bypass, and denied lower-effect non-submission. It does not prove live
 provider behavior or production deployment.
 
+StackLab owns the staged-live governed-effect diagnostic proof:
+
+```sh
+cd /home/home/p/g/n/stack_lab
+MIX_ENV=test mix stack_lab.synapse.staged_live.v1 --json
+```
+
+That receipt proves the promoted diagnostic path:
+`Synapse -> AppKit.EffectSurface -> Mezzanine.Core.GovernedEffects -> Citadel
+authority -> Jido diagnostic lane -> Execution Plane diagnostic lane ->
+Mezzanine readback -> Synapse`, and must report `staging_live`.
+
+## Diagnostic Lane
+
+The browser diagnostic lane is available from `/runs/new`. Leave the selector
+blank for the normal fixture-backed run path. Select `echo` to exercise the
+configured staged-live governed-effect path in test and local proof
+configurations. Select `probe` to exercise the explicit authority-denied
+product state when the configured backend denies that effect.
+
+The local browser proof uses `Synapse.Fixtures.EffectSurfaceBackend` from test
+configuration. It renders the same product refs and timeline states as the
+StackLab proof, but it is not a live provider claim and does not require
+GitHub, Linear, Codex, or other provider credentials.
+
 ## Boundary Scans
 
 Project code must stay free of Regex, unsafe dynamic atom creation, and
 unsupervised process starts:
 
 ```sh
-rg -n "~r|Regex|String\\.to_atom|GenServer\\.start\\(|Task\\.async|Task\\.start|spawn\\(|spawn_monitor|Agent\\.start" \
-  -g '!deps/**' -g '!_build/**' .
+rg -n -F -e 'Regex' -e '~r' apps config mix.exs \
+  -g '!deps/**' -g '!_build/**'
+rg -n -F -e 'String.to_atom' -e 'binary_to_atom' apps config mix.exs \
+  -g '!deps/**' -g '!_build/**'
+rg -n -F -e 'GenServer.start(' -e 'Task.async' -e 'Task.start' \
+  -e 'spawn(' -e 'spawn_monitor' -e 'Agent.start' apps config mix.exs \
+  -g '!deps/**' -g '!_build/**'
 ```
 
 Direct lower imports should remain absent from Synapse product code except for
 the pure product-pack authoring contract:
 
 ```sh
-rg -n "\\bCitadel\\b|Jido\\.Integration|ExecutionPlane|AITrace|claude|codex|gemini|OpenAI|ReqLLM|Jido\\." \
+rg -n -F -e 'Citadel' -e 'Jido.Integration' -e 'ExecutionPlane' -e 'AITrace' \
+  -e 'claude' -e 'codex' -e 'gemini' -e 'OpenAI' -e 'ReqLLM' -e 'Jido.' \
   apps config mix.exs -g '!deps/**' -g '!_build/**'
 ```
 
