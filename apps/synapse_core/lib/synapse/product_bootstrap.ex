@@ -15,6 +15,21 @@ defmodule Synapse.ProductBootstrap do
 
   @default_installation_surface AppKit.InstallationSurface
   @retry_delay_ms 2_000
+  @agent_intake_callbacks [
+    start_agent_run: 3,
+    submit_agent_turn: 3,
+    cancel_agent_run: 3,
+    await_agent_outcome: 4,
+    catch_up_agent_events: 3,
+    list_pending_interactions: 3
+  ]
+  @headless_callbacks [
+    state_snapshot: 3,
+    runtime_subject_detail: 4,
+    runtime_run_detail: 4,
+    request_runtime_refresh: 3,
+    request_runtime_control: 3
+  ]
 
   @spec ensure_bootstrapped(keyword() | map()) :: {:ok, map()} | {:error, term()}
   def ensure_bootstrapped(overrides \\ []) do
@@ -28,19 +43,32 @@ defmodule Synapse.ProductBootstrap do
     end
   end
 
-  @spec fixture_status(keyword() | map()) :: map()
-  def fixture_status(overrides \\ []) do
-    config = Config.load(overrides)
+  @doc """
+  Resolves the runtime-injected AppKit backend stack for intake commands.
 
-    %{
-      status: :fixture_backed,
-      mode: config.bootstrap_mode,
-      installation_id: config.default_installation_id,
-      pack_slug: ProductPack.pack_slug(config),
-      pack_version: ProductPack.pack_version(config),
-      surface: "AppKit.InstallationSurface",
-      live?: false
-    }
+  Production composition supplies either an `AppKit.BackendStack` directly or
+  a provider module exporting `backend_stack/0`. Explicit `:backend` selection
+  remains available for deterministic tests, but there is no compiled product
+  default and an absent or incomplete runtime stack fails closed.
+  """
+  @spec agent_intake_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def agent_intake_options(overrides \\ []) do
+    opts = configured_backend_options(overrides)
+
+    with {:ok, opts} <- resolve_backend_stack(opts),
+         :ok <- validate_owner_routing(opts),
+         :ok <- validate_role(opts, :agent_intake_backend, @agent_intake_callbacks) do
+      {:ok, opts}
+    end
+  end
+
+  @doc "Returns backend options only when durable run snapshot and cursor roles are composed."
+  @spec durable_readback_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def durable_readback_options(overrides \\ []) do
+    with {:ok, opts} <- agent_intake_options(overrides),
+         :ok <- validate_role(opts, :headless_backend, @headless_callbacks) do
+      {:ok, opts}
+    end
   end
 
   @spec effect_surface_status(keyword() | map()) :: map()
@@ -52,7 +80,7 @@ defmodule Synapse.ProductBootstrap do
     live? = effect_surface_loaded? and effect_backend_available? and agent_intake_available?
 
     %{
-      status: if(live?, do: :staging_live, else: :fixture_backed),
+      status: if(live?, do: :staging_live, else: :unavailable),
       surface: "AppKit.EffectSurface",
       live?: live?,
       effect_surface_available?: effect_surface_loaded? and effect_backend_available?,
@@ -192,10 +220,119 @@ defmodule Synapse.ProductBootstrap do
   end
 
   defp agent_intake_available?(opts) do
-    explicit_backend?(opts, :backend) or
-      explicit_backend?(opts, :agent_intake_backend) or
-      stack_backend?(opts, :agent_intake_backend)
+    match?({:ok, _opts}, agent_intake_options(opts))
   end
+
+  defp configured_backend_options(overrides) do
+    configured = Application.get_env(:synapse_core, :app_kit_backend_options, [])
+
+    configured
+    |> backend_options()
+    |> Keyword.merge(backend_options(overrides))
+  end
+
+  defp resolve_backend_stack(opts) do
+    cond do
+      Keyword.has_key?(opts, :backend) ->
+        {:ok, opts}
+
+      Keyword.has_key?(opts, :agent_intake_backend) ->
+        {:ok, Keyword.put(opts, :backend, Keyword.fetch!(opts, :agent_intake_backend))}
+
+      Keyword.has_key?(opts, :backend_stack) ->
+        validate_stack_option(opts, :backend_stack)
+
+      Keyword.has_key?(opts, :app_kit_backend_stack) ->
+        validate_stack_option(opts, :app_kit_backend_stack)
+
+      true ->
+        case Application.fetch_env(:synapse_core, :app_kit_backend_stack) do
+          {:ok, configured} -> put_configured_stack(opts, configured)
+          :error -> {:error, :app_kit_backend_unavailable}
+        end
+    end
+  end
+
+  defp validate_stack_option(opts, key) do
+    case Keyword.fetch!(opts, key) do
+      %AppKit.BackendStack{} -> {:ok, opts}
+      _other -> {:error, :invalid_app_kit_backend_stack}
+    end
+  end
+
+  defp put_configured_stack(opts, %AppKit.BackendStack{} = stack),
+    do: {:ok, Keyword.put(opts, :app_kit_backend_stack, stack)}
+
+  defp put_configured_stack(opts, provider) when is_atom(provider) do
+    if Code.ensure_loaded?(provider) and function_exported?(provider, :backend_stack, 0) do
+      case apply(provider, :backend_stack, []) do
+        %AppKit.BackendStack{} = stack ->
+          {:ok, Keyword.put(opts, :app_kit_backend_stack, stack)}
+
+        _other ->
+          {:error, :invalid_app_kit_backend_stack}
+      end
+    else
+      {:error, :app_kit_backend_unavailable}
+    end
+  rescue
+    _error -> {:error, :app_kit_backend_unavailable}
+  catch
+    _kind, _reason -> {:error, :app_kit_backend_unavailable}
+  end
+
+  defp put_configured_stack(_opts, _configured),
+    do: {:error, :invalid_app_kit_backend_stack}
+
+  defp validate_role(opts, role, callbacks) do
+    with {:ok, backend} <- backend_for_role(opts, role),
+         true <- backend_exports?(backend, callbacks) do
+      :ok
+    else
+      _other -> {:error, :app_kit_backend_unavailable}
+    end
+  end
+
+  defp validate_owner_routing(opts) do
+    if present_binary?(Keyword.get(opts, :program_id)) and
+         present_binary?(Keyword.get(opts, :work_class_id)) do
+      :ok
+    else
+      {:error, :app_kit_routing_unavailable}
+    end
+  end
+
+  defp present_binary?(value), do: is_binary(value) and String.trim(value) != ""
+
+  defp backend_for_role(opts, :agent_intake_backend) do
+    case Keyword.fetch(opts, :backend) do
+      {:ok, backend} -> {:ok, backend}
+      :error -> stack_role(opts, :agent_intake_backend)
+    end
+  end
+
+  defp backend_for_role(opts, role), do: stack_role(opts, role)
+
+  defp stack_role(opts, role) do
+    opts
+    |> backend_stacks()
+    |> Enum.reduce_while(:error, fn stack, :error ->
+      case AppKit.BackendStack.fetch(stack, role) do
+        {:ok, nil} -> {:cont, :error}
+        {:ok, backend} -> {:halt, {:ok, backend}}
+        :error -> {:cont, :error}
+      end
+    end)
+  end
+
+  defp backend_exports?(backend, callbacks) when is_atom(backend) do
+    Code.ensure_loaded?(backend) and
+      Enum.all?(callbacks, fn {function, arity} ->
+        function_exported?(backend, function, arity)
+      end)
+  end
+
+  defp backend_exports?(_backend, _callbacks), do: false
 
   defp explicit_backend?(opts, key) do
     case Keyword.fetch(opts, key) do

@@ -21,15 +21,12 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-config :synapse_web, SynapseWeb.RunNewLive,
-  diagnostic_run_opts: [
-    backend: Synapse.Fixtures.AgentIntakeBackend,
-    effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend
-  ],
-  governed_effect_opts: [effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend]
-
-config :synapse_web, SynapseWeb.RunShowLive,
-  governed_effect_opts: [effect_surface_adapter: Synapse.Fixtures.EffectSurfaceBackend]
+config :synapse_core,
+  app_kit_backend_stack: Synapse.Test.AppKitBackendStack,
+  app_kit_backend_options: [
+    program_id: "program://test/synapse",
+    work_class_id: "work-class://test/agent-run"
+  ]
 
 config :synapse_web, SynapseWeb.EvidenceShowLive,
   governed_effects: [

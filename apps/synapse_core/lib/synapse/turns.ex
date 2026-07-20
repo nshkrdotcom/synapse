@@ -7,7 +7,6 @@ defmodule Synapse.Turns do
   alias Synapse.{Config, PlatformContext, ProductBootstrap}
 
   @actor_ref "actor:synapse:operator"
-  @default_agent_backend Synapse.Fixtures.AgentIntakeBackend
   @allowed_kinds %{
     "user_input" => :user_input,
     "approval" => :approval,
@@ -22,13 +21,12 @@ defmodule Synapse.Turns do
       when is_binary(run_ref_or_id) and is_map(attrs) and is_list(opts) do
     config = Config.load(opts)
 
-    {:ok, bootstrap} =
-      ProductBootstrap.ensure_bootstrapped(Keyword.put(opts, :bootstrap_mode, :disabled))
-
-    context = PlatformContext.product_context(config, bootstrap.installation_ref, opts)
-    run_ref = normalize_run_ref(run_ref_or_id)
-
-    with {:ok, kind} <- turn_kind(attrs),
+    with {:ok, bootstrap} <-
+           ProductBootstrap.ensure_bootstrapped(Keyword.put(opts, :bootstrap_mode, :disabled)),
+         context <- PlatformContext.product_context(config, bootstrap.installation_ref, opts),
+         {:ok, runtime_opts} <- ProductBootstrap.agent_intake_options(opts),
+         run_ref <- decode_run_ref(run_ref_or_id),
+         {:ok, kind} <- turn_kind(attrs),
          {:ok, payload_ref} <- payload_ref(attrs, run_ref) do
       submission = %{
         idempotency_key: "synapse:turn:#{kind}:#{run_ref}",
@@ -42,7 +40,7 @@ defmodule Synapse.Turns do
         }
       }
 
-      AgentIntake.submit_turn(context, submission, agent_opts(opts))
+      AgentIntake.submit_turn(context, submission, runtime_opts)
     end
   end
 
@@ -71,10 +69,13 @@ defmodule Synapse.Turns do
     end
   end
 
-  defp normalize_run_ref("run://" <> _rest = ref), do: ref
-  defp normalize_run_ref(id), do: "run://fixture/#{id}"
   defp run_token(run_ref), do: run_ref |> String.split("/", trim: true) |> List.last()
-  defp agent_opts(opts), do: Keyword.put_new(opts, :backend, @default_agent_backend)
+
+  defp decode_run_ref(value) do
+    URI.decode_www_form(value)
+  rescue
+    ArgumentError -> value
+  end
 
   defp string_value(attrs, key, default) do
     case map_value(attrs, key) do

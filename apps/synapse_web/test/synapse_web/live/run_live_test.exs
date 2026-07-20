@@ -1,102 +1,89 @@
 defmodule SynapseWeb.RunLiveTest do
   use SynapseWeb.ConnCase, async: true
 
-  test "lists fixture-backed runs", %{conn: conn} do
+  test "lists durable AppKit run projections", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/runs")
 
     assert has_element?(view, "#run-index-list")
-    assert has_element?(view, "#run-index-stream", "Fixture governed agent run")
+    assert has_element?(view, "#run-index-stream", "Durable run test-run")
+    refute has_element?(view, "#run-index-unavailable")
   end
 
-  test "starts a fixture-backed run", %{conn: conn} do
+  test "renders an accepted durable run", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/runs/new")
-
-    assert has_element?(view, "#run-diagnostic-lane")
 
     view
     |> form("#run-start-form",
       run: %{
         title: "Boundary check",
         goal_summary: "Use AppKit only",
-        team_template_ref: "standard_implementation",
-        diagnostic_lane: ""
+        team_template_ref: "standard_implementation"
       }
     )
     |> render_submit()
 
-    assert has_element?(view, "#run-start-result", "run://fixture/")
-    assert has_element?(view, "#run-start-result", "AppKit.AgentIntake")
+    assert has_element?(view, "#run-start-accepted")
+    assert has_element?(view, "#run-start-run-ref", "run://durable/")
+    assert has_element?(view, "#run-start-workflow-ref", "workflow://durable/")
+    assert has_element?(view, "#run-start-command-ref", "command://durable/start/")
   end
 
-  test "starts a staged-live diagnostic run with governed-effect timeline", %{conn: conn} do
+  test "renders a typed idempotency conflict", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/runs/new")
 
     view
     |> form("#run-start-form",
       run: %{
-        title: "Diagnostic check",
-        goal_summary: "Use governed effect path",
-        team_template_ref: "standard_implementation",
-        diagnostic_lane: "echo"
+        title: "Conflict",
+        goal_summary: "Reuse a conflicting key",
+        team_template_ref: "standard_implementation"
       }
     )
     |> render_submit()
 
-    assert has_element?(view, "#run-start-feature-status", "staging_live")
-    assert has_element?(view, "#run-start-governed-effects", "diagnostic.echo")
-    assert has_element?(view, "#run-start-governed-effects", "received")
-    assert has_element?(view, "#run-start-governed-effects", "completed")
+    assert has_element?(view, "#run-start-conflict", "request identity conflicts")
+    refute has_element?(view, "#run-start-accepted")
   end
 
-  test "shows staged-live diagnostic failures as explicit product state", %{conn: conn} do
+  test "renders durable-owner unavailability without fixture success", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/runs/new")
 
     view
     |> form("#run-start-form",
       run: %{
-        title: "Denied diagnostic",
-        goal_summary: "Use governed effect path",
-        team_template_ref: "standard_implementation",
-        diagnostic_lane: "probe"
+        title: "Unavailable",
+        goal_summary: "Owner outage",
+        team_template_ref: "standard_implementation"
       }
     )
     |> render_submit()
 
-    assert has_element?(view, "#run-start-feature-status", "staging_live_error")
-    assert has_element?(view, "#run-start-error-state", "authority_denied")
+    assert has_element?(view, "#run-start-unavailable", "durable owner is unavailable")
+    refute has_element?(view, "#run-start-accepted")
   end
 
-  test "shows run detail and accepts fixture-backed controls", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/runs/fixture-phase-3")
+  test "shows durable snapshot and cursor state, then resumes refresh", %{conn: conn} do
+    path = "/runs/" <> URI.encode_www_form("run://durable/test-run")
+    {:ok, view, _html} = live(conn, path)
 
-    assert has_element?(view, "#run-turn-form")
-    assert has_element?(view, "#run-refresh-button")
-    assert has_element?(view, "#run-cancel-button")
-    assert has_element?(view, "#run-context-pack")
-    assert has_element?(view, "#run-memory-projection")
-    assert has_element?(view, "#run-tool-grants")
-
-    view
-    |> form("#run-turn-form", turn: %{kind: "user_input", input_summary: "Continue"})
-    |> render_submit()
-
-    assert has_element?(view, "#run-command-result", "submit_turn")
+    assert has_element?(view, "#run-durable-snapshot")
+    assert has_element?(view, "#run-show-state", "accepted")
+    assert has_element?(view, "#run-show-persistence", "durable")
+    assert has_element?(view, "#run-turn-count", "1 durable turn")
+    assert has_element?(view, "#run-cursor-ledger", "run://durable/test-run")
+    assert has_element?(view, "#run-cursor-sequence", "1")
+    assert has_element?(view, "#run-event-1", "Run and initial turn accepted durably")
 
     view |> element("#run-refresh-button") |> render_click()
-    assert has_element?(view, "#run-command-result", "refresh")
-
-    view |> element("#run-cancel-button") |> render_click()
-    assert has_element?(view, "#run-command-result", "cancel")
+    assert has_element?(view, "#run-cursor-ref", "cursor://test/test-run/1")
+    assert has_element?(view, "#run-cursor-sequence", "1")
   end
 
-  test "shows governed-effect timeline for staged-live run detail", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/runs/staged-live-diagnostic")
+  test "shows explicit unavailable and conflict readback states", %{conn: conn} do
+    {:ok, unavailable, _html} = live(conn, ~p"/runs/unavailable")
+    assert has_element?(unavailable, "#run-show-unavailable", "durable owner is unavailable")
 
-    assert has_element?(view, "#run-feature-status", "staging_live")
-    assert has_element?(view, "#run-governed-effects", "diagnostic.echo")
-    assert has_element?(view, "#run-governed-effects", "authorized")
-    assert has_element?(view, "#run-governed-effects", "received")
-    assert has_element?(view, "#run-governed-effects", "receipt://synapse/effects/diagnostic")
-    assert has_element?(view, "#run-governed-effects", "evidence://synapse/effects/diagnostic")
+    {:ok, conflict, _html} = live(recycle(conn), ~p"/runs/conflict")
+    assert has_element?(conflict, "#run-show-conflict", "run cursor conflicts")
   end
 end

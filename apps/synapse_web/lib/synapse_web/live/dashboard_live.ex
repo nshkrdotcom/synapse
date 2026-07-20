@@ -3,14 +3,20 @@ defmodule SynapseWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    {runs, run_readback_state} =
+      case Synapse.AgentRuns.list_runs() do
+        {:ok, []} -> {[], :empty}
+        {:ok, runs} -> {runs, :durable}
+        {:error, _reason} -> {[], :unavailable}
+      end
+
     socket =
       socket
       |> assign(:page_title, "Dashboard")
       |> assign(:feature_status, Synapse.feature_status())
-      |> assign(:bootstrap_status, Synapse.ProductBootstrap.fixture_status())
-      |> assign(:stats, stats())
-      |> assign(:recent_runs, recent_runs())
-      |> assign(:pending_reviews, pending_reviews())
+      |> assign(:run_readback_state, run_readback_state)
+      |> assign(:stats, stats(runs))
+      |> assign(:recent_runs, Enum.take(runs, 5))
 
     {:ok, socket}
   end
@@ -28,7 +34,7 @@ defmodule SynapseWeb.DashboardLive do
               </p>
               <h1 class="mt-1 text-2xl font-semibold text-slate-950">NSHKR Agent</h1>
               <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Synapse is running as a headless AppKit product shell. Product installation, pack, and operational projections remain fixture-backed until AppKit live surfaces are proven for each feature.
+                Run acceptance and readback pass through the configured AppKit runtime. This page never substitutes fixture or process-local state.
               </p>
             </div>
 
@@ -41,92 +47,70 @@ defmodule SynapseWeb.DashboardLive do
           </div>
         </section>
 
-        <section class="grid gap-4 lg:grid-cols-3">
-          <div
-            id="dashboard-active-runs"
-            class="rounded border border-slate-200 bg-white p-4 lg:col-span-2"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Active Runs
-              </h2>
-              <.icon name="hero-play-circle" class="size-5 text-slate-500" />
-            </div>
+        <section
+          :if={@run_readback_state == :unavailable}
+          id="dashboard-run-readback-unavailable"
+          class="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+        >
+          Durable run readback is unavailable. No cached run summary is displayed.
+        </section>
 
-            <div class="mt-4 overflow-hidden rounded border border-slate-200">
-              <table class="w-full text-left text-sm">
-                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th class="px-3 py-2">Run</th>
-                    <th class="px-3 py-2">State</th>
-                    <th class="px-3 py-2">Surface</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr :for={run <- @recent_runs}>
-                    <td class="px-3 py-2 font-medium text-slate-950">{run.ref}</td>
-                    <td class="px-3 py-2 text-slate-700">{run.state}</td>
-                    <td class="px-3 py-2 text-slate-500">{run.surface}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        <section
+          :if={@run_readback_state == :empty}
+          id="dashboard-run-readback-empty"
+          class="rounded border border-slate-200 bg-white p-4 text-sm text-slate-600"
+        >
+          No durable runs have been accepted yet.
+        </section>
+
+        <section
+          :if={@run_readback_state == :durable}
+          id="dashboard-active-runs"
+          class="rounded border border-slate-200 bg-white p-4"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Recent durable runs
+            </h2>
+            <.icon name="hero-play-circle" class="size-5 text-slate-500" />
           </div>
 
-          <div id="dashboard-pending-reviews" class="rounded border border-slate-200 bg-white p-4">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Pending Reviews
-              </h2>
-              <.icon name="hero-clipboard-document-check" class="size-5 text-slate-500" />
-            </div>
-
-            <div class="mt-4 space-y-3">
-              <div :for={review <- @pending_reviews} class="rounded border border-slate-200 p-3">
-                <div class="text-sm font-medium text-slate-950">{review.ref}</div>
-                <div class="mt-1 text-xs text-slate-500">{review.reason}</div>
-              </div>
-            </div>
+          <div class="mt-4 overflow-hidden rounded border border-slate-200">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th class="px-3 py-2">Run</th>
+                  <th class="px-3 py-2">State</th>
+                  <th class="px-3 py-2">Surface</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-run-rows" class="divide-y divide-slate-100">
+                <tr :for={run <- @recent_runs} id={"dashboard-run-#{run.id}"}>
+                  <td class="px-3 py-2 font-medium text-slate-950">{run.ref}</td>
+                  <td class="px-3 py-2 text-slate-700">{run.state}</td>
+                  <td class="px-3 py-2 text-slate-500">{run.surface}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
         <section class="grid gap-4 lg:grid-cols-3">
-          <div id="dashboard-denials" class="rounded border border-slate-200 bg-white p-4">
-            <div class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-              <.icon name="hero-shield-exclamation" class="size-5" /> Denials
+          <div id="dashboard-run-readback" class="rounded border border-slate-200 bg-white p-4">
+            <div class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Run readback
             </div>
-            <p class="mt-3 text-sm text-slate-600">No fixture denials recorded.</p>
+            <p class="mt-3 text-sm text-slate-700">{@run_readback_state}</p>
           </div>
-
-          <div id="installation-bootstrap-status" class="rounded border border-slate-200 bg-white p-4">
-            <div class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-              <.icon name="hero-cube-transparent" class="size-5" /> Installation
-            </div>
-            <dl class="mt-3 space-y-2 text-sm">
-              <div class="flex items-center justify-between gap-3">
-                <dt class="text-slate-500">Status</dt>
-                <dd class="font-medium text-slate-950">{@bootstrap_status.status}</dd>
-              </div>
-              <div class="flex items-center justify-between gap-3">
-                <dt class="text-slate-500">Pack</dt>
-                <dd class="font-medium text-slate-950">
-                  {@bootstrap_status.pack_slug}@{@bootstrap_status.pack_version}
-                </dd>
-              </div>
-              <div class="flex items-center justify-between gap-3">
-                <dt class="text-slate-500">Install</dt>
-                <dd class="font-medium text-slate-950">{@bootstrap_status.installation_id}</dd>
-              </div>
-            </dl>
+          <div id="dashboard-review-status" class="rounded border border-slate-200 bg-white p-4">
+            <div class="text-sm font-semibold uppercase tracking-wide text-slate-500">Reviews</div>
+            <p class="mt-3 text-sm text-slate-600">Not activated in the durable acceptance slice.</p>
           </div>
-
-          <div id="operations-slo-list" class="rounded border border-slate-200 bg-white p-4">
-            <div class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-              <.icon name="hero-chart-bar-square" class="size-5" /> Operations
+          <div id="dashboard-operations-status" class="rounded border border-slate-200 bg-white p-4">
+            <div class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Operations
             </div>
-            <p class="mt-3 text-sm text-slate-600">
-              Health is projected from product fixture state in Phase 1.
-            </p>
+            <p class="mt-3 text-sm text-slate-600">No local operational truth is maintained.</p>
           </div>
         </section>
       </div>
@@ -134,24 +118,12 @@ defmodule SynapseWeb.DashboardLive do
     """
   end
 
-  defp stats do
+  defp stats(runs) do
     [
-      {"Runs", "fixture"},
-      {"Reviews", "fixture"},
-      {"Memory", "fixture"},
-      {"Evidence", "fixture"}
-    ]
-  end
-
-  defp recent_runs do
-    [
-      %{ref: "run://fixture/phase-1", state: "ready", surface: "AppKit.AgentIntake"}
-    ]
-  end
-
-  defp pending_reviews do
-    [
-      %{ref: "review://fixture/bootstrap", reason: "Phase 1 shell proof"}
+      {"Durable runs", length(runs)},
+      {"Reviews", "inactive"},
+      {"Memory", "inactive"},
+      {"Evidence", "inactive"}
     ]
   end
 end

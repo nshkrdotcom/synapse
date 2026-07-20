@@ -3,10 +3,18 @@ defmodule SynapseWeb.RunIndexLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    {runs, readback_state} =
+      case Synapse.AgentRuns.list_runs() do
+        {:ok, []} -> {[], :empty}
+        {:ok, runs} -> {runs, :snapshot}
+        {:error, _reason} -> {[], :unavailable}
+      end
+
     socket =
       socket
       |> assign(:page_title, "Runs")
-      |> stream(:runs, Synapse.AgentRuns.list_runs())
+      |> assign(:readback_state, readback_state)
+      |> stream(:runs, runs)
 
     {:ok, socket}
   end
@@ -20,11 +28,12 @@ defmodule SynapseWeb.RunIndexLive do
           <div>
             <h1 class="text-2xl font-semibold text-slate-950">Runs</h1>
             <p class="mt-1 text-sm text-slate-600">
-              Fixture-backed AppKit AgentIntake projections.
+              Durable AppKit run projections.
             </p>
           </div>
 
           <.link
+            id="run-index-start-link"
             navigate={~p"/runs/new"}
             class="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
           >
@@ -32,13 +41,33 @@ defmodule SynapseWeb.RunIndexLive do
           </.link>
         </section>
 
-        <section id="run-index-list" class="overflow-hidden rounded border border-slate-200 bg-white">
+        <section
+          :if={@readback_state == :unavailable}
+          id="run-index-unavailable"
+          class="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+        >
+          Durable run projections are unavailable. No cached or fixture rows are displayed.
+        </section>
+
+        <section
+          :if={@readback_state == :empty}
+          id="run-index-empty"
+          class="rounded border border-slate-200 bg-white p-4 text-sm text-slate-600"
+        >
+          No durable runs have been accepted yet.
+        </section>
+
+        <section
+          :if={@readback_state == :snapshot}
+          id="run-index-list"
+          class="overflow-hidden rounded border border-slate-200 bg-white"
+        >
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th class="px-3 py-2">Run</th>
                 <th class="px-3 py-2">State</th>
-                <th class="px-3 py-2">Authority</th>
+                <th class="px-3 py-2">Updated</th>
                 <th class="px-3 py-2">Surface</th>
               </tr>
             </thead>
@@ -54,7 +83,7 @@ defmodule SynapseWeb.RunIndexLive do
                   <div class="text-xs text-slate-500">{run.ref}</div>
                 </td>
                 <td class="px-3 py-2 text-slate-700">{run.state}</td>
-                <td class="px-3 py-2 text-slate-700">{run.authority_state}</td>
+                <td class="px-3 py-2 text-slate-700">{run.updated_at}</td>
                 <td class="px-3 py-2 text-slate-500">{run.surface}</td>
               </tr>
             </tbody>
