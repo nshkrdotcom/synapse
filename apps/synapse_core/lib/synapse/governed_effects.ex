@@ -1,148 +1,231 @@
 defmodule Synapse.GovernedEffects do
   @moduledoc """
-  Product-safe governed-effect helpers for the staged-live diagnostic path.
+  Product-safe reviewed-effect commands and durable readback through AppKit.
+
+  Synapse handles only the product request and presentation seam. The durable
+  effect owner, review owner, execution runtime, credentials, and workspace
+  remain below AppKit.
   """
 
-  alias AppKit.Core.{EffectTimelineDTO, GovernedEffectDTO}
-  alias AppKit.EffectSurface
+  alias AppKit.Core.GovernedEffectDTO
+  alias AppKit.{EffectSurface, ReviewSurface}
   alias Synapse.{Config, PlatformContext, ProductBootstrap}
 
-  @actor_ref "actor://synapse/operator"
+  @operator_ref "actor:synapse:operator"
 
-  @spec propose_diagnostic_run(struct(), map(), String.t(), atom(), keyword()) ::
+  @spec propose_reviewed_file_effect(struct(), map(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  def propose_diagnostic_run(context, attrs, run_id, diagnostic_lane, opts)
-      when is_map(attrs) and is_binary(run_id) and is_atom(diagnostic_lane) and is_list(opts) do
-    effect_attrs = diagnostic_effect_attrs(context, attrs, run_id, diagnostic_lane)
-
-    with {:ok, %GovernedEffectDTO{} = effect} <-
-           EffectSurface.propose_effect(context, effect_attrs, opts) do
+  def propose_reviewed_file_effect(context, proposal, opts \\ [])
+      when is_map(proposal) and is_list(opts) do
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.propose_effect(context, proposal, surface_opts) do
       {:ok, effect_view(effect)}
     end
   end
 
-  @spec get_effect_timeline(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_effect_timeline(effect_ref, opts \\ []) when is_binary(effect_ref) and is_list(opts) do
-    config = Config.load(opts)
+  @spec approve_reviewed_operation(String.t(), map(), keyword()) ::
+          {:ok, struct()} | {:error, term()}
+  def approve_reviewed_operation(owner_execution_ref, attrs, opts \\ [])
+      when is_binary(owner_execution_ref) and is_map(attrs) and is_list(opts) do
+    with {:ok, effect_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, review_opts} <- ProductBootstrap.review_surface_options(opts),
+         {:ok, context} <- product_context(opts, attrs),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect(context, owner_execution_ref, effect_opts),
+         :ok <- ensure_pending_review(effect) do
+      ReviewSurface.record_decision_by_id(
+        context,
+        effect.review.review_unit_id,
+        %{
+          decision: :accept,
+          reason: string_value(attrs, :reason, "approved exact reviewed operation"),
+          actor_ref: string_value(attrs, :actor_ref, @operator_ref),
+          payload: exact_review_payload(effect)
+        },
+        review_opts
+      )
+    end
+  end
 
-    {:ok, bootstrap} =
-      ProductBootstrap.ensure_bootstrapped(Keyword.put(opts, :bootstrap_mode, :disabled))
+  @spec begin_dispatch(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def begin_dispatch(owner_execution_ref, opts \\ [])
+      when is_binary(owner_execution_ref) and is_list(opts) do
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, context} <- product_context(opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         {:ok, %GovernedEffectDTO{} = updated} <-
+           EffectSurface.begin_dispatch(
+             context,
+             owner_execution_ref,
+             %{expected_row_version: effect.row_version},
+             surface_opts
+           ) do
+      {:ok, effect_view(updated)}
+    end
+  end
 
-    context = PlatformContext.product_context(config, bootstrap.installation_ref, opts)
+  @spec record_accepted(String.t(), map(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def record_accepted(owner_execution_ref, attrs, opts \\ [])
+      when is_binary(owner_execution_ref) and is_map(attrs) and is_list(opts) do
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, context} <- product_context(opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         command <-
+           attrs
+           |> take_values([:attempt_ref, :external_ref, :accepted_receipt_ref])
+           |> Map.put(:expected_row_version, effect.row_version),
+         {:ok, %GovernedEffectDTO{} = updated} <-
+           EffectSurface.record_accepted(
+             context,
+             owner_execution_ref,
+             command,
+             surface_opts
+           ) do
+      {:ok, effect_view(updated)}
+    end
+  end
 
-    with {:ok, %EffectTimelineDTO{} = timeline} <-
-           EffectSurface.get_effect_timeline(context, effect_ref, opts) do
-      {:ok, timeline_view(timeline)}
+  @spec record_receipt(String.t(), map(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def record_receipt(owner_execution_ref, attrs, opts \\ [])
+      when is_binary(owner_execution_ref) and is_map(attrs) and is_list(opts) do
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, context} <- product_context(opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         command <-
+           attrs
+           |> take_values([
+             :receipt_ref,
+             :receipt_state,
+             :ambiguity_state,
+             :result_artifact_ref,
+             :artifact_refs,
+             :continuation_target,
+             :cleanup
+           ])
+           |> Map.put(:expected_row_version, effect.row_version),
+         {:ok, %GovernedEffectDTO{} = updated} <-
+           EffectSurface.record_receipt(
+             context,
+             owner_execution_ref,
+             command,
+             surface_opts
+           ) do
+      {:ok, effect_view(updated)}
+    end
+  end
+
+  @spec get_effect(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_effect(owner_execution_ref, opts \\ [])
+      when is_binary(owner_execution_ref) and is_list(opts) do
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
+         {:ok, context} <- product_context(opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect(context, owner_execution_ref, surface_opts) do
+      {:ok, effect_view(effect)}
+    end
+  end
+
+  @spec get_effect_by_idempotency(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_effect_by_idempotency(idempotency_key, opts \\ [])
+      when is_binary(idempotency_key) and is_list(opts) do
+    context_opts = Keyword.put(opts, :idempotency_key, idempotency_key)
+
+    with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(context_opts),
+         {:ok, context} <- product_context(context_opts),
+         {:ok, %GovernedEffectDTO{} = effect} <-
+           EffectSurface.get_effect_by_idempotency(
+             context,
+             idempotency_key,
+             surface_opts
+           ) do
+      {:ok, effect_view(effect)}
     end
   end
 
   @spec effect_view(GovernedEffectDTO.t()) :: map()
   def effect_view(%GovernedEffectDTO{} = effect) do
-    metadata = effect.metadata || %{}
-
     %{
+      contract_version: effect.contract_version,
       effect_ref: effect.effect_ref,
-      effect_type: effect.effect_type,
+      run_ref: effect.run_ref,
+      turn_ref: effect.turn_ref,
       command_ref: effect.command_ref,
-      tenant_ref: effect.tenant_ref,
-      actor_ref: effect.actor_ref,
-      installation_ref: effect.installation_ref,
+      decision_ref: effect.decision_ref,
+      grant_ref: effect.grant_ref,
+      target_ref: effect.target_ref,
+      owner_execution_ref: effect.owner_execution_ref,
       status: effect.status,
-      trace_ref: effect.trace_ref,
-      authority_ref: effect.authority_ref,
-      receipt_ref: effect.receipt_ref,
-      dispatch_ref: effect.dispatch_ref,
-      expected_version: effect.expected_version,
-      run_ref: Map.get(metadata, "run_ref"),
-      trace_summary_hash: Map.get(metadata, "trace_summary_hash"),
-      evidence_refs: evidence_refs(effect),
-      governed_effect_refs: governed_effect_refs(effect),
-      metadata: metadata
+      row_version: effect.row_version,
+      attempt_ref: effect.attempt_ref,
+      runtime_execution_ref: effect.runtime_execution_ref,
+      external_ref: effect.external_ref,
+      result_artifact_ref: effect.result_artifact_ref,
+      pinned_tool_manifest: effect.pinned_tool_manifest,
+      reviewed_operation: effect.reviewed_operation,
+      review: nested_view(effect.review),
+      receipt: nested_view(effect.receipt),
+      ambiguity: nested_view(effect.ambiguity),
+      continuation: nested_view(effect.continuation)
     }
   end
 
-  @spec timeline_view(EffectTimelineDTO.t()) :: map()
-  def timeline_view(%EffectTimelineDTO{} = timeline) do
-    %{
-      effect_ref: timeline.effect_ref,
-      trace_summary_hash: timeline.trace_summary_hash,
-      entries: Enum.map(timeline.entries, &timeline_entry/1),
-      metadata: timeline.metadata || %{}
-    }
+  defp product_context(opts, attrs \\ %{}) do
+    config = Config.load(opts)
+    actor_ref = string_value(attrs, :actor_ref, nil)
+
+    context_opts =
+      if is_binary(actor_ref) do
+        Keyword.put(opts, :actor_ref, %{id: actor_ref, kind: :human})
+      else
+        opts
+      end
+
+    with {:ok, bootstrap} <-
+           ProductBootstrap.ensure_bootstrapped(
+             Keyword.put(context_opts, :bootstrap_mode, :disabled)
+           ) do
+      {:ok, PlatformContext.product_context(config, bootstrap.installation_ref, context_opts)}
+    end
   end
 
-  defp diagnostic_effect_attrs(context, attrs, run_id, diagnostic_lane) do
-    lane_name = Atom.to_string(diagnostic_lane)
+  defp ensure_pending_review(%GovernedEffectDTO{review: %{status: status}})
+       when status in ["pending", "in_review"],
+       do: :ok
 
-    %{
-      effect_ref: "effect://synapse/#{run_id}/#{lane_name}",
-      effect_type: "diagnostic.#{lane_name}",
-      command_ref: "command://synapse/diagnostic/#{run_id}",
-      tenant_ref: tenant_ref(context),
-      actor_ref: @actor_ref,
-      installation_ref: installation_ref(context),
-      status: "proposed",
-      trace_ref: context.trace_id,
-      expected_version: 1,
-      metadata: %{
-        "diagnostic_lane" => lane_name,
-        "goal_summary" => string_value(attrs, :goal_summary, "No goal summary provided"),
-        "product_slug" => "synapse",
-        "run_ref" => "run://live-stack/#{run_id}",
-        "title" => string_value(attrs, :title, "Untitled agent run")
-      }
-    }
-  end
+  defp ensure_pending_review(_effect), do: {:error, :effect_review_not_pending}
 
-  defp governed_effect_refs(%GovernedEffectDTO{} = effect) do
+  defp exact_review_payload(effect) do
     %{
       "effect_ref" => effect.effect_ref,
-      "command_ref" => effect.command_ref,
-      "trace_ref" => effect.trace_ref,
-      "authority_ref" => effect.authority_ref,
-      "receipt_ref" => effect.receipt_ref,
-      "dispatch_ref" => effect.dispatch_ref
-    }
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
-  end
-
-  defp evidence_refs(%GovernedEffectDTO{} = effect) do
-    effect.metadata
-    |> case do
-      %{} = metadata -> Map.get(metadata, "evidence_refs", [])
-      _other -> []
-    end
-    |> List.wrap()
-    |> Enum.filter(&is_binary/1)
-  end
-
-  defp timeline_entry(entry) when is_map(entry) do
-    %{
-      sequence: integer_value(entry, "sequence"),
-      event_kind: string_value(entry, "event_kind", "effect_transition"),
-      status: string_value(entry, "status", "unknown"),
-      entry_hash: string_value(entry, "entry_hash", nil)
+      "pinned_tool_manifest" => effect.pinned_tool_manifest,
+      "reviewed_operation" => effect.reviewed_operation
     }
   end
 
-  defp timeline_entry(_entry) do
-    %{sequence: nil, event_kind: "effect_transition", status: "unknown", entry_hash: nil}
+  defp nested_view(nil), do: nil
+  defp nested_view(%_{} = value), do: value |> Map.from_struct() |> nested_view()
+
+  defp nested_view(%{} = value) do
+    Map.new(value, fn {key, nested} -> {key, nested_view(nested)} end)
   end
 
-  defp tenant_ref(%{tenant_ref: %{id: id}}) when is_binary(id), do: "tenant://#{id}"
-  defp tenant_ref(_context), do: "tenant://default"
+  defp nested_view(values) when is_list(values), do: Enum.map(values, &nested_view/1)
+  defp nested_view(value), do: value
 
-  defp installation_ref(%{installation_ref: %{id: id}}) when is_binary(id),
-    do: "installation://#{id}"
-
-  defp installation_ref(_context), do: "installation://default"
-
-  defp integer_value(attrs, key) do
-    case map_value(attrs, key) do
-      value when is_integer(value) -> value
-      _other -> nil
-    end
+  defp take_values(attrs, keys) do
+    keys
+    |> Enum.reduce(%{}, fn key, selected ->
+      case map_value(attrs, key) do
+        nil -> selected
+        value -> Map.put(selected, key, value)
+      end
+    end)
   end
 
   defp string_value(attrs, key, default) do
@@ -153,8 +236,5 @@ defmodule Synapse.GovernedEffects do
     end
   end
 
-  defp map_value(attrs, key) when is_atom(key),
-    do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
-
-  defp map_value(attrs, key) when is_binary(key), do: Map.get(attrs, key)
+  defp map_value(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 end

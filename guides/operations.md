@@ -68,9 +68,10 @@ configured staged-live governed-effect path in test and local proof
 configurations. Select `probe` to exercise the explicit authority-denied
 product state when the configured backend denies that effect.
 
-The local browser proof uses `Synapse.Fixtures.EffectSurfaceBackend` from test
-configuration. It renders the same product refs and timeline states as the
-StackLab proof, but it is not a live provider claim and does not require
+The local browser tests select AppKit-shaped review and effect backends from
+`test/support`. Production has no fixture review or effect default: the host
+must compose durable AppKit backends, and an absent route fails closed. The
+deterministic browser checks are not live provider claims and require no
 GitHub, Linear, Codex, or other provider credentials.
 
 ## Boundary Scans

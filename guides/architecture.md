@@ -77,19 +77,16 @@ Synapse RunNewLive / RunShowLive / EvidenceShowLive
   -> Synapse governed-effect and evidence projections
 ```
 
-`Synapse.GovernedEffects` builds product-safe diagnostic effect attrs and keeps
-all lower facts in AppKit DTO form. It does not import Mezzanine runtime,
-Citadel, Jido Integration, Execution Plane, or AITrace modules. Run start first
-proposes the governed effect through `AppKit.EffectSurface`; when that succeeds,
-Synapse starts the AppKit agent-intake run with the governed-effect refs in the
-request metadata. When authority denies the diagnostic effect, Synapse renders
-`staging_live_error` instead of hiding the failure.
+`Synapse.GovernedEffects` sends the immutable tool manifest and exact reviewed
+file-operation digest through `AppKit.EffectSurface`. Review approval is
+recorded through `AppKit.ReviewSurface`; dispatch, lower acceptance, receipt,
+ambiguity, and continuation then return as one durable
+`AppKit.Core.GovernedEffectDTO`. Synapse never imports the lower review,
+authority, runtime, provider, credential, or workspace owners.
 
-Run detail and evidence detail render the same governed-effect refs: effect,
-authority, dispatch, receipt, trace summary hash, evidence refs, diagnostic
-result, and lifecycle entries. The test browser path uses
-`Synapse.Fixtures.EffectSurfaceBackend` so the UI can prove the promoted product
-state deterministically without claiming live GitHub, Linear, Codex, or other
+Product readback renders only that AppKit projection. Tests explicitly inject
+AppKit-shaped backends from `test/support`; no fixture backend is compiled into
+the production product and no deterministic test result is advertised as live
 provider behavior.
 
 ## Proof Boundary

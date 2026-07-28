@@ -30,6 +30,20 @@ defmodule Synapse.ProductBootstrap do
     request_runtime_refresh: 3,
     request_runtime_control: 3
   ]
+  @effect_surface_callbacks [
+    propose_effect: 3,
+    begin_dispatch: 4,
+    record_accepted: 4,
+    record_receipt: 4,
+    get_effect: 3,
+    get_effect_by_idempotency: 3
+  ]
+  @review_surface_callbacks [
+    list_pending: 3,
+    get_review: 3,
+    record_decision: 4,
+    record_decision_by_id: 4
+  ]
 
   @spec ensure_bootstrapped(keyword() | map()) :: {:ok, map()} | {:error, term()}
   def ensure_bootstrapped(overrides \\ []) do
@@ -71,21 +85,61 @@ defmodule Synapse.ProductBootstrap do
     end
   end
 
+  @doc "Returns options only when a current AppKit governed-effect backend is composed."
+  @spec effect_surface_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def effect_surface_options(overrides \\ []) do
+    opts = configured_backend_options(overrides)
+
+    with {:ok, opts} <- resolve_optional_backend_stack(opts),
+         :ok <-
+           validate_surface_role(
+             opts,
+             :effect_surface_adapter,
+             :effect_surface_backend,
+             @effect_surface_callbacks
+           ) do
+      {:ok, opts}
+    end
+  end
+
+  @doc "Returns options only when a current AppKit review backend is composed."
+  @spec review_surface_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def review_surface_options(overrides \\ []) do
+    opts = configured_backend_options(overrides)
+
+    with {:ok, opts} <- resolve_optional_backend_stack(opts),
+         :ok <-
+           validate_surface_role(
+             opts,
+             :review_backend,
+             :review_backend,
+             @review_surface_callbacks
+           ) do
+      {:ok, opts}
+    end
+  end
+
   @spec effect_surface_status(keyword() | map()) :: map()
   def effect_surface_status(overrides \\ []) do
-    opts = backend_options(overrides)
+    opts = configured_backend_options(overrides)
     effect_surface_loaded? = effect_surface_loaded?()
-    effect_backend_available? = effect_backend_available?(opts)
+    review_surface_loaded? = review_surface_loaded?()
+    effect_backend_available? = match?({:ok, _opts}, effect_surface_options(opts))
+    review_backend_available? = match?({:ok, _opts}, review_surface_options(opts))
     agent_intake_available? = agent_intake_available?(opts)
-    live? = effect_surface_loaded? and effect_backend_available? and agent_intake_available?
+
+    live? =
+      effect_surface_loaded? and review_surface_loaded? and effect_backend_available? and
+        review_backend_available? and agent_intake_available?
 
     %{
       status: if(live?, do: :staging_live, else: :unavailable),
       surface: "AppKit.EffectSurface",
       live?: live?,
       effect_surface_available?: effect_surface_loaded? and effect_backend_available?,
+      review_surface_available?: review_surface_loaded? and review_backend_available?,
       agent_intake_available?: agent_intake_available?,
-      mode: :diagnostic_lane
+      mode: :reviewed_file_effect
     }
   end
 
@@ -211,12 +265,19 @@ defmodule Synapse.ProductBootstrap do
   defp effect_surface_loaded? do
     Code.ensure_loaded?(AppKit.EffectSurface) and
       function_exported?(AppKit.EffectSurface, :propose_effect, 3) and
-      function_exported?(AppKit.EffectSurface, :get_effect_timeline, 3)
+      function_exported?(AppKit.EffectSurface, :begin_dispatch, 4) and
+      function_exported?(AppKit.EffectSurface, :record_accepted, 4) and
+      function_exported?(AppKit.EffectSurface, :record_receipt, 4) and
+      function_exported?(AppKit.EffectSurface, :get_effect, 3) and
+      function_exported?(AppKit.EffectSurface, :get_effect_by_idempotency, 3)
   end
 
-  defp effect_backend_available?(opts) do
-    explicit_backend?(opts, :effect_surface_adapter) or
-      stack_backend?(opts, :effect_surface_backend)
+  defp review_surface_loaded? do
+    Code.ensure_loaded?(AppKit.ReviewSurface) and
+      function_exported?(AppKit.ReviewSurface, :list_pending, 3) and
+      function_exported?(AppKit.ReviewSurface, :get_review, 3) and
+      function_exported?(AppKit.ReviewSurface, :record_decision, 4) and
+      function_exported?(AppKit.ReviewSurface, :record_decision_by_id, 4)
   end
 
   defp agent_intake_available?(opts) do
@@ -253,6 +314,18 @@ defmodule Synapse.ProductBootstrap do
     end
   end
 
+  defp resolve_optional_backend_stack(opts) do
+    if Keyword.has_key?(opts, :backend_stack) or
+         Keyword.has_key?(opts, :app_kit_backend_stack) do
+      {:ok, opts}
+    else
+      case Application.fetch_env(:synapse_core, :app_kit_backend_stack) do
+        {:ok, configured} -> put_configured_stack(opts, configured)
+        :error -> {:ok, opts}
+      end
+    end
+  end
+
   defp validate_stack_option(opts, key) do
     case Keyword.fetch!(opts, key) do
       %AppKit.BackendStack{} -> {:ok, opts}
@@ -286,6 +359,21 @@ defmodule Synapse.ProductBootstrap do
 
   defp validate_role(opts, role, callbacks) do
     with {:ok, backend} <- backend_for_role(opts, role),
+         true <- backend_exports?(backend, callbacks) do
+      :ok
+    else
+      _other -> {:error, :app_kit_backend_unavailable}
+    end
+  end
+
+  defp validate_surface_role(opts, explicit_key, stack_role, callbacks) do
+    backend =
+      case Keyword.fetch(opts, explicit_key) do
+        {:ok, configured} -> {:ok, configured}
+        :error -> stack_role(opts, stack_role)
+      end
+
+    with {:ok, backend} <- backend,
          true <- backend_exports?(backend, callbacks) do
       :ok
     else
@@ -333,28 +421,6 @@ defmodule Synapse.ProductBootstrap do
   end
 
   defp backend_exports?(_backend, _callbacks), do: false
-
-  defp explicit_backend?(opts, key) do
-    case Keyword.fetch(opts, key) do
-      {:ok, backend} when is_atom(backend) -> Code.ensure_loaded?(backend)
-      {:ok, nil} -> false
-      {:ok, _backend} -> true
-      :error -> false
-    end
-  end
-
-  defp stack_backend?(opts, key) do
-    opts
-    |> backend_stacks()
-    |> Enum.any?(fn stack ->
-      case AppKit.BackendStack.fetch(stack, key) do
-        {:ok, backend} when is_atom(backend) -> Code.ensure_loaded?(backend)
-        {:ok, nil} -> false
-        {:ok, _backend} -> true
-        :error -> false
-      end
-    end)
-  end
 
   defp backend_stacks(opts) do
     [

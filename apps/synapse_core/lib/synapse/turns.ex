@@ -28,7 +28,18 @@ defmodule Synapse.Turns do
          run_ref <- decode_run_ref(run_ref_or_id),
          {:ok, kind} <- turn_kind(attrs),
          {:ok, payload_ref} <- payload_ref(attrs, run_ref) do
-      submission = %{
+      dispatch_turn(context, run_ref, kind, payload_ref, attrs, runtime_opts)
+    end
+  end
+
+  defp dispatch_turn(context, run_ref, :cancel, _payload_ref, _attrs, runtime_opts) do
+    AgentIntake.cancel_agent_run(context, run_ref, runtime_opts)
+  end
+
+  defp dispatch_turn(context, run_ref, kind, payload_ref, attrs, runtime_opts) do
+    AgentIntake.submit_turn(
+      context,
+      %{
         idempotency_key: "synapse:turn:#{kind}:#{run_ref}",
         actor_ref: @actor_ref,
         run_ref: run_ref,
@@ -38,10 +49,9 @@ defmodule Synapse.Turns do
           input_summary: string_value(attrs, :input_summary, "Operator turn submitted"),
           source: "synapse_web"
         }
-      }
-
-      AgentIntake.submit_turn(context, submission, runtime_opts)
-    end
+      },
+      runtime_opts
+    )
   end
 
   defp turn_kind(attrs) do

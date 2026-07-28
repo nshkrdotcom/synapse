@@ -8,9 +8,13 @@ defmodule Synapse.ProductBootstrapTest do
     @behaviour AppKit.EffectSurface
 
     def propose_effect(_context, _attrs, _opts), do: {:error, :not_used}
+    def begin_dispatch(_context, _effect_ref, _command, _opts), do: {:error, :not_used}
+    def record_accepted(_context, _effect_ref, _acceptance, _opts), do: {:error, :not_used}
+    def record_receipt(_context, _effect_ref, _receipt, _opts), do: {:error, :not_used}
     def get_effect(_context, _effect_ref, _opts), do: {:error, :not_used}
-    def list_effects(_context, _run_ref, _opts), do: {:error, :not_used}
-    def get_effect_timeline(_context, _effect_ref, _opts), do: {:error, :not_used}
+
+    def get_effect_by_idempotency(_context, _idempotency_key, _opts),
+      do: {:error, :not_used}
   end
 
   test "disabled installation mode returns a product-safe result" do
@@ -75,5 +79,16 @@ defmodule Synapse.ProductBootstrapTest do
     assert status.status == :unavailable
     assert status.live? == false
     assert status.agent_intake_available? == false
+  end
+
+  test "effect status requires composed effect, review, and cancellation routes" do
+    status = ProductBootstrap.effect_surface_status()
+
+    assert status.status == :staging_live
+    assert status.live? == true
+    assert status.effect_surface_available? == true
+    assert status.review_surface_available? == true
+    assert status.agent_intake_available? == true
+    assert status.mode == :reviewed_file_effect
   end
 end

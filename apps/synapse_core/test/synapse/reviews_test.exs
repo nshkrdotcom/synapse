@@ -4,35 +4,45 @@ defmodule Synapse.ReviewsTest do
   alias AppKit.Core.ActionResult
   alias Synapse.Reviews
 
-  test "lists fixture-backed pending reviews" do
+  test "lists durable reviews through the configured AppKit review backend" do
     assert {:ok, page} = Reviews.list_pending()
 
     assert page.total_count == 2
-    assert Enum.any?(page.entries, &(&1.id == "fixture-review"))
+    assert page.source == :durable_test_backend
+    assert Enum.any?(page.entries, &(&1.id == "review-unit-1"))
     assert Enum.any?(page.entries, &(&1.denied? == true))
   end
 
-  test "returns review detail with reason codes" do
-    assert {:ok, review} = Reviews.get_review("fixture-review")
+  test "returns AppKit review detail with exact effect approval data" do
+    assert {:ok, review} = Reviews.get_review("review-unit-1")
 
-    assert review.decision_id == "decision://fixture/fixture-review"
+    assert review.decision_id == "review-unit-1"
     assert "review_required" in review.reason_codes
+    assert review.approval_payload["reviewed_operation"]["relative_path"] == "RESULT.txt"
   end
 
-  test "records an allowed fixture review decision" do
+  test "records an allowed review decision through AppKit" do
+    payload = %{
+      "effect_ref" => "effect://test/reviewed-file",
+      "pinned_tool_manifest" => %{"manifest_ref" => "manifest://test/codex"},
+      "reviewed_operation" => %{"relative_path" => "RESULT.txt"}
+    }
+
     assert {:ok, result} =
-             Reviews.record_decision("fixture-review", %{
+             Reviews.record_decision("review-unit-1", %{
                "decision" => "accept",
-               "reason" => "Looks correct"
+               "reason" => "Looks correct",
+               "payload" => payload
              })
 
     assert %ActionResult{} = result
-    assert result.status == :accepted
+    assert result.status == :completed
     assert result.metadata.decision == :accept
+    assert result.metadata.payload == payload
   end
 
   test "rejects unknown decision without creating atoms" do
     assert {:error, :invalid_review_decision} =
-             Reviews.record_decision("fixture-review", %{"decision" => "ship_it"})
+             Reviews.record_decision("review-unit-1", %{"decision" => "ship_it"})
   end
 end

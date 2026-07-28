@@ -22,7 +22,7 @@ defmodule SynapseWeb.ReviewIndexLive do
         <section>
           <h1 class="text-2xl font-semibold text-slate-950">Reviews</h1>
           <p class="mt-1 text-sm text-slate-600">
-            Fixture-backed review queue over the AppKit review contract.
+            Durable review queue projected and decided through AppKit.
           </p>
         </section>
 

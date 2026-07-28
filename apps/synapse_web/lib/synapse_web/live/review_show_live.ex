@@ -9,15 +9,17 @@ defmodule SynapseWeb.ReviewShowLive do
           socket
           |> assign(:page_title, "Review")
           |> assign(:review, review)
+          |> assign(:review_id, id)
           |> assign(:decision_result, nil)
           |> assign(:error, nil)
 
         {:error, reason} ->
           socket
           |> assign(:page_title, "Review")
-          |> assign(:review, fallback_review(id))
+          |> assign(:review, nil)
+          |> assign(:review_id, id)
           |> assign(:decision_result, nil)
-          |> assign(:error, inspect(reason))
+          |> assign(:error, error_message(reason))
       end
 
     {:ok, socket}
@@ -25,12 +27,19 @@ defmodule SynapseWeb.ReviewShowLive do
 
   @impl true
   def handle_event("record_decision", %{"review" => attrs}, socket) do
+    attrs =
+      case socket.assigns.review.approval_payload do
+        payload when is_map(payload) -> Map.put(attrs, "payload", payload)
+        _other -> attrs
+      end
+
     case Synapse.Reviews.record_decision(socket.assigns.review.decision_id, attrs) do
       {:ok, result} ->
         {:noreply, socket |> assign(:decision_result, result) |> assign(:error, nil)}
 
       {:error, reason} ->
-        {:noreply, socket |> assign(:error, inspect(reason)) |> assign(:decision_result, nil)}
+        {:noreply,
+         socket |> assign(:error, error_message(reason)) |> assign(:decision_result, nil)}
     end
   end
 
@@ -38,7 +47,19 @@ defmodule SynapseWeb.ReviewShowLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="space-y-6">
+      <section
+        :if={is_nil(@review)}
+        id="review-load-error"
+        class="rounded border border-red-200 bg-red-50 p-5"
+      >
+        <h1 class="text-xl font-semibold text-red-950">Review unavailable</h1>
+        <p class="mt-2 text-sm text-red-800">
+          The durable AppKit review <span class="font-mono">{@review_id}</span> could not be loaded.
+        </p>
+        <p class="mt-2 text-sm text-red-800">{@error}</p>
+      </section>
+
+      <div :if={@review} class="space-y-6">
         <section class="rounded border border-slate-200 bg-white p-5">
           <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
             {@review.decision_id}
@@ -122,7 +143,6 @@ defmodule SynapseWeb.ReviewShowLive do
                   <option value="accept">Accept</option>
                   <option value="reject">Reject</option>
                   <option value="waive">Waive</option>
-                  <option value="expired">Expired</option>
                   <option value="escalate">Escalate</option>
                 </select>
 
@@ -130,7 +150,7 @@ defmodule SynapseWeb.ReviewShowLive do
                   name="review[reason]"
                   rows="4"
                   class="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-950"
-                >Fixture operator decision.</textarea>
+                >Reviewed by the Synapse operator.</textarea>
 
                 <button
                   type="submit"
@@ -158,21 +178,6 @@ defmodule SynapseWeb.ReviewShowLive do
     """
   end
 
-  defp fallback_review(id) do
-    %{
-      id: id,
-      decision_id: "decision://fixture/#{id}",
-      title: "Fixture review #{id}",
-      status: :pending,
-      authority_state: :authorized,
-      run_ref: "run://fixture/#{id}",
-      context_pack_ref: "context-pack://fixture/#{id}",
-      memory_posture: :disabled,
-      tool_posture: :fixture_projected,
-      reason_codes: ["review_required"],
-      evidence_refs: ["receipt://fixture/#{id}"],
-      stale?: false,
-      denied?: false
-    }
-  end
+  defp error_message(%{message: message}) when is_binary(message), do: message
+  defp error_message(reason), do: inspect(reason)
 end

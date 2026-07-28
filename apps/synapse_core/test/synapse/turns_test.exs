@@ -27,6 +27,18 @@ defmodule Synapse.TurnsTest do
              )
   end
 
+  test "routes cancellation through AppKit's dedicated cancellation command" do
+    assert {:ok, result} =
+             Turns.submit_turn("run://durable/test-run", %{
+               "kind" => "cancel",
+               "input_summary" => "Stop this reviewed effect"
+             })
+
+    assert %CommandResult{} = result
+    assert result.command_kind == :cancel
+    assert result.accepted? == true
+  end
+
   test "rejects unknown turn kinds without creating atoms" do
     assert {:error, :invalid_turn_kind} =
              Turns.submit_turn("run://durable/test-run", %{"kind" => "unknown_turn_kind"})

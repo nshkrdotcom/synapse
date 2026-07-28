@@ -4,7 +4,9 @@ defmodule Synapse.Test.AppKitBackendStack do
   def backend_stack do
     AppKit.BackendStack.new!(
       agent_intake_backend: Synapse.Test.AppKitBackend,
-      headless_backend: Synapse.Test.AppKitBackend
+      headless_backend: Synapse.Test.AppKitBackend,
+      effect_surface_backend: Synapse.Test.EffectBackend,
+      review_backend: Synapse.Test.ReviewBackend
     )
   end
 end
@@ -32,9 +34,14 @@ defmodule Synapse.Test.AppKitBackend do
 
   def start_agent_run(_context, request, _opts) do
     case request.params.title do
-      "Conflict" -> surface_error("idempotency_conflict", "The request identity conflicts", :conflict, false)
-      "Unavailable" -> surface_error("owner_unavailable", "The durable owner is unavailable", :transient, true)
-      _title -> future(request.submission_dedupe_key, request.correlation_id)
+      "Conflict" ->
+        surface_error("idempotency_conflict", "The request identity conflicts", :conflict, false)
+
+      "Unavailable" ->
+        surface_error("owner_unavailable", "The durable owner is unavailable", :transient, true)
+
+      _title ->
+        future(request.submission_dedupe_key, request.correlation_id)
     end
   end
 
@@ -169,4 +176,156 @@ defmodule Synapse.Test.AppKitBackend do
   end
 
   defp run_token(run_ref), do: run_ref |> String.split("/", trim: true) |> List.last()
+end
+
+defmodule Synapse.Test.EffectBackend do
+  @moduledoc false
+
+  @behaviour AppKit.EffectSurface
+
+  @impl true
+  def propose_effect(_context, _proposal, _opts), do: {:error, :effect_not_configured_for_test}
+
+  @impl true
+  def begin_dispatch(_context, _owner_execution_ref, _command, _opts),
+    do: {:error, :effect_not_configured_for_test}
+
+  @impl true
+  def record_accepted(_context, _owner_execution_ref, _acceptance, _opts),
+    do: {:error, :effect_not_configured_for_test}
+
+  @impl true
+  def record_receipt(_context, _owner_execution_ref, _receipt, _opts),
+    do: {:error, :effect_not_configured_for_test}
+
+  @impl true
+  def get_effect(_context, _owner_execution_ref, _opts),
+    do: {:error, :effect_not_configured_for_test}
+
+  @impl true
+  def get_effect_by_idempotency(_context, _idempotency_key, _opts),
+    do: {:error, :effect_not_configured_for_test}
+end
+
+defmodule Synapse.Test.ReviewBackend do
+  @moduledoc false
+
+  @behaviour AppKit.Core.Backends.ReviewBackend
+
+  alias AppKit.Core.{
+    ActionResult,
+    DecisionRef,
+    DecisionSummary,
+    PageResult,
+    SubjectRef
+  }
+
+  @manifest_hash "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  @content_digest "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+  @impl true
+  def list_pending(_context, _page_request, _opts) do
+    with {:ok, primary} <- summary("review-unit-1", "Reviewed agent file effect", "pending"),
+         {:ok, denied} <- summary("review-unit-denied", "Denied governed effect", "rejected") do
+      PageResult.new(%{
+        entries: [primary, denied],
+        total_count: 2,
+        has_more: false,
+        metadata: %{source: :durable_test_backend}
+      })
+    end
+  end
+
+  @impl true
+  def get_review(_context, %DecisionRef{id: "missing-review"}, _opts),
+    do: {:error, :review_not_found}
+
+  def get_review(_context, %DecisionRef{} = decision_ref, _opts) do
+    {:ok,
+     %{
+       decision_ref: decision_ref,
+       subject_ref: decision_ref.subject_ref || subject_ref!(),
+       status: if(decision_ref.id == "review-unit-denied", do: "rejected", else: "pending"),
+       summary: "Reviewed agent file effect",
+       payload: %{
+         "reviewer_actor" => %{"kind" => "human"},
+         "reason_codes" => ["review_required", "exact_operation_required"],
+         "evidence_refs" => ["receipt://test/review/#{decision_ref.id}"],
+         "approval_payload" => approval_payload()
+       }
+     }}
+  end
+
+  @impl true
+  def record_decision(context, %DecisionRef{} = decision_ref, attrs, opts),
+    do: record_decision_by_id(context, decision_ref.id, attrs, opts)
+
+  @impl true
+  def record_decision_by_id(_context, decision_id, attrs, opts) do
+    if pid = Keyword.get(opts, :test_pid) do
+      send(pid, {:review_decision, decision_id, attrs})
+    end
+
+    ActionResult.new(%{
+      status: :completed,
+      action_ref: %{
+        id: "#{decision_id}:#{map_value(attrs, :decision)}",
+        action_kind: "review_#{map_value(attrs, :decision)}"
+      },
+      message: "Durable review decision recorded",
+      metadata: %{
+        decision_id: decision_id,
+        decision: map_value(attrs, :decision),
+        payload: map_value(attrs, :payload)
+      }
+    })
+  end
+
+  defp summary(id, title, status) do
+    with {:ok, decision_ref} <-
+           DecisionRef.new(%{
+             id: id,
+             decision_kind: "code_review",
+             subject_ref: subject_ref!()
+           }) do
+      DecisionSummary.new(%{
+        decision_ref: decision_ref,
+        status: status,
+        subject_ref: decision_ref.subject_ref,
+        summary: title,
+        payload: %{
+          "reviewer_actor" => %{"kind" => "human"},
+          "reason_codes" =>
+            if(status == "rejected", do: ["authority_denied"], else: ["review_required"])
+        }
+      })
+    end
+  end
+
+  defp subject_ref! do
+    {:ok, subject_ref} =
+      SubjectRef.new(%{id: "subject://test/reviewed-effect", subject_kind: "work_object"})
+
+    subject_ref
+  end
+
+  defp approval_payload do
+    %{
+      "effect_ref" => "effect://test/reviewed-file",
+      "pinned_tool_manifest" => %{
+        "manifest_ref" => "manifest://test/codex",
+        "manifest_hash" => @manifest_hash,
+        "action_ids" => ["create_or_replace_one_named_text_file"]
+      },
+      "reviewed_operation" => %{
+        "operation" => "create_or_replace",
+        "workspace_ref" => "workspace://test/reviewed-effect",
+        "file_ref" => "file://test/RESULT.txt",
+        "relative_path" => "RESULT.txt",
+        "content_digest" => @content_digest
+      }
+    }
+  end
+
+  defp map_value(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 end

@@ -29,7 +29,7 @@ Feature claims use these statuses:
 | Arbitration | fixture-backed | Projection view and review-routed final decision fixture. Memory writes are disabled. |
 | Runtime projection/evidence receipt | live-stack-deterministic | StackLab live slice proves completed runtime projection, candidate fact refs, memory proof refs, lower receipt ref, and tool action receipt ref. |
 | Governed-effect proposal | `staging_live` for injected diagnostic lane | `Synapse.GovernedEffects.propose_diagnostic_run/5` uses `AppKit.EffectSurface.propose_effect/3`; denied effects remain explicit product state. |
-| Governed-effect timeline UI | `staging_live` for diagnostic lane readback | Run detail and run-start success views render effect status, authority ref, dispatch ref, receipt ref, trace hash, evidence refs, and lifecycle entries from `AppKit.EffectSurface.get_effect_timeline/3`. |
+| Governed-effect readback UI | `staging_live` for reviewed-effect readback | Product views render review, dispatch, receipt, ambiguity, cancellation, and continuation state from the durable `AppKit.Core.GovernedEffectDTO` returned by `AppKit.EffectSurface.get_effect/3`. |
 | Evidence/replay | fixture-backed by default; `staging_live` governed-effect refs when supplied by promoted run | UI evidence, receipt, replay, and missing evidence posture remain projected fixtures unless a promoted diagnostic run supplies governed-effect refs. Governed-effect evidence detail renders the diagnostic result and refs when present. |
 | Operations health | fixture-backed | Operational health is separate from trace export. |
 | StackLab fixture proof | fixture-backed | `mix stack_lab.synapse.acceptance --json` passes from StackLab. |
