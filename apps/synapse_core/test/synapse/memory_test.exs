@@ -3,6 +3,7 @@ defmodule Synapse.MemoryTest do
 
   alias AppKit.Core.{MemoryFragmentProjection, MemoryFragmentProvenance}
   alias Synapse.Memory
+  alias Synapse.Memory.Entry
 
   test "lists product-safe durable AppKit memory projections" do
     assert {:ok, memories} = Memory.list_memories()
@@ -16,8 +17,34 @@ defmodule Synapse.MemoryTest do
            ]
 
     assert Enum.all?(memories, &match?(%MemoryFragmentProjection{}, &1.projection))
+    assert Enum.all?(memories, &match?(%Entry{}, &1))
     assert Enum.all?(memories, &(not Map.has_key?(&1, :body)))
     assert Enum.all?(memories, &(not Map.has_key?(&1, :payload)))
+
+    assert Enum.map(memories, & &1.memory_class) == [
+             :episodic,
+             :episodic,
+             :episodic,
+             :working,
+             :episodic
+           ]
+
+    included = hd(memories)
+    assert included.content_artifact_ref == "artifact://synapse/memory/project-fact"
+    assert included.snapshot.retrieval_snapshot_ref == "snapshot://synapse/test-snapshot/7"
+    assert included.lifecycle.retention_state == :retained
+    assert included.lifecycle.deletion_state == :active
+    assert included.lifecycle.reindex_state == :indexed
+    assert included.lifecycle.index_revision == 12
+
+    revoked = Enum.find(memories, &(&1.state == :revoked))
+    assert revoked.lifecycle.retention_state == :deleted
+    assert revoked.lifecycle.deletion_state == :tombstoned
+    assert revoked.lifecycle.deletion_reason == "owner_revoked"
+
+    degraded = Enum.find(memories, &(&1.state == :degraded))
+    assert degraded.lifecycle.deletion_state == :unknown
+    assert degraded.lifecycle.reindex_state == :degraded
   end
 
   test "returns a single memory projection without raw payloads" do
@@ -28,6 +55,8 @@ defmodule Synapse.MemoryTest do
              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
     assert memory.projection.fragment_ref == "memory://durable/project-fact"
+    assert memory.content_artifact_ref == "artifact://synapse/memory/project-fact"
+    assert memory.provenance_label == "provenance://outer-brain/project-fact"
     assert %MemoryFragmentProvenance{} = memory.provenance_projection
 
     assert memory.provenance_projection.source_contract_name ==

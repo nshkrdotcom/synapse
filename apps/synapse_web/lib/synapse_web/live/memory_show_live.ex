@@ -69,15 +69,62 @@ defmodule SynapseWeb.MemoryShowLive do
                   </dd>
                 </div>
                 <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
-                  <dt class="text-slate-500">Snapshot epoch</dt>
+                  <dt class="text-slate-500">Memory class</dt>
                   <dd class="font-medium text-slate-950">
-                    {@memory.projection.snapshot_epoch}
+                    {@memory.memory_class}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Owner artifact</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.content_artifact_ref || "not projected"}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Content digest</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.content_digest || "not projected"}
                   </dd>
                 </div>
               </dl>
               <p class="mt-4 text-sm text-slate-700">
                 No fragment body crosses the AppKit product boundary.
               </p>
+            </section>
+
+            <section
+              id="memory-retrieval-snapshot"
+              class="rounded border border-slate-200 bg-white p-4"
+            >
+              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Immutable Retrieval Snapshot
+              </h2>
+              <dl class="mt-3 space-y-2 text-sm">
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Proof token</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.snapshot.proof_token_ref}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Retrieval snapshot</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.snapshot.retrieval_snapshot_ref || "not projected"}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Owner snapshot epoch</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.snapshot.snapshot_epoch}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Commit LSN</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.snapshot.commit_lsn}
+                  </dd>
+                </div>
+              </dl>
             </section>
 
             <section id="memory-provenance" class="rounded border border-slate-200 bg-white p-4">
@@ -95,6 +142,58 @@ defmodule SynapseWeb.MemoryShowLive do
                   <dt class="text-slate-500">Commit LSN</dt>
                   <dd class="font-medium text-slate-950">
                     {@memory.provenance_projection.commit_lsn}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Source</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.provenance_label || "owner-projected provenance"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section id="memory-lifecycle" class="rounded border border-slate-200 bg-white p-4">
+              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Retention, Deletion, and Reindex
+              </h2>
+              <dl class="mt-3 space-y-2 text-sm">
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Retention</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.lifecycle.retention_state}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Retention policy</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.lifecycle.retention_policy_ref ||
+                      @memory.lifecycle.retention_reason}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Deletion</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.lifecycle.deletion_state}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Deletion detail</dt>
+                  <dd class="break-all font-medium text-slate-950">
+                    {@memory.lifecycle.deleted_at || @memory.lifecycle.deletion_reason ||
+                      "not projected"}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Index</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.lifecycle.reindex_state}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Index revision</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.lifecycle.index_revision || @memory.lifecycle.reindex_reason}
                   </dd>
                 </div>
               </dl>

@@ -1,3 +1,67 @@
+defmodule Synapse.Memory.Lifecycle do
+  @moduledoc """
+  Product-safe lifecycle state reported by the configured AppKit owner.
+
+  A `:not_projected` value is intentional: Synapse does not infer retention,
+  deletion, or index facts from a fragment's continued visibility.
+  """
+
+  @enforce_keys [:retention_state, :deletion_state, :reindex_state]
+  defstruct @enforce_keys ++
+              [
+                :retention_policy_ref,
+                :retention_reason,
+                :deleted_at,
+                :deletion_reason,
+                :index_revision,
+                :reindex_reason
+              ]
+
+  @type t :: %__MODULE__{}
+end
+
+defmodule Synapse.Memory.SnapshotIdentity do
+  @moduledoc "Immutable AppKit proof and ordering identity for one retrieval result."
+
+  @enforce_keys [:proof_token_ref, :proof_hash, :snapshot_epoch, :commit_lsn]
+  defstruct @enforce_keys ++ [:retrieval_snapshot_ref]
+
+  @type t :: %__MODULE__{}
+end
+
+defmodule Synapse.Memory.Entry do
+  @moduledoc "Refs-only product projection of one AppKit memory fragment."
+
+  @enforce_keys [
+    :id,
+    :state,
+    :title,
+    :memory_ref,
+    :memory_class,
+    :proof_token_ref,
+    :content_hash,
+    :redaction_policy_ref,
+    :reason_codes,
+    :snapshot,
+    :lifecycle,
+    :projection
+  ]
+  defstruct @enforce_keys ++
+              [
+                :evidence_ref,
+                :provenance,
+                :provenance_label,
+                :provenance_projection,
+                :content_artifact_ref,
+                :content_digest,
+                :recorded_at,
+                redacted_excerpt: nil,
+                feature_status: :durable_readback
+              ]
+
+  @type t :: %__MODULE__{}
+end
+
 defmodule Synapse.Memory do
   @moduledoc """
   Product-safe durable memory projections read through AppKit.
@@ -15,6 +79,7 @@ defmodule Synapse.Memory do
 
   alias AppKit.OperatorSurface
   alias Synapse.{Config, PlatformContext, ProductBootstrap}
+  alias Synapse.Memory.{Entry, Lifecycle, SnapshotIdentity}
 
   @raw_keys [
     :body,
@@ -27,7 +92,7 @@ defmodule Synapse.Memory do
     "raw_payload"
   ]
 
-  @spec list_memories(keyword()) :: {:ok, [map()]} | {:error, term()}
+  @spec list_memories(keyword()) :: {:ok, [Entry.t()]} | {:error, term()}
   def list_memories(opts \\ []) when is_list(opts) do
     with {:ok, context, runtime_opts} <- operator_context(opts),
          {:ok, proof_token_ref} <- proof_token_ref(runtime_opts),
@@ -47,7 +112,7 @@ defmodule Synapse.Memory do
     end
   end
 
-  @spec get_memory(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec get_memory(String.t(), keyword()) :: {:ok, Entry.t()} | {:error, term()}
   def get_memory(id_or_ref, opts \\ []) when is_binary(id_or_ref) and is_list(opts) do
     decoded_id = decode_route_id(id_or_ref)
 
@@ -58,7 +123,7 @@ defmodule Synapse.Memory do
                memory.memory_ref in [id_or_ref, decoded_id]
            end),
          {:ok, provenance} <- memory_provenance(memory.memory_ref, opts) do
-      {:ok, Map.put(memory, :provenance_projection, provenance)}
+      {:ok, %{memory | provenance_projection: provenance}}
     else
       nil -> {:error, :memory_projection_not_found}
       {:error, reason} -> {:error, reason}
@@ -134,22 +199,129 @@ defmodule Synapse.Memory do
     state = memory_state(projection)
     metadata = projection.metadata || %{}
 
-    %{
+    %Entry{
       id: route_id(projection.fragment_ref),
       state: state,
       title: metadata_value(metadata, :title) || projection.fragment_ref,
       memory_ref: projection.fragment_ref,
+      memory_class: memory_class(projection.tier),
       proof_token_ref: projection.proof_token_ref,
       evidence_ref: List.first(projection.evidence_refs),
       content_hash: projection.proof_hash,
       redaction_policy_ref: projection.redaction_posture,
-      redacted_excerpt: nil,
       provenance: List.first(projection.provenance_refs),
+      provenance_label: provenance_label(List.first(projection.provenance_refs)),
       reason_codes: reason_codes(projection, state),
-      feature_status: :durable_readback,
+      snapshot: snapshot_identity(projection, metadata),
+      lifecycle: lifecycle(projection, metadata),
+      content_artifact_ref: optional_string(metadata_value(metadata, :content_artifact_ref)),
+      content_digest: optional_string(metadata_value(metadata, :content_digest)),
+      recorded_at: optional_string(metadata_value(metadata, :recorded_at)),
       projection: projection
     }
   end
+
+  defp snapshot_identity(projection, metadata) do
+    %SnapshotIdentity{
+      proof_token_ref: projection.proof_token_ref,
+      proof_hash: projection.proof_hash,
+      snapshot_epoch: projection.snapshot_epoch,
+      commit_lsn: projection.commit_lsn,
+      retrieval_snapshot_ref: optional_string(metadata_value(metadata, :retrieval_snapshot_ref))
+    }
+  end
+
+  defp lifecycle(projection, metadata) do
+    {retention_state, retention_reason} = retention_state(metadata)
+    {deletion_state, deletion_reason} = deletion_state(projection, metadata)
+    {reindex_state, reindex_reason} = reindex_state(metadata)
+
+    %Lifecycle{
+      retention_state: retention_state,
+      retention_policy_ref: optional_string(metadata_value(metadata, :retention_policy_ref)),
+      retention_reason: retention_reason,
+      deletion_state: deletion_state,
+      deleted_at: optional_string(metadata_value(metadata, :deleted_at)),
+      deletion_reason: deletion_reason,
+      reindex_state: reindex_state,
+      index_revision: positive_integer(metadata_value(metadata, :index_revision)),
+      reindex_reason: reindex_reason
+    }
+  end
+
+  defp retention_state(metadata) do
+    case metadata_value(metadata, :retention_state) do
+      value when value in ["retained", :retained] -> {:retained, nil}
+      value when value in ["expired", :expired] -> {:expired, nil}
+      value when value in ["deleted", :deleted] -> {:deleted, nil}
+      value when value in ["legal_hold", :legal_hold] -> {:legal_hold, nil}
+      _other -> {:not_projected, "retention_state_not_projected"}
+    end
+  end
+
+  defp deletion_state(projection, metadata) do
+    reason = optional_string(metadata_value(metadata, :deletion_reason))
+
+    case metadata_value(metadata, :deletion_state) do
+      value when value in ["active", :active] ->
+        {:active, reason}
+
+      value when value in ["deleted", :deleted] ->
+        {:deleted, reason}
+
+      value when value in ["tombstoned", :tombstoned] ->
+        {:tombstoned, reason}
+
+      value when value in ["retention_expired", :retention_expired] ->
+        {:retention_expired, reason}
+
+      _other ->
+        deletion_state_from_invalidation(projection.cluster_invalidation_status)
+    end
+  end
+
+  defp deletion_state_from_invalidation("revoked"),
+    do: {:revoked, "exact_deletion_fact_not_projected"}
+
+  defp deletion_state_from_invalidation(status)
+       when status in ["pending", "reconciling"],
+       do: {:pending, status}
+
+  defp deletion_state_from_invalidation("unknown"),
+    do: {:unknown, "deletion_state_unknown"}
+
+  defp deletion_state_from_invalidation(_status),
+    do: {:not_projected, "deletion_state_not_projected"}
+
+  defp reindex_state(metadata) do
+    revision = positive_integer(metadata_value(metadata, :index_revision))
+
+    case metadata_value(metadata, :reindex_state) do
+      value when value in ["indexed", :indexed] -> {:indexed, nil}
+      value when value in ["pending", :pending] -> {:pending, nil}
+      value when value in ["rebuilding", :rebuilding] -> {:rebuilding, nil}
+      value when value in ["degraded", :degraded] -> {:degraded, nil}
+      _other when is_integer(revision) -> {:indexed, nil}
+      _other -> {:not_projected, "index_revision_not_projected"}
+    end
+  end
+
+  defp memory_class("working"), do: :working
+  defp memory_class(:working), do: :working
+  defp memory_class("episodic"), do: :episodic
+  defp memory_class(:episodic), do: :episodic
+  defp memory_class(_other), do: :unsupported
+
+  defp provenance_label(value) when is_binary(value), do: value
+
+  defp provenance_label(value) when is_map(value) do
+    optional_string(metadata_value(value, :source_ref)) ||
+      optional_string(metadata_value(value, :recording_operation_ref)) ||
+      optional_string(metadata_value(value, :authority_ref)) ||
+      "owner-projected provenance"
+  end
+
+  defp provenance_label(_value), do: nil
 
   defp memory_state(%MemoryFragmentProjection{cluster_invalidation_status: "revoked"}),
     do: :revoked
@@ -202,6 +374,12 @@ defmodule Synapse.Memory do
 
   defp metadata_value(metadata, key) when is_map(metadata),
     do: Map.get(metadata, key, Map.get(metadata, Atom.to_string(key)))
+
+  defp optional_string(value) when is_binary(value) and value != "", do: value
+  defp optional_string(_value), do: nil
+
+  defp positive_integer(value) when is_integer(value) and value > 0, do: value
+  defp positive_integer(_value), do: nil
 
   defp reject_raw_payload(attrs) do
     case Enum.find(@raw_keys, &Map.has_key?(attrs, &1)) do
