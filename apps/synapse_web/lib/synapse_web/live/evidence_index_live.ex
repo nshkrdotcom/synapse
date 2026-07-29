@@ -30,6 +30,19 @@ defmodule SynapseWeb.EvidenceIndexLive do
         </section>
 
         <section
+          :if={@snapshot.status == :degraded}
+          id="evidence-degraded"
+          class="rounded border border-amber-200 bg-amber-50 p-4"
+        >
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-amber-900">
+            Evidence partially available
+          </h2>
+          <p class="mt-2 text-sm text-amber-800">
+            {@snapshot.projection_error_count} durable run projection(s) could not be read.
+          </p>
+        </section>
+
+        <section
           :if={@snapshot.status == :unavailable}
           id="evidence-unavailable"
           class="rounded border border-amber-200 bg-amber-50 p-4"
@@ -43,7 +56,7 @@ defmodule SynapseWeb.EvidenceIndexLive do
         </section>
 
         <section
-          :if={@snapshot.status == :available}
+          :if={@snapshot.status != :unavailable}
           id="evidence-list"
           class="overflow-hidden rounded border border-slate-200 bg-white"
         >
@@ -83,7 +96,7 @@ defmodule SynapseWeb.EvidenceIndexLive do
         </section>
 
         <section
-          :if={@snapshot.status == :available}
+          :if={@snapshot.status != :unavailable}
           id="artifact-list"
           class="rounded border border-slate-200 bg-white p-4"
         >

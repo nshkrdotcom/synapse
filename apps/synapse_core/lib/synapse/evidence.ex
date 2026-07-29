@@ -16,13 +16,21 @@ defmodule Synapse.Evidence do
 
   @spec snapshot(keyword()) :: map()
   def snapshot(opts \\ []) when is_list(opts) do
-    case run_projections(opts) do
-      {:ok, projections} ->
+    case projection_batch(opts) do
+      {:ok, projections, failures} ->
+        {status, availability} =
+          if failures == [] do
+            {:available, available()}
+          else
+            {:degraded, degraded_projection_batch()}
+          end
+
         %{
-          status: :available,
-          availability: available(),
+          status: status,
+          availability: availability,
           evidence: evidence_items(projections),
           artifacts: artifact_items(projections),
+          projection_error_count: length(failures),
           replay: unavailable_replay(),
           source: "AppKit.ProductSurface"
         }
@@ -33,6 +41,7 @@ defmodule Synapse.Evidence do
           availability: unavailable(reason),
           evidence: [],
           artifacts: [],
+          projection_error_count: 0,
           replay: unavailable_replay(),
           source: "AppKit.ProductSurface"
         }
@@ -95,12 +104,17 @@ defmodule Synapse.Evidence do
 
   @spec operations(keyword()) :: map()
   def operations(opts \\ []) when is_list(opts) do
-    case run_projections(opts) do
-      {:ok, projections} ->
+    case projection_batch(opts) do
+      {:ok, projections, failures} ->
         {status, availability, runtime_status, health_rows} =
           case runtime_status(opts) do
             {:ok, runtime_status} ->
-              {:available, available(), runtime_status, health_rows(runtime_status)}
+              if failures == [] do
+                {:available, available(), runtime_status, health_rows(runtime_status)}
+              else
+                {:degraded, degraded_projection_batch(), runtime_status,
+                 health_rows(runtime_status)}
+              end
 
             {:error, _reason} ->
               {:degraded, degraded_runtime_status(), nil, []}
@@ -117,6 +131,7 @@ defmodule Synapse.Evidence do
           operator_required:
             Enum.filter(operations, &(&1.state in [:operator_required, :outcome_unknown])),
           capabilities: Enum.flat_map(projections, & &1.capabilities),
+          projection_error_count: length(failures),
           source: "AppKit.ProductSurface"
         }
 
@@ -129,6 +144,7 @@ defmodule Synapse.Evidence do
           operation_rows: [],
           operator_required: [],
           capabilities: [],
+          projection_error_count: 0,
           source: "AppKit.ProductSurface"
         }
     end
@@ -164,27 +180,37 @@ defmodule Synapse.Evidence do
 
   @spec run_projections(keyword()) :: {:ok, [RunProjection.t()]} | {:error, term()}
   def run_projections(opts \\ []) when is_list(opts) do
+    case projection_batch(opts) do
+      {:ok, projections, _failures} -> {:ok, projections}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp projection_batch(opts) do
     with {:ok, context, surface_opts} <- product_surface_context(opts),
          {:ok, run_refs} <- run_refs(opts) do
-      Enum.reduce_while(run_refs, {:ok, []}, fn run_ref, {:ok, acc} ->
+      Enum.reduce(run_refs, {[], []}, fn run_ref, {projections, failures} ->
         case safe_run_projection(context, run_ref, surface_opts) do
           {:ok, %RunProjection{} = projection} ->
-            {:cont, {:ok, [projection | acc]}}
+            {[projection | projections], failures}
 
           {:error, reason} ->
-            {:halt, {:error, reason}}
+            {projections, [{run_ref, reason} | failures]}
         end
       end)
-      |> case do
-        {:ok, projections} ->
-          {:ok,
-           projections
-           |> Enum.reverse()
-           |> Enum.sort_by(&{updated_sort_key(&1.updated_at), &1.run_ref}, :desc)}
-
-        {:error, reason} ->
+      |> then(fn
+        {[], failures} when failures != [] ->
+          {_run_ref, reason} = List.last(failures)
           {:error, reason}
-      end
+
+        {projections, failures} ->
+          sorted =
+            projections
+            |> Enum.reverse()
+            |> Enum.sort_by(&{updated_sort_key(&1.updated_at), &1.run_ref}, :desc)
+
+          {:ok, sorted, Enum.reverse(failures)}
+      end)
     end
   end
 
@@ -394,6 +420,10 @@ defmodule Synapse.Evidence do
   defp unavailable_reason(_reason), do: :owner_unavailable
 
   defp available, do: availability(:available)
+
+  defp degraded_projection_batch,
+    do: availability({:degraded, "reason://app-kit/partial-run-projection"})
+
   defp degraded_runtime_status, do: availability({:degraded, "reason://app-kit/runtime-status"})
 
   defp availability(value) do

@@ -41,6 +41,33 @@ defmodule Synapse.EvidenceTest do
     assert [%OperationProjection{state: :completed}] = ops.operation_rows
   end
 
+  test "retains valid aggregate projections and reports partial owner failure" do
+    opts = [include_unavailable_run: true]
+
+    assert %{
+             status: :degraded,
+             projection_error_count: 1,
+             evidence: evidence,
+             artifacts: artifacts
+           } = Evidence.snapshot(opts)
+
+    assert evidence != []
+    assert artifacts != []
+
+    assert %{
+             status: :degraded,
+             projection_error_count: 1,
+             operation_rows: [%OperationProjection{}],
+             runtime_status: %RuntimeStatusSnapshot{}
+           } = Evidence.operations(opts)
+
+    assert {:error, :owner_unavailable} =
+             Evidence.run_projections(
+               run_ref: "run://durable/unavailable-projection",
+               include_unavailable_run: true
+             )
+  end
+
   test "builds runtime facts projection" do
     assert {:ok, %RuntimeFactsProjection{} = facts} = Evidence.runtime_facts()
     assert facts.metadata["source"] == "AppKit.ProductSurface"

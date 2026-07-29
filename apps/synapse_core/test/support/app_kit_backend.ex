@@ -23,6 +23,9 @@ defmodule Synapse.Test.ProductSurfaceBackend do
   @timestamp "2026-07-20T00:00:00Z"
 
   @impl true
+  def run_projection(_context, "run://durable/unavailable-projection", _opts),
+    do: {:error, :owner_unavailable}
+
   def run_projection(_context, run_ref, _opts) do
     {:ok,
      %{
@@ -277,7 +280,7 @@ defmodule Synapse.Test.AppKitBackend do
 
   def list_pending_interactions(_context, _request, _opts), do: {:ok, []}
 
-  def state_snapshot(_context, _request, _opts) do
+  def state_snapshot(_context, _request, opts) do
     {:ok, row} = runtime_row("run://durable/test-run")
 
     generic_row = %{
@@ -286,11 +289,21 @@ defmodule Synapse.Test.AppKitBackend do
         run_ref: "subject://generic/work"
     }
 
+    rows = [row, %{generic_row | extensions: %{}}]
+
+    rows =
+      if Keyword.get(opts, :include_unavailable_run) do
+        {:ok, unavailable_row} = runtime_row("run://durable/unavailable-projection")
+        [unavailable_row | rows]
+      else
+        rows
+      end
+
     RuntimeStateSnapshot.new(%{
       tenant_ref: "tenant://default",
       installation_ref: "installation://default",
       generated_at: @timestamp,
-      rows: [row, %{generic_row | extensions: %{}}],
+      rows: rows,
       persistence_posture: PersistencePosture.durable(:runtime_projection)
     })
   end
