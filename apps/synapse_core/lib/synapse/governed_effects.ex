@@ -12,6 +12,8 @@ defmodule Synapse.GovernedEffects do
   alias Synapse.{Config, PlatformContext, ProductBootstrap}
 
   @operator_ref "actor:synapse:operator"
+  @effect_statuses ~w(authorized dispatching running completed failed cancelled ambiguous)
+  @review_statuses ~w(pending in_review accepted rejected waived escalated)
 
   @spec propose_reviewed_file_effect(struct(), map(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -19,7 +21,8 @@ defmodule Synapse.GovernedEffects do
       when is_map(proposal) and is_list(opts) do
     with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
          {:ok, %GovernedEffectDTO{} = effect} <-
-           EffectSurface.propose_effect(context, proposal, surface_opts) do
+           EffectSurface.propose_effect(context, proposal, surface_opts),
+         :ok <- validate_durable_effect(effect) do
       {:ok, effect_view(effect)}
     end
   end
@@ -33,6 +36,7 @@ defmodule Synapse.GovernedEffects do
          {:ok, context} <- product_context(opts, attrs),
          {:ok, %GovernedEffectDTO{} = effect} <-
            EffectSurface.get_effect(context, owner_execution_ref, effect_opts),
+         :ok <- validate_durable_effect(effect),
          :ok <- ensure_pending_review(effect) do
       ReviewSurface.record_decision_by_id(
         context,
@@ -55,13 +59,15 @@ defmodule Synapse.GovernedEffects do
          {:ok, context} <- product_context(opts),
          {:ok, %GovernedEffectDTO{} = effect} <-
            EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         :ok <- validate_durable_effect(effect),
          {:ok, %GovernedEffectDTO{} = updated} <-
            EffectSurface.begin_dispatch(
              context,
              owner_execution_ref,
              %{expected_row_version: effect.row_version},
              surface_opts
-           ) do
+           ),
+         :ok <- validate_durable_effect(updated) do
       {:ok, effect_view(updated)}
     end
   end
@@ -74,6 +80,7 @@ defmodule Synapse.GovernedEffects do
          {:ok, context} <- product_context(opts),
          {:ok, %GovernedEffectDTO{} = effect} <-
            EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         :ok <- validate_durable_effect(effect),
          command <-
            attrs
            |> take_values([:attempt_ref, :external_ref, :accepted_receipt_ref])
@@ -84,7 +91,8 @@ defmodule Synapse.GovernedEffects do
              owner_execution_ref,
              command,
              surface_opts
-           ) do
+           ),
+         :ok <- validate_durable_effect(updated) do
       {:ok, effect_view(updated)}
     end
   end
@@ -97,6 +105,7 @@ defmodule Synapse.GovernedEffects do
          {:ok, context} <- product_context(opts),
          {:ok, %GovernedEffectDTO{} = effect} <-
            EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         :ok <- validate_durable_effect(effect),
          command <-
            attrs
            |> take_values([
@@ -115,7 +124,8 @@ defmodule Synapse.GovernedEffects do
              owner_execution_ref,
              command,
              surface_opts
-           ) do
+           ),
+         :ok <- validate_durable_effect(updated) do
       {:ok, effect_view(updated)}
     end
   end
@@ -126,7 +136,8 @@ defmodule Synapse.GovernedEffects do
     with {:ok, surface_opts} <- ProductBootstrap.effect_surface_options(opts),
          {:ok, context} <- product_context(opts),
          {:ok, %GovernedEffectDTO{} = effect} <-
-           EffectSurface.get_effect(context, owner_execution_ref, surface_opts) do
+           EffectSurface.get_effect(context, owner_execution_ref, surface_opts),
+         :ok <- validate_durable_effect(effect) do
       {:ok, effect_view(effect)}
     end
   end
@@ -143,13 +154,38 @@ defmodule Synapse.GovernedEffects do
              context,
              idempotency_key,
              surface_opts
-           ) do
+           ),
+         :ok <- validate_durable_effect(effect) do
       {:ok, effect_view(effect)}
     end
   end
 
+  @doc "Reads the durable governed effect linked by a validated review projection."
+  @spec get_effect_for_review(map(), keyword()) :: {:ok, map() | nil} | {:error, term()}
+  def get_effect_for_review(%{effect_lookup: nil}, _opts), do: {:ok, nil}
+
+  def get_effect_for_review(
+        %{effect_lookup: {:owner_execution_ref, owner_execution_ref}},
+        opts
+      )
+      when is_binary(owner_execution_ref) and is_list(opts) do
+    get_effect(owner_execution_ref, opts)
+  end
+
+  def get_effect_for_review(%{effect_lookup: {:idempotency_key, idempotency_key}}, opts)
+      when is_binary(idempotency_key) and is_list(opts) do
+    get_effect_by_idempotency(idempotency_key, opts)
+  end
+
+  def get_effect_for_review(_review, _opts),
+    do: {:error, :invalid_durable_effect_lookup}
+
   @spec effect_view(GovernedEffectDTO.t()) :: map()
   def effect_view(%GovernedEffectDTO{} = effect) do
+    receipt = nested_view(effect.receipt)
+    ambiguity = nested_view(effect.ambiguity)
+    continuation = nested_view(effect.continuation)
+
     %{
       contract_version: effect.contract_version,
       effect_ref: effect.effect_ref,
@@ -169,9 +205,21 @@ defmodule Synapse.GovernedEffects do
       pinned_tool_manifest: effect.pinned_tool_manifest,
       reviewed_operation: effect.reviewed_operation,
       review: nested_view(effect.review),
-      receipt: nested_view(effect.receipt),
-      ambiguity: nested_view(effect.ambiguity),
-      continuation: nested_view(effect.continuation)
+      receipt: receipt,
+      ambiguity: ambiguity,
+      continuation: continuation,
+      effect_type: :tool_effect,
+      state: effect_state(effect.status),
+      availability: availability(effect),
+      authority_ref: effect.grant_ref,
+      dispatch_ref: effect.runtime_execution_ref,
+      receipt_ref: receipt && map_value(receipt, :receipt_ref),
+      artifact_refs: artifact_refs(effect),
+      evidence_refs: [],
+      cancelled?: effect.status == "cancelled",
+      ambiguous?: not is_nil(effect.ambiguity),
+      retry_allowed?: retry_allowed?(effect),
+      operator_required?: operator_required?(effect)
     }
   end
 
@@ -199,6 +247,90 @@ defmodule Synapse.GovernedEffects do
        do: :ok
 
   defp ensure_pending_review(_effect), do: {:error, :effect_review_not_pending}
+
+  defp validate_durable_effect(%GovernedEffectDTO{} = effect) do
+    with true <- effect.status in @effect_statuses,
+         true <- is_integer(effect.row_version) and effect.row_version > 0,
+         true <- valid_review?(effect.review),
+         :ok <- validate_effect_state(effect) do
+      :ok
+    else
+      _other -> {:error, :invalid_durable_effect_projection}
+    end
+  end
+
+  defp validate_effect_state(%GovernedEffectDTO{status: "completed"} = effect) do
+    if receipt_ref?(effect.receipt) and present_ref?(effect.result_artifact_ref) and
+         is_nil(effect.ambiguity),
+       do: :ok,
+       else: {:error, :invalid_durable_effect_projection}
+  end
+
+  defp validate_effect_state(%GovernedEffectDTO{status: status} = effect)
+       when status in ["failed", "cancelled"] do
+    if receipt_ref?(effect.receipt) and is_nil(effect.ambiguity),
+      do: :ok,
+      else: {:error, :invalid_durable_effect_projection}
+  end
+
+  defp validate_effect_state(%GovernedEffectDTO{status: "ambiguous"} = effect) do
+    if receipt_ref?(effect.receipt) and not is_nil(effect.ambiguity) and
+         not is_nil(effect.continuation) and effect.ambiguity.reconciliation_required == true and
+         effect.ambiguity.effect_retry_allowed == false,
+       do: :ok,
+       else: {:error, :invalid_durable_effect_projection}
+  end
+
+  defp validate_effect_state(%GovernedEffectDTO{} = effect) do
+    if is_nil(effect.receipt) and is_nil(effect.ambiguity),
+      do: :ok,
+      else: {:error, :invalid_durable_effect_projection}
+  end
+
+  defp valid_review?(%{status: status, row_version: row_version}) do
+    status in @review_statuses and is_integer(row_version) and row_version > 0
+  end
+
+  defp valid_review?(_review), do: false
+
+  defp receipt_ref?(%{receipt_ref: ref}), do: present_ref?(ref)
+  defp receipt_ref?(_receipt), do: false
+
+  defp effect_state("authorized"), do: :waiting_review
+  defp effect_state("dispatching"), do: :accepted
+  defp effect_state("running"), do: :running
+  defp effect_state("completed"), do: :completed
+  defp effect_state("failed"), do: :failed
+  defp effect_state("cancelled"), do: :cancelled
+  defp effect_state("ambiguous"), do: :outcome_unknown
+
+  defp availability(%GovernedEffectDTO{
+         status: "ambiguous",
+         owner_execution_ref: operation_ref
+       }),
+       do: {:outcome_unknown, operation_ref}
+
+  defp availability(%GovernedEffectDTO{}), do: :available
+
+  defp artifact_refs(effect) do
+    [effect.result_artifact_ref]
+    |> Enum.filter(&present_ref?/1)
+    |> Enum.uniq()
+  end
+
+  defp retry_allowed?(%GovernedEffectDTO{ambiguity: %{effect_retry_allowed: allowed?}}),
+    do: allowed? == true
+
+  defp retry_allowed?(%GovernedEffectDTO{}), do: false
+
+  defp operator_required?(%GovernedEffectDTO{
+         ambiguity: %{reconciliation_required: true}
+       }),
+       do: true
+
+  defp operator_required?(%GovernedEffectDTO{}), do: false
+
+  defp present_ref?(value), do: is_binary(value) and String.trim(value) != ""
 
   defp exact_review_payload(effect) do
     %{
