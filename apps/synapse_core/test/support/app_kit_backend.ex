@@ -237,7 +237,11 @@ defmodule Synapse.Test.AppKitBackend do
     end
   end
 
-  def submit_agent_turn(_context, submission, _opts) do
+  def submit_agent_turn(context, submission, opts) do
+    if pid = Keyword.get(opts, :test_pid) do
+      send(pid, {:submit_agent_turn, context, submission})
+    end
+
     command_result(:submit_turn, submission.idempotency_key, submission.run_ref)
   end
 

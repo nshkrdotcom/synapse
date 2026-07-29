@@ -13,12 +13,16 @@ defmodule Synapse.TurnsTest do
                  "input_summary" => "Continue"
                },
                submission_token: "browser-turn-1",
-               cursor_ref: "cursor://durable/test-run/1"
+               cursor_ref: "cursor://durable/test-run/1",
+               test_pid: self()
              )
 
     assert %CommandResult{} = result
     assert result.command_kind == :submit_turn
     assert result.accepted? == true
+
+    assert_receive {:submit_agent_turn, context, submission}
+    assert submission.actor_ref == context.actor_ref.id
   end
 
   test "does not fall back when the runtime stack is invalid" do

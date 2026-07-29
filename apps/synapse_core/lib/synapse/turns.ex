@@ -6,7 +6,6 @@ defmodule Synapse.Turns do
   alias AppKit.AgentIntake
   alias Synapse.{Config, PlatformContext, ProductBootstrap}
 
-  @actor_ref "actor:synapse:operator"
   @allowed_kinds %{
     "user_input" => :user_input,
     "approval" => :approval,
@@ -75,7 +74,7 @@ defmodule Synapse.Turns do
       context,
       %{
         idempotency_key: "synapse:turn:#{kind}:#{submission_identity}",
-        actor_ref: @actor_ref,
+        actor_ref: context.actor_ref.id,
         run_ref: run_ref,
         kind: kind,
         payload_ref: payload_ref,
