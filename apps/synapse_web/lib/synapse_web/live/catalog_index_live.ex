@@ -9,7 +9,7 @@ defmodule SynapseWeb.CatalogIndexLive do
       socket
       |> assign(:page_title, "Catalog")
       |> assign(:catalog, catalog)
-      |> stream(:entries, Synapse.Catalog.list_entries())
+      |> stream(:entries, catalog.entries)
 
     {:ok, socket}
   end
@@ -22,11 +22,25 @@ defmodule SynapseWeb.CatalogIndexLive do
         <section>
           <h1 class="text-2xl font-semibold text-slate-950">Catalog</h1>
           <p class="mt-1 text-sm text-slate-600">
-            Capability eligibility projected through product-safe AppKit DTOs.
+            Executable capabilities admitted by the composed AppKit runtime.
           </p>
         </section>
 
         <section
+          :if={@catalog.status == :unavailable}
+          id="catalog-unavailable"
+          class="rounded border border-amber-200 bg-amber-50 p-4"
+        >
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-amber-900">
+            Catalog unavailable
+          </h2>
+          <p id="catalog-unavailable-reason" class="mt-2 text-sm text-amber-800">
+            {availability_reason(@catalog.availability)}
+          </p>
+        </section>
+
+        <section
+          :if={@catalog.status == :available}
           id="catalog-eligibility"
           class="overflow-hidden rounded border border-slate-200 bg-white"
         >
@@ -35,8 +49,8 @@ defmodule SynapseWeb.CatalogIndexLive do
               <tr>
                 <th class="px-3 py-2">Capability</th>
                 <th class="px-3 py-2">Kind</th>
+                <th class="px-3 py-2">Mode</th>
                 <th class="px-3 py-2">Status</th>
-                <th class="px-3 py-2">Residency</th>
               </tr>
             </thead>
             <tbody
@@ -52,48 +66,30 @@ defmodule SynapseWeb.CatalogIndexLive do
                   >
                     {entry.title}
                   </.link>
-                  <div class="text-xs text-slate-500">{entry.eligibility_ref}</div>
+                  <div class="text-xs text-slate-500">{entry.producer_revision_ref}</div>
                 </td>
                 <td class="px-3 py-2 text-slate-700">{entry.kind}</td>
+                <td class="px-3 py-2 text-slate-700">{entry.configured_mode}</td>
                 <td class="px-3 py-2 text-slate-700">{entry.status}</td>
-                <td class="px-3 py-2 text-slate-500">{entry.posture.residency}</td>
               </tr>
             </tbody>
           </table>
-        </section>
 
-        <section id="catalog-model-list" class="rounded border border-slate-200 bg-white p-4">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Model Profiles</h2>
-          <div class="mt-3 flex flex-wrap gap-2 text-xs">
-            <span
-              :for={model <- @catalog.model_catalog.model_profiles}
-              class="rounded bg-slate-100 px-2 py-1 text-slate-700"
-            >
-              {model.model_profile_ref}
-            </span>
-          </div>
-        </section>
-
-        <section id="catalog-skill-list" class="rounded border border-slate-200 bg-white p-4">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Skill Profiles</h2>
-          <div class="mt-3 flex flex-wrap gap-2 text-xs">
-            <span
-              :for={skill <- @catalog.skills}
-              class="rounded bg-slate-100 px-2 py-1 text-slate-700"
-            >
-              {skill.skill_ref}
-            </span>
-          </div>
-        </section>
-
-        <section id="catalog-economics-disabled" class="rounded border border-slate-200 bg-white p-4">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Assignment</h2>
-          <p class="mt-2 text-sm text-slate-600">
-            {@catalog.assignment_status.reason}
+          <p
+            :if={@catalog.entries == []}
+            id="catalog-empty"
+            class="border-t border-slate-100 p-4 text-sm text-slate-600"
+          >
+            No executable capabilities are currently admitted.
           </p>
         </section>
       </div>
     </Layouts.app>
     """
   end
+
+  defp availability_reason(%{reason: reason}) when is_atom(reason) and not is_nil(reason),
+    do: Atom.to_string(reason)
+
+  defp availability_reason(_availability), do: "owner_unavailable"
 end
