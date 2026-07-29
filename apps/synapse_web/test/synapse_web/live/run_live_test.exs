@@ -6,6 +6,7 @@ defmodule SynapseWeb.RunLiveTest do
 
     assert has_element?(view, "#run-index-list")
     assert has_element?(view, "#run-index-stream", "Durable run test-run")
+    assert has_element?(view, "#run-index-stream", "running")
     refute has_element?(view, "#run-index-unavailable")
   end
 
@@ -70,6 +71,11 @@ defmodule SynapseWeb.RunLiveTest do
     assert has_element?(view, "#run-show-state", "accepted")
     assert has_element?(view, "#run-show-persistence", "durable")
     assert has_element?(view, "#run-turn-count", "1 durable turn")
+    assert has_element?(view, "#run-control-state", "running")
+    assert has_element?(view, "#run-control-version", "3")
+    assert has_element?(view, "#run-pause-button:not([disabled])")
+    assert has_element?(view, "#run-cancel-button:not([disabled])")
+    assert has_element?(view, "#run-supersede-button[disabled]")
     assert has_element?(view, "#run-cursor-ledger", "run://durable/test-run")
     assert has_element?(view, "#run-cursor-sequence", "1")
     assert has_element?(view, "#run-event-1", "Run and initial turn accepted durably")
@@ -77,6 +83,27 @@ defmodule SynapseWeb.RunLiveTest do
     view |> element("#run-refresh-button") |> render_click()
     assert has_element?(view, "#run-cursor-ref", "cursor://test/test-run/1")
     assert has_element?(view, "#run-cursor-sequence", "1")
+
+    view |> element("#run-pause-button") |> render_click()
+    assert has_element?(view, "#run-control-accepted", "Accepted by durable test backend")
+  end
+
+  test "shows ambiguous and degraded recovery without replay", %{conn: conn} do
+    {:ok, ambiguous, _html} = live(conn, ~p"/runs/ambiguous")
+    assert has_element?(ambiguous, "#run-control-ambiguous", "No effect will be replayed")
+    assert has_element?(ambiguous, "#run-control-degraded", "provider_outcome_unknown")
+    refute has_element?(ambiguous, "#run-control-actions button")
+
+    {:ok, operator_required, _html} = live(recycle(conn), ~p"/runs/operator-required")
+
+    assert has_element?(
+             operator_required,
+             "#run-control-degraded",
+             "external_operation_not_found"
+           )
+
+    assert has_element?(operator_required, "#run-retry-button[disabled]")
+    assert has_element?(operator_required, "#run-cancel-button:not([disabled])")
   end
 
   test "shows explicit unavailable and conflict readback states", %{conn: conn} do

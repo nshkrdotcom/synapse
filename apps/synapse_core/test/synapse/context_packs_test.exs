@@ -3,24 +3,28 @@ defmodule Synapse.ContextPacksTest do
 
   alias Synapse.ContextPacks
 
-  test "lists fixture-backed context packs" do
-    assert [%{id: "phase-3"}] = ContextPacks.list_context_packs()
+  test "lists immutable AppKit retrieval snapshots" do
+    assert {:ok, [pack]} = ContextPacks.list_context_packs()
+    assert pack.ref == "proof-token://synapse/test-snapshot"
+    assert pack.feature_status == :durable_retrieval_snapshot
   end
 
   test "returns all memory disposition buckets" do
-    assert {:ok, pack} = ContextPacks.get_context_pack("phase-3")
+    id = URI.encode_www_form("proof-token://synapse/test-snapshot")
+    assert {:ok, pack} = ContextPacks.get_context_pack(id)
 
     assert [%{state: :included}] = pack.included
-    assert [%{state: :denied}] = pack.denied
+    assert [] = pack.denied
     assert [%{state: :stale}] = pack.stale
     assert [%{state: :revoked}] = pack.revoked
     assert [%{state: :candidate}] = pack.candidates
+    assert [%{state: :degraded}] = pack.degraded
   end
 
-  test "reports fixture-backed context surface status" do
+  test "reports durable AppKit context surface status" do
     assert %{
-             status: :fixture_backed,
-             public_surface: :not_finalized
+             status: :durable_readback,
+             public_surface: "AppKit.OperatorSurface"
            } = ContextPacks.surface_status()
   end
 end

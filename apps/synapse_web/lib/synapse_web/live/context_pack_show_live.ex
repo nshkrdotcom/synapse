@@ -55,6 +55,7 @@ defmodule SynapseWeb.ContextPackShowLive do
           <.bucket id="context-stale-items" title="Stale" entries={@pack.stale} />
           <.bucket id="context-revoked-items" title="Revoked" entries={@pack.revoked} />
           <.bucket id="context-candidate-items" title="Candidates" entries={@pack.candidates} />
+          <.bucket id="context-degraded-items" title="Degraded" entries={@pack.degraded} />
         </section>
 
         <section :if={@error} class="rounded border border-red-200 bg-red-50 p-4">
@@ -74,7 +75,7 @@ defmodule SynapseWeb.ContextPackShowLive do
     <section id={@id} class="rounded border border-slate-200 bg-white p-4">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">{@title}</h2>
       <div class="mt-3 divide-y divide-slate-100">
-        <div :for={entry <- @entries} class="py-3">
+        <div :for={entry <- @entries} data-memory-entry class="py-3">
           <div class="font-medium text-slate-950">{entry.ref}</div>
           <div class="mt-1 text-sm text-slate-600">{entry.state}</div>
           <div class="mt-2 flex flex-wrap gap-2 text-xs">

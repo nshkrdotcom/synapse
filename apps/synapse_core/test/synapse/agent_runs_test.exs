@@ -51,6 +51,8 @@ defmodule Synapse.AgentRunsTest do
 
     assert run.ref == "run://durable/test-run"
     assert run.state == :accepted
+    assert run.control_state == "running"
+    assert run.control.row_version == 3
     assert run.title == "Durable run test-run"
     assert run.persistence_posture.durable? == true
   end
@@ -66,6 +68,51 @@ defmodule Synapse.AgentRunsTest do
     assert run.cursor.last_seq_seen == 1
     assert [event] = run.events
     assert event.event_kind == :run_started
+    assert run.available_controls == [:pause, :cancel, :supersede]
+    assert run.ambiguous? == false
+    assert run.degraded? == false
+  end
+
+  test "submits optimistic durable control through AppKit" do
+    assert {:ok, result} =
+             AgentRuns.control_run(
+               "run://durable/test-run",
+               :pause,
+               %{expected_control_row_version: 3}
+             )
+
+    assert result.command_kind == :pause
+    assert result.workflow_effect_state == "queued_signal"
+    assert result.projection_state == :pause_requested
+    assert result.persistence_posture.durable? == true
+  end
+
+  test "fails closed on missing or stale optimistic control versions" do
+    assert {:error, :invalid_expected_control_row_version} =
+             AgentRuns.control_run("run://durable/test-run", :pause, %{})
+
+    assert {:error, %SurfaceError{} = error} =
+             AgentRuns.control_run(
+               "run://durable/stale-control",
+               :pause,
+               %{expected_control_row_version: 2}
+             )
+
+    assert error.kind == :conflict
+    assert error.retryable == false
+  end
+
+  test "projects ambiguous and operator-required recovery without replay controls" do
+    assert {:ok, ambiguous} = AgentRuns.get_run("run://durable/ambiguous")
+    assert ambiguous.ambiguous? == true
+    assert ambiguous.degraded? == true
+    assert ambiguous.available_controls == []
+    assert ambiguous.control.external_operation_ref == "operation://durable/ambiguous"
+
+    assert {:ok, operator_required} = AgentRuns.get_run("run://durable/operator-required")
+    assert operator_required.ambiguous? == false
+    assert operator_required.degraded? == true
+    assert operator_required.available_controls == [:retry, :cancel, :supersede]
   end
 
   test "refresh resumes from the previously returned durable cursor" do

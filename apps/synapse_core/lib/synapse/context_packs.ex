@@ -1,72 +1,82 @@
 defmodule Synapse.ContextPacks do
   @moduledoc """
-  Product-safe context-pack projections.
+  Product projections of immutable AppKit memory retrieval snapshots.
   """
 
-  @fixture_packs [
-    %{
-      id: "phase-3",
-      ref: "context-pack://fixture/phase-3",
-      mode: :run_context,
-      run_ref: "run://fixture/phase-3",
-      trace_id: "33333333333333333333333333333333",
-      context_hash: "sha256:context-pack-phase-3",
-      redaction_policy_ref: "redaction://synapse/hash-only",
-      included: [
-        %{
-          ref: "memory://fixture/included-project-fact",
-          state: :included,
-          evidence_ref: "memory-evidence://fixture/included-project-fact"
-        }
-      ],
-      denied: [
-        %{
-          ref: "memory://fixture/denied-sensitive-fact",
-          state: :denied,
-          reason_codes: ["authority_denied", "redaction_no_export"]
-        }
-      ],
-      stale: [
-        %{
-          ref: "memory://fixture/stale-run-note",
-          state: :stale,
-          reason_codes: ["superseded"]
-        }
-      ],
-      revoked: [
-        %{
-          ref: "memory://fixture/revoked-agent-note",
-          state: :revoked,
-          reason_codes: ["revoked"]
-        }
-      ],
-      candidates: [
-        %{
-          ref: "memory://fixture/candidate-learning",
-          state: :candidate,
-          reason_codes: ["promotion_review_required"]
-        }
-      ]
-    }
-  ]
+  alias Synapse.Memory
 
-  @spec list_context_packs(keyword()) :: [map()]
-  def list_context_packs(_opts \\ []), do: @fixture_packs
-
-  @spec get_context_pack(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_context_pack(id_or_ref, _opts \\ []) when is_binary(id_or_ref) do
-    case Enum.find(@fixture_packs, fn pack -> pack.id == id_or_ref or pack.ref == id_or_ref end) do
-      nil -> {:error, :context_pack_not_found}
-      pack -> {:ok, pack}
+  @spec list_context_packs(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_context_packs(opts \\ []) when is_list(opts) do
+    with {:ok, memories} <- Memory.list_memories(opts) do
+      case memories do
+        [] -> {:ok, []}
+        [_first | _rest] -> {:ok, [context_pack(memories)]}
+      end
     end
   end
 
-  @spec surface_status() :: map()
-  def surface_status do
+  @spec get_context_pack(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_context_pack(id_or_ref, opts \\ []) when is_binary(id_or_ref) and is_list(opts) do
+    decoded_id = decode_route_id(id_or_ref)
+
+    with {:ok, packs} <- list_context_packs(opts),
+         %{} = pack <-
+           Enum.find(packs, fn pack ->
+             pack.id in [id_or_ref, decoded_id] or pack.ref in [id_or_ref, decoded_id]
+           end) do
+      {:ok, pack}
+    else
+      nil -> {:error, :context_pack_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec surface_status(keyword()) :: map()
+  def surface_status(opts \\ []), do: Memory.surface_status(opts)
+
+  defp context_pack(memories) do
+    first = hd(memories)
+    projection = first.projection
+
+    entries =
+      Enum.map(memories, fn memory ->
+        %{
+          ref: memory.memory_ref,
+          state: memory.state,
+          evidence_ref: memory.evidence_ref,
+          proof_token_ref: memory.proof_token_ref,
+          reason_codes: memory.reason_codes
+        }
+      end)
+
     %{
-      status: :fixture_backed,
-      public_surface: :not_finalized,
-      current_bridge: "AppKit context-pack bridge"
+      id: URI.encode_www_form(projection.proof_token_ref),
+      ref: projection.proof_token_ref,
+      mode: :retrieval_snapshot,
+      run_ref: metadata_value(projection.metadata || %{}, :run_ref),
+      trace_id: metadata_value(projection.metadata || %{}, :trace_id),
+      context_hash: projection.proof_hash,
+      snapshot_epoch: projection.snapshot_epoch,
+      commit_lsn: projection.commit_lsn,
+      redaction_policy_ref: projection.redaction_posture,
+      included: bucket(entries, :included),
+      denied: bucket(entries, :denied),
+      stale: bucket(entries, :stale),
+      revoked: bucket(entries, :revoked),
+      candidates: bucket(entries, :candidate),
+      degraded: bucket(entries, :degraded),
+      feature_status: :durable_retrieval_snapshot
     }
   end
+
+  defp bucket(entries, state), do: Enum.filter(entries, &(&1.state == state))
+
+  defp decode_route_id(value) do
+    URI.decode_www_form(value)
+  rescue
+    ArgumentError -> value
+  end
+
+  defp metadata_value(metadata, key) when is_map(metadata),
+    do: Map.get(metadata, key, Map.get(metadata, Atom.to_string(key)))
 end

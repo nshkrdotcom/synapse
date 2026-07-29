@@ -5,6 +5,7 @@ defmodule Synapse.Test.AppKitBackendStack do
     AppKit.BackendStack.new!(
       agent_intake_backend: Synapse.Test.AppKitBackend,
       headless_backend: Synapse.Test.AppKitBackend,
+      operator_backend: Synapse.Test.AppKitBackend,
       effect_surface_backend: Synapse.Test.EffectBackend,
       review_backend: Synapse.Test.ReviewBackend
     )
@@ -28,9 +29,15 @@ defmodule Synapse.Test.AppKitBackend do
     RuntimeStateSnapshot
   }
 
-  alias AppKit.Core.{PersistencePosture, SurfaceError}
+  alias AppKit.Core.{
+    MemoryFragmentProjection,
+    MemoryFragmentProvenance,
+    PersistencePosture,
+    SurfaceError
+  }
 
   @timestamp "2026-07-20T00:00:00Z"
+  @proof_hash "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
   def start_agent_run(_context, request, _opts) do
     case request.params.title do
@@ -119,9 +126,71 @@ defmodule Synapse.Test.AppKitBackend do
   def request_runtime_refresh(_context, request, _opts),
     do: command_result(:refresh, request.idempotency_key, request.scope_ref)
 
-  def request_runtime_control(_context, _request, _opts), do: {:error, :not_used}
+  def request_runtime_control(_context, request, _opts) do
+    if map_value(request.params, :expected_control_row_version) == 2 do
+      surface_error(
+        "stale_control_version",
+        "Run control changed; reload before retrying",
+        :conflict,
+        false
+      )
+    else
+      command_result(request.action, request.idempotency_key, request.run_ref,
+        workflow_effect_state: :queued_signal,
+        projection_state: requested_state(request.action)
+      )
+    end
+  end
+
+  def list_memory_fragments(_context, request, _opts) do
+    {:ok,
+     [
+       fragment(request.proof_token_ref, "project-fact", "fresh", "none", %{
+         "title" => "Included project fact"
+       }),
+       fragment(request.proof_token_ref, "stale-note", "invalidation_pending", "pending", %{
+         "title" => "Stale run note"
+       }),
+       fragment(request.proof_token_ref, "revoked-note", "fresh", "revoked", %{
+         "title" => "Revoked agent note"
+       }),
+       fragment(request.proof_token_ref, "candidate-learning", "fresh", "none", %{
+         "title" => "Candidate learning",
+         "state" => "candidate"
+       }),
+       fragment(request.proof_token_ref, "partitioned-note", "partitioned", "unknown", %{
+         "title" => "Partitioned memory"
+       })
+     ]}
+  end
+
+  def memory_fragment_by_proof_token(context, lookup, opts) do
+    with {:ok, [fragment | _rest]} <-
+           list_memory_fragments(context, %{proof_token_ref: lookup.proof_token_ref}, opts) do
+      {:ok, fragment}
+    end
+  end
+
+  def memory_fragment_provenance(_context, fragment_ref, _opts) do
+    MemoryFragmentProvenance.new(%{
+      fragment_ref: fragment_ref,
+      proof_token_ref: "proof-token://synapse/test-snapshot",
+      proof_hash: @proof_hash,
+      source_contract_name: "OuterBrain.MemoryContextProvenance.v2",
+      snapshot_epoch: 7,
+      source_node_ref: "node://outer-brain/test",
+      commit_lsn: "0/16B6C50",
+      commit_hlc: %{"physical_ms" => 1_774_000_000_000, "logical" => 0},
+      provenance_refs: ["provenance://outer-brain/#{run_token(fragment_ref)}"],
+      evidence_refs: ["evidence://outer-brain/#{run_token(fragment_ref)}"],
+      governance_refs: ["authority://synapse/memory-read"],
+      metadata: %{"source" => "durable_test_backend"}
+    })
+  end
 
   defp runtime_row(run_ref) do
+    control_state = control_state(run_ref)
+
     RuntimeRow.new(%{
       subject_ref: "subject://synapse/#{run_token(run_ref)}",
       run_ref: run_ref,
@@ -131,7 +200,23 @@ defmodule Synapse.Test.AppKitBackend do
       persistence_posture: PersistencePosture.durable(:runtime_projection),
       extensions: %{
         title: "Durable run #{run_token(run_ref)}",
-        goal_summary: "Read from the durable AppKit projection"
+        goal_summary: "Read from the durable AppKit projection",
+        control: %{
+          state: control_state,
+          generation: 1,
+          attempt_sequence: 1,
+          sequence: 2,
+          row_version: if(run_token(run_ref) == "stale-control", do: 2, else: 3),
+          attempt_ref: "attempt://durable/#{run_token(run_ref)}/1",
+          generation_ref: "generation://durable/#{run_token(run_ref)}/1",
+          external_operation_ref: "operation://durable/#{run_token(run_ref)}",
+          deadline_at: "2026-07-29T00:00:00Z",
+          fence_epoch: if(control_state == "reconciling", do: 2, else: 1),
+          reconciliation_attempts: if(control_state == "reconciling", do: 1, else: 0),
+          terminal_receipt_ref: nil,
+          last_error: control_error(control_state),
+          updated_at: @timestamp
+        }
       }
     })
   end
@@ -146,7 +231,7 @@ defmodule Synapse.Test.AppKitBackend do
     })
   end
 
-  defp command_result(kind, idempotency_key, run_ref) do
+  defp command_result(kind, idempotency_key, run_ref, opts \\ []) do
     CommandResult.new(%{
       command_ref: "command://durable/#{kind}/#{run_token(run_ref)}",
       command_kind: kind,
@@ -155,13 +240,64 @@ defmodule Synapse.Test.AppKitBackend do
       status: :accepted,
       authority_state: :authorized,
       authority_refs: [],
-      workflow_effect_state: :applied,
-      projection_state: :updated,
+      workflow_effect_state: Keyword.get(opts, :workflow_effect_state, :applied),
+      projection_state: Keyword.get(opts, :projection_state, :updated),
       correlation_id: run_ref,
       idempotency_key: idempotency_key,
-      message: "Accepted by durable test backend"
+      message: "Accepted by durable test backend",
+      persistence_posture: PersistencePosture.durable(:runtime_projection)
     })
   end
+
+  defp fragment(proof_token_ref, token, staleness_class, cluster_status, metadata) do
+    {:ok, projection} =
+      MemoryFragmentProjection.new(%{
+        fragment_ref: "memory://durable/#{token}",
+        tenant_ref: "tenant://default",
+        installation_ref: "installation://default",
+        tier: if(token == "candidate-learning", do: "working", else: "episodic"),
+        proof_token_ref: proof_token_ref,
+        proof_hash: @proof_hash,
+        source_node_ref: "node://outer-brain/test",
+        snapshot_epoch: 7,
+        commit_lsn: "0/16B6C50",
+        commit_hlc: %{"physical_ms" => 1_774_000_000_000, "logical" => 0},
+        provenance_refs: ["provenance://outer-brain/#{token}"],
+        evidence_refs: ["evidence://outer-brain/#{token}"],
+        governance_refs: ["authority://synapse/memory-read"],
+        cluster_invalidation_status: cluster_status,
+        staleness_class: staleness_class,
+        redaction_posture: "refs_only",
+        metadata:
+          Map.merge(metadata, %{
+            "run_ref" => "run://durable/test-run",
+            "trace_id" => "trace://synapse/memory/test"
+          })
+      })
+
+    projection
+  end
+
+  defp control_state(run_ref) do
+    case run_token(run_ref) do
+      "ambiguous" -> "outcome_unknown"
+      "reconciling" -> "reconciling"
+      "operator-required" -> "operator_required"
+      "paused" -> "paused"
+      _other -> "running"
+    end
+  end
+
+  defp control_error("outcome_unknown"), do: "provider_outcome_unknown"
+  defp control_error("reconciling"), do: "owner_lost_outcome_unknown"
+  defp control_error("operator_required"), do: "external_operation_not_found"
+  defp control_error(_state), do: nil
+
+  defp requested_state(action) when action in [:pause, "pause"], do: :pause_requested
+  defp requested_state(action) when action in [:resume, "resume"], do: :resume_requested
+  defp requested_state(action) when action in [:cancel, "cancel"], do: :cancel_requested
+  defp requested_state(action) when action in [:retry, "retry"], do: :retry_requested
+  defp requested_state(_action), do: :supersede_requested
 
   defp surface_error(code, message, kind, retryable) do
     with {:ok, error} <-
@@ -176,6 +312,9 @@ defmodule Synapse.Test.AppKitBackend do
   end
 
   defp run_token(run_ref), do: run_ref |> String.split("/", trim: true) |> List.last()
+
+  defp map_value(attrs, key) when is_map(attrs),
+    do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 end
 
 defmodule Synapse.Test.EffectBackend do

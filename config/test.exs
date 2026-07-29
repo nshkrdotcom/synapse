@@ -25,7 +25,10 @@ config :synapse_core,
   app_kit_backend_stack: Synapse.Test.AppKitBackendStack,
   app_kit_backend_options: [
     program_id: "program://test/synapse",
-    work_class_id: "work-class://test/agent-run"
+    work_class_id: "work-class://test/agent-run",
+    memory_proof_token_ref: "proof-token://synapse/test-snapshot",
+    control_authority_ref: "authority://synapse/control",
+    control_permission_decision_ref: "decision://synapse/control/test"
   ]
 
 config :synapse_web, SynapseWeb.EvidenceShowLive,

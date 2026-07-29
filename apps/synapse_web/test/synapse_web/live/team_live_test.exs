@@ -32,6 +32,6 @@ defmodule SynapseWeb.TeamLiveTest do
     )
     |> render_submit()
 
-    assert has_element?(view, "#arbitration-decision-result", "accepted")
+    assert has_element?(view, "#arbitration-decision-result", "completed")
   end
 end

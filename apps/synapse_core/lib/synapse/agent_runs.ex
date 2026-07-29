@@ -14,10 +14,17 @@ defmodule Synapse.AgentRuns do
     RunOutcomeFuture
   }
 
-  alias AppKit.Core.RuntimeReadback.{RuntimeRow, RuntimeRunDetail, RuntimeStateSnapshot}
+  alias AppKit.Core.RuntimeReadback.{
+    CommandResult,
+    RuntimeRow,
+    RuntimeRunDetail,
+    RuntimeStateSnapshot
+  }
+
   alias Synapse.{Config, PlatformContext, ProductBootstrap, ProductPack}
 
   @actor_ref "actor:synapse:operator"
+  @durable_control_actions [:pause, :resume, :cancel, :retry, :supersede]
 
   @spec list_runs(keyword()) :: {:ok, [map()]} | {:error, term()}
   def list_runs(opts \\ []) when is_list(opts) do
@@ -76,11 +83,50 @@ defmodule Synapse.AgentRuns do
   @spec cancel_run(String.t(), keyword()) :: {:ok, struct()} | {:error, term()}
   def cancel_run(run_ref_or_id, opts \\ [])
       when is_binary(run_ref_or_id) and is_list(opts) do
-    with {:ok, _config, context} <- product_context(opts),
-         {:ok, runtime_opts} <- ProductBootstrap.agent_intake_options(opts) do
-      AgentIntake.cancel_agent_run(context, decode_run_ref(run_ref_or_id), runtime_opts)
+    control_run(
+      run_ref_or_id,
+      :cancel,
+      %{expected_control_row_version: Keyword.get(opts, :expected_control_row_version)},
+      opts
+    )
+  end
+
+  @spec control_run(String.t(), atom(), map(), keyword()) ::
+          {:ok, struct()} | {:error, term()}
+  def control_run(run_ref_or_id, action, params, opts \\ [])
+
+  def control_run(run_ref_or_id, action, params, opts)
+      when is_binary(run_ref_or_id) and action in @durable_control_actions and is_map(params) and
+             is_list(opts) do
+    run_ref = decode_run_ref(run_ref_or_id)
+
+    with {:ok, expected_version} <- expected_control_version(params),
+         idempotency_key <- control_idempotency_key(run_ref, action, expected_version, params),
+         {:ok, runtime_opts} <- ProductBootstrap.durable_readback_options(opts),
+         context_opts <-
+           control_context_options(opts, runtime_opts, idempotency_key, run_ref, action),
+         {:ok, _config, context} <- product_context(context_opts),
+         {:ok, %CommandResult{} = result} <-
+           HeadlessSurface.request_control(
+             context,
+             %{
+               idempotency_key: idempotency_key,
+               actor_ref: context.actor_ref.id,
+               run_ref: run_ref,
+               action: action,
+               params: Map.put(params, :expected_control_row_version, expected_version)
+             },
+             runtime_opts
+           ) do
+      {:ok, result}
+    else
+      {:ok, _other} -> {:error, :invalid_durable_control_result}
+      {:error, reason} -> {:error, reason}
     end
   end
+
+  def control_run(_run_ref_or_id, _action, _params, _opts),
+    do: {:error, :invalid_durable_control_request}
 
   @spec await_run(String.t(), map(), keyword()) :: {:ok, term()} | {:error, term()}
   def await_run(run_ref_or_id, request \\ %{}, opts \\ [])
@@ -146,6 +192,8 @@ defmodule Synapse.AgentRuns do
   end
 
   defp list_view(row, _config) do
+    control = control_view(extension(row.extensions, :control))
+
     %{
       id: route_id(row.run_ref),
       ref: row.run_ref,
@@ -156,13 +204,16 @@ defmodule Synapse.AgentRuns do
       status_reason: row.status_reason,
       surface: "AppKit.AgentIntake",
       updated_at: row.updated_at,
-      persistence_posture: row.persistence_posture
+      persistence_posture: row.persistence_posture,
+      control: control,
+      control_state: control.state
     }
   end
 
   defp detail_view(snapshot, event_page) do
     row = snapshot.runtime_row
     extensions = if row, do: row.extensions, else: %{}
+    control = control_view(extension(extensions, :control))
 
     %{
       id: route_id(snapshot.run_ref),
@@ -183,8 +234,79 @@ defmodule Synapse.AgentRuns do
       has_more_events?: event_page.has_more?,
       next_cursor_ref: event_page.next_cursor_ref,
       persistence_posture: snapshot.persistence_posture,
-      updated_at: if(row, do: row.updated_at, else: nil)
+      updated_at: if(row, do: row.updated_at, else: nil),
+      control: control,
+      control_state: control.state,
+      ambiguous?: control.state in ["outcome_unknown", "reconciling"],
+      degraded?: control.state in ["outcome_unknown", "reconciling", "operator_required"],
+      available_controls: available_controls(control.state)
     }
+  end
+
+  @control_fields [
+    :state,
+    :generation,
+    :attempt_sequence,
+    :sequence,
+    :row_version,
+    :attempt_ref,
+    :generation_ref,
+    :external_operation_ref,
+    :deadline_at,
+    :fence_epoch,
+    :reconciliation_attempts,
+    :reconcile_owner,
+    :reconcile_lease_expires_at,
+    :next_reconcile_at,
+    :terminal_receipt_ref,
+    :last_error,
+    :updated_at
+  ]
+
+  defp control_view(control) when is_map(control) do
+    Map.new(@control_fields, fn field -> {field, map_value(control, field)} end)
+  end
+
+  defp control_view(_control), do: Map.new(@control_fields, &{&1, nil})
+
+  defp available_controls("accepted"), do: [:cancel, :supersede]
+  defp available_controls("running"), do: [:pause, :cancel, :supersede]
+  defp available_controls("paused"), do: [:resume, :cancel, :supersede]
+  defp available_controls("pause_requested"), do: [:cancel]
+  defp available_controls("resume_requested"), do: [:cancel]
+  defp available_controls("failed"), do: [:retry, :supersede]
+  defp available_controls("operator_required"), do: [:retry, :cancel, :supersede]
+  defp available_controls(_state), do: []
+
+  defp expected_control_version(params) do
+    case map_value(params, :expected_control_row_version) do
+      version when is_integer(version) and version > 0 -> {:ok, version}
+      _other -> {:error, :invalid_expected_control_row_version}
+    end
+  end
+
+  defp control_idempotency_key(run_ref, action, expected_version, params) do
+    token =
+      :crypto.hash(
+        :sha256,
+        :erlang.term_to_binary({run_ref, action, expected_version, params})
+      )
+      |> Base.url_encode64(padding: false)
+
+    "synapse:control:#{action}:#{expected_version}:#{token}"
+  end
+
+  defp control_context_options(opts, runtime_opts, idempotency_key, run_ref, action) do
+    digest = :crypto.hash(:sha256, :erlang.term_to_binary({run_ref, action, idempotency_key}))
+    request_token = Base.url_encode64(digest, padding: false)
+    trace_id = digest |> Base.encode16(case: :lower) |> binary_part(0, 32)
+
+    runtime_opts
+    |> Keyword.take([:control_authority_ref, :control_permission_decision_ref])
+    |> Keyword.merge(opts)
+    |> Keyword.put(:idempotency_key, idempotency_key)
+    |> Keyword.put(:request_id, "request://synapse/control/#{request_token}")
+    |> Keyword.put_new(:trace_id, trace_id)
   end
 
   defp cursor_for(run_ref, config, opts) do

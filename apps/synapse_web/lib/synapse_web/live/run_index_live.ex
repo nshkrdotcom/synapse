@@ -67,6 +67,7 @@ defmodule SynapseWeb.RunIndexLive do
               <tr>
                 <th class="px-3 py-2">Run</th>
                 <th class="px-3 py-2">State</th>
+                <th class="px-3 py-2">Control</th>
                 <th class="px-3 py-2">Updated</th>
                 <th class="px-3 py-2">Surface</th>
               </tr>
@@ -83,6 +84,7 @@ defmodule SynapseWeb.RunIndexLive do
                   <div class="text-xs text-slate-500">{run.ref}</div>
                 </td>
                 <td class="px-3 py-2 text-slate-700">{run.state}</td>
+                <td class="px-3 py-2 text-slate-700">{run.control_state || "unavailable"}</td>
                 <td class="px-3 py-2 text-slate-700">{run.updated_at}</td>
                 <td class="px-3 py-2 text-slate-500">{run.surface}</td>
               </tr>

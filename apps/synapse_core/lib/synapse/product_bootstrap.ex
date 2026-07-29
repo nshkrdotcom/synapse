@@ -44,6 +44,11 @@ defmodule Synapse.ProductBootstrap do
     record_decision: 4,
     record_decision_by_id: 4
   ]
+  @operator_surface_callbacks [
+    list_memory_fragments: 3,
+    memory_fragment_by_proof_token: 3,
+    memory_fragment_provenance: 3
+  ]
 
   @spec ensure_bootstrapped(keyword() | map()) :: {:ok, map()} | {:error, term()}
   def ensure_bootstrapped(overrides \\ []) do
@@ -114,6 +119,23 @@ defmodule Synapse.ProductBootstrap do
              :review_backend,
              :review_backend,
              @review_surface_callbacks
+           ) do
+      {:ok, opts}
+    end
+  end
+
+  @doc "Returns options only when durable product-safe operator memory reads are composed."
+  @spec operator_surface_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def operator_surface_options(overrides \\ []) do
+    opts = configured_backend_options(overrides)
+
+    with {:ok, opts} <- resolve_optional_backend_stack(opts),
+         :ok <-
+           validate_surface_role(
+             opts,
+             :operator_backend,
+             :operator_backend,
+             @operator_surface_callbacks
            ) do
       {:ok, opts}
     end

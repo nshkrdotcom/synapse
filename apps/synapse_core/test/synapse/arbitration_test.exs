@@ -21,6 +21,6 @@ defmodule Synapse.ArbitrationTest do
              })
 
     assert %ActionResult{} = result
-    assert result.status == :accepted
+    assert result.status == :completed
   end
 end

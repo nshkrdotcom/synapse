@@ -47,6 +47,7 @@ defmodule Synapse.PlatformContext do
     |> routing_metadata()
     |> Map.put(:installation_revision, installation_ref.compiled_pack_revision || 1)
     |> Map.put(:product_installation_status, installation_ref.status)
+    |> put_control_evidence(opts)
     |> put_product_boundary_metadata(opts)
   end
 
@@ -76,5 +77,12 @@ defmodule Synapse.PlatformContext do
       |> Map.new()
 
     if boundary == %{}, do: metadata, else: Map.put(metadata, :product_boundary_options, boundary)
+  end
+
+  defp put_control_evidence(metadata, opts) do
+    opts
+    |> Keyword.take([:control_authority_ref, :control_permission_decision_ref])
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
+    |> Enum.reduce(metadata, fn {key, value}, acc -> Map.put(acc, key, value) end)
   end
 end

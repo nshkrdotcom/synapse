@@ -59,19 +59,45 @@ defmodule SynapseWeb.MemoryShowLive do
               </h2>
               <dl class="mt-3 space-y-2 text-sm">
                 <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
-                  <dt class="text-slate-500">Content hash</dt>
-                  <dd class="font-medium text-slate-950">{@memory.projection.content_hash}</dd>
+                  <dt class="text-slate-500">Proof hash</dt>
+                  <dd class="break-all font-medium text-slate-950">{@memory.content_hash}</dd>
                 </div>
                 <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
-                  <dt class="text-slate-500">Redaction policy</dt>
+                  <dt class="text-slate-500">Redaction posture</dt>
                   <dd class="font-medium text-slate-950">
-                    {@memory.projection.redaction_policy_ref}
+                    {@memory.redaction_policy_ref}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Snapshot epoch</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.projection.snapshot_epoch}
                   </dd>
                 </div>
               </dl>
               <p class="mt-4 text-sm text-slate-700">
-                {@memory.projection.redacted_excerpt || "No excerpt is exportable for this memory."}
+                No fragment body crosses the AppKit product boundary.
               </p>
+            </section>
+
+            <section id="memory-provenance" class="rounded border border-slate-200 bg-white p-4">
+              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Provenance
+              </h2>
+              <dl class="mt-3 space-y-2 text-sm">
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Source contract</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.provenance_projection.source_contract_name}
+                  </dd>
+                </div>
+                <div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                  <dt class="text-slate-500">Commit LSN</dt>
+                  <dd class="font-medium text-slate-950">
+                    {@memory.provenance_projection.commit_lsn}
+                  </dd>
+                </div>
+              </dl>
             </section>
 
             <section id="memory-reason-codes" class="rounded border border-slate-200 bg-white p-4">
@@ -107,6 +133,7 @@ defmodule SynapseWeb.MemoryShowLive do
                 <input type="hidden" name="feedback[memory_ref]" value={@memory.memory_ref} />
                 <select
                   name="feedback[feedback_kind]"
+                  disabled
                   class="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-950"
                 >
                   <option value="helpful">Helpful</option>
@@ -114,7 +141,8 @@ defmodule SynapseWeb.MemoryShowLive do
                 </select>
                 <button
                   type="submit"
-                  class="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  disabled
+                  class="inline-flex cursor-not-allowed items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-400"
                 >
                   <.icon name="hero-chat-bubble-left-ellipsis" class="size-5" /> Record Feedback
                 </button>

@@ -3,13 +3,23 @@ defmodule SynapseWeb.MemoryIndexLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    {memory_state, memories, context_packs, error} =
+      with {:ok, memories} <- Synapse.Memory.list_memories(),
+           {:ok, context_packs} <- Synapse.ContextPacks.list_context_packs() do
+        {:snapshot, memories, context_packs, nil}
+      else
+        {:error, reason} -> {:unavailable, [], [], inspect(reason)}
+      end
+
     socket =
       socket
       |> assign(:page_title, "Memory")
+      |> assign(:memory_state, memory_state)
+      |> assign(:memory_error, error)
       |> assign(:feedback_status, Synapse.Memory.feedback_status())
       |> assign(:context_status, Synapse.ContextPacks.surface_status())
-      |> assign(:context_packs, Synapse.ContextPacks.list_context_packs())
-      |> stream(:memories, Synapse.Memory.list_memories())
+      |> assign(:context_packs, context_packs)
+      |> stream(:memories, memories)
 
     {:ok, socket}
   end
@@ -23,7 +33,7 @@ defmodule SynapseWeb.MemoryIndexLive do
           <div>
             <h1 class="text-2xl font-semibold text-slate-950">Memory</h1>
             <p class="mt-1 text-sm text-slate-600">
-              Redacted AppKit memory DTO projections with fixture-backed context packs.
+              Immutable AppKit retrieval snapshots with product-safe provenance.
             </p>
           </div>
 
@@ -37,6 +47,15 @@ defmodule SynapseWeb.MemoryIndexLive do
         </section>
 
         <section
+          :if={@memory_state == :unavailable}
+          id="memory-index-unavailable"
+          class="rounded border border-red-200 bg-red-50 p-4 text-red-800"
+        >
+          Durable memory readback is unavailable: {@memory_error}
+        </section>
+
+        <section
+          :if={@memory_state == :snapshot}
           id="memory-index-list"
           class="overflow-hidden rounded border border-slate-200 bg-white"
         >
@@ -68,7 +87,11 @@ defmodule SynapseWeb.MemoryIndexLive do
           </table>
         </section>
 
-        <section id="context-pack-list" class="rounded border border-slate-200 bg-white p-4">
+        <section
+          :if={@memory_state == :snapshot}
+          id="context-pack-list"
+          class="rounded border border-slate-200 bg-white p-4"
+        >
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Context Packs

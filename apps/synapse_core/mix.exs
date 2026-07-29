@@ -44,6 +44,7 @@ defmodule Synapse.MixProject do
       {:app_kit_hive_surface, path: "../../../app_kit/core/hive_surface"},
       {:app_kit_memory_surface, path: "../../../app_kit/core/memory_surface"},
       {:app_kit_model_surface, path: "../../../app_kit/core/model_surface"},
+      {:app_kit_operator_surface, path: "../../../app_kit/core/operator_surface"},
       {:app_kit_replay_surface, path: "../../../app_kit/core/replay_surface"},
       {:app_kit_review_surface, path: "../../../app_kit/core/review_surface", runtime: false},
       {:app_kit_skill_surface, path: "../../../app_kit/core/skill_surface"},
