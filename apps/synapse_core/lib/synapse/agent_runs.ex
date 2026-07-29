@@ -10,6 +10,7 @@ defmodule Synapse.AgentRuns do
 
   alias AppKit.Core.AgentIntake.{
     AgentRunCursor,
+    AgentRunEvent,
     AgentRunEventPage,
     RunOutcomeFuture
   }
@@ -25,6 +26,7 @@ defmodule Synapse.AgentRuns do
 
   @actor_ref "actor:synapse:operator"
   @durable_control_actions [:pause, :resume, :cancel, :retry, :supersede]
+  @event_topic_prefix "synapse:app-kit:agent-run:"
 
   @spec list_runs(keyword()) :: {:ok, [map()]} | {:error, term()}
   def list_runs(opts \\ []) when is_list(opts) do
@@ -51,9 +53,9 @@ defmodule Synapse.AgentRuns do
            HeadlessSurface.run_detail(context, run_ref, %{}, runtime_opts),
          :ok <- durable_posture(snapshot.persistence_posture),
          {:ok, cursor} <- cursor_for(run_ref, config, opts),
-         {:ok, %AgentRunEventPage{} = event_page} <-
-           AgentIntake.catch_up_agent_events(context, cursor, runtime_opts) do
-      {:ok, detail_view(snapshot, event_page)}
+         {:ok, events, cursor} <- catch_up_all(context, cursor, runtime_opts),
+         {:ok, turns} <- normalize_turns(snapshot.turns) do
+      {:ok, detail_view(snapshot, turns, events, cursor)}
     else
       {:ok, _other} -> {:error, :invalid_durable_run_snapshot}
       {:error, reason} -> {:error, reason}
@@ -79,6 +81,32 @@ defmodule Synapse.AgentRuns do
 
   @spec refresh_run(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def refresh_run(run_ref_or_id, opts \\ []), do: get_run(run_ref_or_id, opts)
+
+  @doc """
+  Subscribes the calling process to wake notifications for a run.
+
+  Notifications never carry durable state. Consumers must catch up from their
+  last committed cursor after every wake.
+  """
+  @spec subscribe(String.t()) :: :ok | {:error, term()}
+  def subscribe(run_ref) when is_binary(run_ref) do
+    Phoenix.PubSub.subscribe(Synapse.PubSub, event_topic(run_ref))
+  end
+
+  @doc """
+  Wakes connected product views after AppKit may have committed new run state.
+
+  The broadcast is deliberately only a hint; the durable AppKit snapshot and
+  cursor remain the source of truth.
+  """
+  @spec notify_changed(String.t()) :: :ok | {:error, term()}
+  def notify_changed(run_ref) when is_binary(run_ref) do
+    Phoenix.PubSub.broadcast(
+      Synapse.PubSub,
+      event_topic(run_ref),
+      {:synapse_agent_run_changed, run_ref}
+    )
+  end
 
   @spec cancel_run(String.t(), keyword()) :: {:ok, struct()} | {:error, term()}
   def cancel_run(run_ref_or_id, opts \\ [])
@@ -210,10 +238,11 @@ defmodule Synapse.AgentRuns do
     }
   end
 
-  defp detail_view(snapshot, event_page) do
+  defp detail_view(snapshot, turns, events, cursor) do
     row = snapshot.runtime_row
     extensions = if row, do: row.extensions, else: %{}
     control = control_view(extension(extensions, :control))
+    artifacts = artifact_views(turns, events)
 
     %{
       id: route_id(snapshot.run_ref),
@@ -228,11 +257,12 @@ defmodule Synapse.AgentRuns do
       surface: "AppKit.AgentIntake",
       feature_status: :durable_snapshot,
       budget_state: snapshot.budget_state,
-      turns: snapshot.turns,
-      events: event_page.events,
-      cursor: event_page.cursor,
-      has_more_events?: event_page.has_more?,
-      next_cursor_ref: event_page.next_cursor_ref,
+      turns: turns,
+      events: events,
+      artifacts: artifacts,
+      cursor: cursor,
+      has_more_events?: false,
+      next_cursor_ref: nil,
       persistence_posture: snapshot.persistence_posture,
       updated_at: if(row, do: row.updated_at, else: nil),
       control: control,
@@ -311,8 +341,17 @@ defmodule Synapse.AgentRuns do
 
   defp cursor_for(run_ref, config, opts) do
     case Keyword.get(opts, :cursor) do
-      %AgentRunCursor{} = cursor ->
-        {:ok, cursor}
+      %AgentRunCursor{
+        ledger_ref: ^run_ref,
+        tenant_ref: tenant_ref,
+        actor_ref: @actor_ref,
+        visibility: :product
+      } = cursor ->
+        if tenant_ref == "tenant://#{config.tenant_id}" do
+          {:ok, cursor}
+        else
+          {:error, :invalid_run_cursor}
+        end
 
       nil ->
         AgentRunCursor.new(%{
@@ -327,6 +366,149 @@ defmodule Synapse.AgentRuns do
       _other ->
         {:error, :invalid_run_cursor}
     end
+  end
+
+  defp catch_up_all(context, cursor, runtime_opts) do
+    catch_up_all(context, cursor, runtime_opts, [])
+  end
+
+  defp catch_up_all(context, cursor, runtime_opts, event_pages) do
+    with {:ok, %AgentRunEventPage{} = page} <-
+           AgentIntake.catch_up_agent_events(context, cursor, runtime_opts),
+         :ok <- validate_event_page(cursor, page) do
+      event_pages = [page.events | event_pages]
+
+      if page.has_more? do
+        catch_up_all(context, page.cursor, runtime_opts, event_pages)
+      else
+        events =
+          event_pages
+          |> Enum.reverse()
+          |> List.flatten()
+          |> normalize_events()
+
+        {:ok, events, page.cursor}
+      end
+    else
+      {:ok, _other} -> {:error, :invalid_agent_run_event_page}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp validate_event_page(requested_cursor, %AgentRunEventPage{} = page) do
+    cursor = page.cursor
+
+    cond do
+      cursor.ledger_ref != requested_cursor.ledger_ref ->
+        {:error, :cursor_run_mismatch}
+
+      cursor.tenant_ref != requested_cursor.tenant_ref ->
+        {:error, :cursor_tenant_mismatch}
+
+      cursor.actor_ref != requested_cursor.actor_ref ->
+        {:error, :cursor_actor_mismatch}
+
+      cursor.last_seq_seen < requested_cursor.last_seq_seen ->
+        {:error, :cursor_regressed}
+
+      page.has_more? and cursor.last_seq_seen == requested_cursor.last_seq_seen ->
+        {:error, :cursor_did_not_advance}
+
+      Enum.any?(page.events, &(&1.ledger_ref != requested_cursor.ledger_ref)) ->
+        {:error, :cursor_run_mismatch}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp normalize_events(events) do
+    events
+    |> Enum.uniq_by(fn event -> {event.event_seq, event.event_ref} end)
+    |> Enum.sort_by(fn event -> {event.event_seq, event.event_ref} end)
+  end
+
+  defp normalize_turns(turns) when is_list(turns) do
+    turns
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn {turn, fallback_sequence}, {:ok, acc} ->
+      case turn_view(turn, fallback_sequence) do
+        {:ok, view} -> {:cont, {:ok, [view | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, turns} -> {:ok, Enum.sort_by(turns, &{&1.sequence, &1.ref})}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalize_turns(_turns), do: {:error, :invalid_durable_turn_snapshot}
+
+  defp turn_view(turn, fallback_sequence) when is_map(turn) do
+    turn_ref = map_value(turn, :turn_ref)
+    sequence = map_value(turn, :sequence) || fallback_sequence
+
+    if is_binary(turn_ref) and turn_ref != "" and is_integer(sequence) and sequence > 0 do
+      {:ok,
+       %{
+         ref: turn_ref,
+         sequence: sequence,
+         status: map_value(turn, :state) || map_value(turn, :status) || "committed",
+         role: map_value(turn, :role),
+         summary: map_value(turn, :summary) || map_value(turn, :message_summary),
+         input_artifact_ref: map_value(turn, :input_ref) || map_value(turn, :input_artifact_ref),
+         output_artifact_ref:
+           map_value(turn, :output_artifact_ref) || map_value(turn, :assistant_artifact_ref),
+         output_artifact_refs:
+           map_value(turn, :output_artifact_refs) || map_value(turn, :artifact_refs) || [],
+         stream_cursor: map_value(turn, :stream_cursor),
+         availability: map_value(turn, :availability),
+         usage_ref: map_value(turn, :usage_ref),
+         committed_at: map_value(turn, :committed_at) || map_value(turn, :updated_at)
+       }}
+    else
+      {:error, :invalid_durable_turn_snapshot}
+    end
+  end
+
+  defp turn_view(_turn, _fallback_sequence), do: {:error, :invalid_durable_turn_snapshot}
+
+  defp artifact_views(turns, events) do
+    turn_artifacts =
+      Enum.flat_map(turns, fn turn ->
+        [
+          artifact_view(turn.input_artifact_ref, turn.ref, :turn_input),
+          artifact_view(turn.output_artifact_ref, turn.ref, :turn_output)
+          | Enum.map(
+              List.wrap(turn.output_artifact_refs),
+              &artifact_view(&1, turn.ref, :turn_output)
+            )
+        ]
+      end)
+
+    event_artifacts =
+      Enum.map(events, fn %AgentRunEvent{} = event ->
+        artifact_view(event.payload_ref, event.event_ref, :event_payload)
+      end)
+
+    (turn_artifacts ++ event_artifacts)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq_by(& &1.ref)
+  end
+
+  defp artifact_view(ref, source_ref, kind) when is_binary(ref) and ref != "" do
+    %{ref: ref, source_ref: source_ref, kind: kind}
+  end
+
+  defp artifact_view(_ref, _source_ref, _kind), do: nil
+
+  defp event_topic(run_ref) do
+    digest =
+      :crypto.hash(:sha256, run_ref)
+      |> Base.url_encode64(padding: false)
+
+    @event_topic_prefix <> digest
   end
 
   defp durable_posture(%{durable?: true}), do: :ok

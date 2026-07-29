@@ -62,7 +62,8 @@ defmodule Synapse.AgentRunsTest do
 
     assert run.feature_status == :durable_snapshot
     assert run.persistence_posture.durable? == true
-    assert [%{turn_ref: "turn://durable/test-run/1"}] = run.turns
+    assert [%{ref: "turn://durable/test-run/1", sequence: 1, status: "committed"}] = run.turns
+    assert run.artifacts == []
     assert %AgentRunCursor{} = run.cursor
     assert run.cursor.ledger_ref == "run://durable/test-run"
     assert run.cursor.last_seq_seen == 1
@@ -121,6 +122,22 @@ defmodule Synapse.AgentRunsTest do
 
     assert refreshed.cursor.last_seq_seen == 1
     assert refreshed.cursor.cursor_ref == "cursor://test/test-run/1"
+  end
+
+  test "rejects a cursor from another durable ledger" do
+    assert {:ok, run} = AgentRuns.get_run("run://durable/test-run")
+    other_cursor = %{run.cursor | ledger_ref: "run://durable/other-run"}
+
+    assert {:error, :invalid_run_cursor} =
+             AgentRuns.refresh_run(run.ref, cursor: other_cursor)
+  end
+
+  test "PubSub notifications wake consumers without carrying product truth" do
+    run_ref = "run://durable/test-run"
+
+    assert :ok = AgentRuns.subscribe(run_ref)
+    assert :ok = AgentRuns.notify_changed(run_ref)
+    assert_receive {:synapse_agent_run_changed, ^run_ref}
   end
 
   test "durable projection and cursor readback resume after the product application restarts" do

@@ -1,5 +1,5 @@
 defmodule SynapseWeb.RunLiveTest do
-  use SynapseWeb.ConnCase, async: true
+  use SynapseWeb.ConnCase, async: false
 
   test "lists durable AppKit run projections", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/runs")
@@ -27,6 +27,7 @@ defmodule SynapseWeb.RunLiveTest do
     assert has_element?(view, "#run-start-run-ref", "run://durable/")
     assert has_element?(view, "#run-start-workflow-ref", "workflow://durable/")
     assert has_element?(view, "#run-start-command-ref", "command://durable/start/")
+    assert has_element?(view, "#run-start-open-link")
   end
 
   test "renders a typed idempotency conflict", %{conn: conn} do
@@ -71,6 +72,9 @@ defmodule SynapseWeb.RunLiveTest do
     assert has_element?(view, "#run-show-state", "accepted")
     assert has_element?(view, "#run-show-persistence", "durable")
     assert has_element?(view, "#run-turn-count", "1 durable turn")
+    assert has_element?(view, "#run-turn-list", "turn://durable/test-run/1")
+    assert has_element?(view, "#run-turn-form")
+    assert has_element?(view, "#run-artifacts-empty")
     assert has_element?(view, "#run-control-state", "running")
     assert has_element?(view, "#run-control-version", "3")
     assert has_element?(view, "#run-pause-button:not([disabled])")
@@ -86,6 +90,51 @@ defmodule SynapseWeb.RunLiveTest do
 
     view |> element("#run-pause-button") |> render_click()
     assert has_element?(view, "#run-control-accepted", "Accepted by durable test backend")
+  end
+
+  test "submits a distinct turn and keeps it provisional until committed readback", %{conn: conn} do
+    path = "/runs/" <> URI.encode_www_form("run://durable/test-run")
+    {:ok, view, _html} = live(conn, path)
+
+    view
+    |> form("#run-turn-form", turn: %{input_summary: "Continue with durable context"})
+    |> render_submit()
+
+    assert has_element?(
+             view,
+             "#run-turn-provisional",
+             "Continue with durable context"
+           )
+
+    assert has_element?(view, "#run-turn-provisional", "command://durable/submit_turn/test-run")
+    assert has_element?(view, "#run-turn-count", "1 durable turn")
+    refute has_element?(view, "#run-turn-committed")
+  end
+
+  test "wake notifications catch up from the stored cursor without duplicating rows", %{
+    conn: conn
+  } do
+    path = "/runs/" <> URI.encode_www_form("run://durable/test-run")
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(view, "#run-event-1")
+    assert :ok = Synapse.AgentRuns.notify_changed("run://durable/test-run")
+    render(view)
+
+    assert has_element?(view, "#run-cursor-ref", "cursor://test/test-run/1")
+    assert has_element?(view, "#run-event-1")
+    assert length(:binary.matches(render(view), ~s(id="run-event-1"))) == 1
+  end
+
+  test "a new LiveView reconnects from durable AppKit state", %{conn: conn} do
+    path = "/runs/" <> URI.encode_www_form("run://durable/test-run")
+    {:ok, first, _html} = live(conn, path)
+    assert has_element?(first, "#run-cursor-sequence", "1")
+
+    {:ok, reconnected, _html} = live(recycle(conn), path)
+    assert has_element?(reconnected, "#run-cursor-sequence", "1")
+    assert has_element?(reconnected, "#run-turn-list", "turn://durable/test-run/1")
+    assert has_element?(reconnected, "#run-event-1")
   end
 
   test "shows ambiguous and degraded recovery without replay", %{conn: conn} do

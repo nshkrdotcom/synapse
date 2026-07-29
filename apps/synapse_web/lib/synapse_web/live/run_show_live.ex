@@ -3,6 +3,7 @@ defmodule SynapseWeb.RunShowLive do
 
   alias AppKit.Core.SurfaceError
 
+  @catch_up_interval_ms 1_000
   @control_actions %{
     "pause" => :pause,
     "resume" => :resume,
@@ -19,7 +20,18 @@ defmodule SynapseWeb.RunShowLive do
       |> assign(:requested_run_ref, id)
       |> assign(:control_message, nil)
       |> assign(:control_error, nil)
+      |> assign(:turn_submission_token, next_turn_submission_token())
+      |> assign(:turn_result, nil)
+      |> assign(:turn_error, nil)
+      |> assign(:provisional_turn, nil)
+      |> assign(:stream_state, :loading)
+      |> assign(:stream_error, nil)
       |> load_run(id, [])
+
+    if connected?(socket) and is_map(socket.assigns[:run]) do
+      :ok = Synapse.AgentRuns.subscribe(socket.assigns.run.ref)
+      schedule_catch_up()
+    end
 
     {:ok, socket}
   end
@@ -31,6 +43,56 @@ defmodule SynapseWeb.RunShowLive do
   end
 
   def handle_event("refresh", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "submit-turn",
+        %{"turn" => attrs},
+        %{assigns: %{run: run}} = socket
+      )
+      when is_map(run) do
+    opts = [
+      submission_token: socket.assigns.turn_submission_token,
+      cursor_ref: run.cursor.cursor_ref
+    ]
+
+    attrs = Map.put(attrs, "kind", "user_input")
+
+    case Synapse.Turns.submit_turn(run.ref, attrs, opts) do
+      {:ok, %{accepted?: true} = result} ->
+        provisional_turn = %{
+          command_ref: result.command_ref,
+          summary: Map.get(attrs, "input_summary"),
+          baseline_turn_count: length(run.turns)
+        }
+
+        socket =
+          socket
+          |> assign(:turn_result, result)
+          |> assign(:turn_error, nil)
+          |> assign(:provisional_turn, provisional_turn)
+          |> assign(:turn_submission_token, next_turn_submission_token())
+          |> load_run(run.ref, cursor: run.cursor)
+
+        :ok = Synapse.AgentRuns.notify_changed(run.ref)
+        {:noreply, socket}
+
+      {:ok, _other} ->
+        {:noreply,
+         socket
+         |> assign(:turn_result, nil)
+         |> assign(:turn_error, "AppKit did not return a durable turn acceptance.")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:turn_result, nil)
+         |> assign(:turn_error, error_message(reason))}
+    end
+  end
+
+  def handle_event("submit-turn", _params, socket) do
+    {:noreply, assign(socket, :turn_error, "Reload durable state before submitting a turn.")}
+  end
 
   def handle_event(
         "control",
@@ -75,6 +137,22 @@ defmodule SynapseWeb.RunShowLive do
     do: {:noreply, assign(socket, :control_error, "Reload durable state before controlling.")}
 
   @impl true
+  def handle_info(:durable_run_catch_up, socket) do
+    socket = refresh_from_cursor(socket)
+    schedule_catch_up()
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        {:synapse_agent_run_changed, run_ref},
+        %{assigns: %{run: %{ref: run_ref}}} = socket
+      ) do
+    {:noreply, refresh_from_cursor(socket)}
+  end
+
+  def handle_info({:synapse_agent_run_changed, _other_run_ref}, socket), do: {:noreply, socket}
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
@@ -116,6 +194,18 @@ defmodule SynapseWeb.RunShowLive do
         </section>
 
         <div :if={@readback_state == :snapshot} id="run-durable-snapshot" class="space-y-6">
+          <section
+            :if={@stream_state == :degraded}
+            id="run-stream-degraded"
+            class="rounded border border-amber-300 bg-amber-50 p-4 text-amber-950"
+          >
+            <h2 class="font-semibold">Durable catch-up is temporarily unavailable</h2>
+            <p class="mt-1 text-sm">
+              The last committed snapshot remains visible. No provisional event is treated as truth.
+            </p>
+            <p :if={@stream_error} class="mt-2 text-sm">{@stream_error}</p>
+          </section>
+
           <section class="rounded border border-slate-200 bg-white p-5">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -262,13 +352,112 @@ defmodule SynapseWeb.RunShowLive do
             </dl>
           </section>
 
-          <section id="run-turn-snapshot" class="rounded border border-slate-200 bg-white p-4">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Accepted turns
-            </h2>
-            <p id="run-turn-count" class="mt-2 text-sm text-slate-700">
-              {length(@run.turns)} durable turn(s)
+          <section
+            id="run-turn-snapshot"
+            class="space-y-4 rounded border border-slate-200 bg-white p-4"
+          >
+            <div>
+              <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Committed turns
+              </h2>
+              <p id="run-turn-count" class="mt-2 text-sm text-slate-700">
+                {length(@run.turns)} durable turn(s)
+              </p>
+            </div>
+
+            <ol
+              :if={@run.turns != []}
+              id="run-turn-list"
+              class="space-y-3 text-sm"
+            >
+              <li
+                :for={turn <- @run.turns}
+                id={turn_dom_id(turn)}
+                class="rounded border border-slate-200 p-3"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <span class="font-medium text-slate-950">Turn {turn.sequence}</span>
+                  <span class="text-slate-500">{turn.status}</span>
+                </div>
+                <p class="mt-1 break-all text-xs text-slate-500">{turn.ref}</p>
+                <p :if={turn.summary} class="mt-2 text-slate-700">{turn.summary}</p>
+              </li>
+            </ol>
+
+            <section
+              :if={@provisional_turn}
+              id="run-turn-provisional"
+              class="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950"
+            >
+              <p class="font-medium">Turn accepted; waiting for committed readback</p>
+              <p class="mt-1 break-all text-xs">{@provisional_turn.command_ref}</p>
+              <p :if={@provisional_turn.summary} class="mt-2">{@provisional_turn.summary}</p>
+            </section>
+
+            <p
+              :if={@turn_result && !@provisional_turn}
+              id="run-turn-committed"
+              class="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+            >
+              The accepted turn is now present in committed AppKit readback.
             </p>
+
+            <p
+              :if={@turn_error}
+              id="run-turn-error"
+              class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            >
+              {@turn_error}
+            </p>
+
+            <form id="run-turn-form" phx-submit="submit-turn" class="space-y-3">
+              <div>
+                <label for="run-turn-input" class="block text-sm font-medium text-slate-700">
+                  Continue the run
+                </label>
+                <textarea
+                  id="run-turn-input"
+                  name="turn[input_summary]"
+                  rows="4"
+                  required
+                  class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-950"
+                ></textarea>
+              </div>
+              <button
+                id="run-turn-submit-button"
+                type="submit"
+                class="inline-flex items-center gap-2 rounded bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                <.icon name="hero-paper-airplane" class="size-5" /> Submit durable turn
+              </button>
+            </form>
+          </section>
+
+          <section id="run-artifacts" class="rounded border border-slate-200 bg-white p-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Durable artifacts
+            </h2>
+            <p
+              :if={@run.artifacts == []}
+              id="run-artifacts-empty"
+              class="mt-3 text-sm text-slate-600"
+            >
+              No artifact references are present in committed readback.
+            </p>
+            <ol
+              :if={@run.artifacts != []}
+              id="run-artifact-list"
+              class="mt-3 space-y-3 text-sm"
+            >
+              <li
+                :for={artifact <- @run.artifacts}
+                id={artifact_dom_id(artifact)}
+                class="rounded border border-slate-200 p-3"
+              >
+                <div class="font-medium text-slate-950">{artifact.kind}</div>
+                <p class="mt-1 break-all text-xs text-slate-500">{artifact.ref}</p>
+              </li>
+            </ol>
           </section>
 
           <section id="run-events" class="rounded border border-slate-200 bg-white p-4">
@@ -289,6 +478,9 @@ defmodule SynapseWeb.RunShowLive do
                   <span class="text-slate-500">sequence {event.event_seq}</span>
                 </div>
                 <p class="mt-1 text-slate-600">{event.summary}</p>
+                <p :if={event.payload_ref} class="mt-1 break-all text-xs text-slate-500">
+                  {event.payload_ref}
+                </p>
               </li>
             </ol>
           </section>
@@ -301,17 +493,80 @@ defmodule SynapseWeb.RunShowLive do
   defp load_run(socket, run_ref, opts) do
     case Synapse.AgentRuns.get_run(run_ref, opts) do
       {:ok, run} ->
+        run = merge_run(Map.get(socket.assigns, :run), run)
+
         socket
         |> assign(:run, run)
         |> assign(:readback_state, :snapshot)
         |> assign(:error_message, nil)
+        |> assign(:stream_state, :current)
+        |> assign(:stream_error, nil)
+        |> reconcile_provisional_turn()
 
       {:error, reason} ->
-        socket
-        |> assign(:run, nil)
-        |> assign(:readback_state, error_state(reason))
-        |> assign(:error_message, error_message(reason))
+        case Map.get(socket.assigns, :run) do
+          run when is_map(run) ->
+            socket
+            |> assign(:stream_state, :degraded)
+            |> assign(:stream_error, error_message(reason))
+
+          _other ->
+            socket
+            |> assign(:run, nil)
+            |> assign(:readback_state, error_state(reason))
+            |> assign(:error_message, error_message(reason))
+            |> assign(:stream_state, :unavailable)
+            |> assign(:stream_error, error_message(reason))
+        end
     end
+  end
+
+  defp refresh_from_cursor(%{assigns: %{run: run}} = socket) when is_map(run) do
+    load_run(socket, run.ref, cursor: run.cursor)
+  end
+
+  defp refresh_from_cursor(socket), do: socket
+
+  defp merge_run(%{ref: run_ref} = previous, %{ref: run_ref} = current) do
+    current
+    |> Map.put(:events, merge_rows(previous.events, current.events, &event_key/1))
+    |> Map.put(:artifacts, merge_rows(previous.artifacts, current.artifacts, & &1.ref))
+  end
+
+  defp merge_run(_previous, current), do: current
+
+  defp merge_rows(previous, current, key_fun) do
+    (List.wrap(previous) ++ List.wrap(current))
+    |> Enum.uniq_by(key_fun)
+    |> Enum.sort_by(key_fun)
+  end
+
+  defp event_key(event), do: {event.event_seq, event.event_ref}
+
+  defp reconcile_provisional_turn(
+         %{assigns: %{provisional_turn: %{baseline_turn_count: baseline}, run: run}} = socket
+       )
+       when length(run.turns) > baseline do
+    assign(socket, :provisional_turn, nil)
+  end
+
+  defp reconcile_provisional_turn(socket), do: socket
+
+  defp schedule_catch_up do
+    Process.send_after(self(), :durable_run_catch_up, @catch_up_interval_ms)
+  end
+
+  defp next_turn_submission_token do
+    "turn-#{System.unique_integer([:positive, :monotonic])}"
+  end
+
+  defp turn_dom_id(turn), do: "run-turn-" <> stable_dom_token(turn.ref)
+  defp artifact_dom_id(artifact), do: "run-artifact-" <> stable_dom_token(artifact.ref)
+
+  defp stable_dom_token(value) do
+    :crypto.hash(:sha256, value)
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 
   defp error_state(%SurfaceError{kind: :conflict}), do: :conflict
