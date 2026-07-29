@@ -26,12 +26,8 @@ defmodule SynapseWeb.Router do
     live "/memory", MemoryIndexLive, :index
     live "/memory/:id", MemoryShowLive, :show
     live "/context-packs/:id", ContextPackShowLive, :show
-    live "/tools", ToolIndexLive, :index
     live "/catalog", CatalogIndexLive, :index
     live "/catalog/:id", CatalogShowLive, :show
-    live "/teams", TeamIndexLive, :index
-    live "/teams/:id", TeamShowLive, :show
-    live "/arbitration/:id", ArbitrationShowLive, :show
     live "/evidence", EvidenceIndexLive, :index
     live "/evidence/:id", EvidenceShowLive, :show
     live "/operations", OperationsLive, :index

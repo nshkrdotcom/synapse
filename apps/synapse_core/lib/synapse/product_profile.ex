@@ -1,28 +1,29 @@
 defmodule Synapse.ProductProfile do
   @moduledoc """
   Product-owned role, team, feature, and install profile data.
+
+  Feature posture describes the AppKit contract required by the product. It is
+  not runtime health or catalog truth; those states come from executable AppKit
+  projections at request time.
   """
 
   alias Synapse.{Config, ProductPack}
 
   @feature_status %{
-    installation: :fixture_backed,
-    runs: :fixture_backed,
-    turns: :fixture_backed,
-    cancel_refresh: :fixture_backed,
-    reviews: :fixture_backed,
-    memory: :disabled,
-    memory_feedback: :disabled,
-    context_pack: :disabled,
-    tools: :roadmap,
-    models: :roadmap,
-    catalog: :roadmap,
-    teams: :roadmap,
-    arbitration: :roadmap,
-    evidence: :fixture_backed,
-    operations: :fixture_backed,
-    live_run_slice: :live_stack_deterministic,
-    stack_lab: :live_stack_deterministic
+    installation: :app_kit_required,
+    runs: :app_kit_owner_projected,
+    turns: :app_kit_owner_projected,
+    controls: :app_kit_owner_projected,
+    reviews: :app_kit_owner_projected,
+    memory: :app_kit_owner_projected,
+    memory_feedback: :not_routed,
+    context_pack: :app_kit_owner_projected,
+    catalog: :app_kit_owner_projected,
+    evidence: :app_kit_owner_projected,
+    operations: :app_kit_owner_projected,
+    tools: :not_routed,
+    teams: :not_routed,
+    arbitration: :not_routed
   }
 
   @roles [
@@ -161,13 +162,13 @@ defmodule Synapse.ProductProfile do
       ref: :fast_review,
       display_name: "Fast Review",
       role_refs: [:coordinator, :review_synthesizer],
-      execution_posture: :fixture_until_team_surface_live
+      execution_posture: :configuration_only
     },
     %{
       ref: :standard_implementation,
       display_name: "Standard Implementation",
       role_refs: [:coordinator, :implementation_specialist, :review_synthesizer],
-      execution_posture: :fixture_until_team_surface_live
+      execution_posture: :configuration_only
     },
     %{
       ref: :high_risk_change,
@@ -179,7 +180,7 @@ defmodule Synapse.ProductProfile do
         :performance_specialist,
         :review_synthesizer
       ],
-      execution_posture: :fixture_until_team_surface_live
+      execution_posture: :configuration_only
     },
     %{
       ref: :documentation_research,
@@ -190,7 +191,7 @@ defmodule Synapse.ProductProfile do
         :documentation_specialist,
         :review_synthesizer
       ],
-      execution_posture: :fixture_until_team_surface_live
+      execution_posture: :configuration_only
     }
   ]
 

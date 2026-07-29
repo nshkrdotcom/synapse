@@ -58,6 +58,25 @@ defmodule Synapse.ProductBootstrapTest do
     assert opts[:work_class_id] == "work-class://test/agent-run"
   end
 
+  test "requires the executable product projection role for coherent product queries" do
+    configured = Synapse.Test.AppKitBackendStack.backend_stack()
+
+    missing_product_surface = %{
+      configured
+      | backends: Map.delete(configured.backends, :product_surface_backend)
+    }
+
+    assert {:error, :app_kit_backend_unavailable} =
+             ProductBootstrap.product_surface_options(
+               app_kit_backend_stack: missing_product_surface
+             )
+
+    assert {:ok, opts} =
+             ProductBootstrap.product_surface_options(app_kit_backend_stack: configured)
+
+    assert opts[:app_kit_backend_stack] == configured
+  end
+
   test "fails closed when owner routing is absent" do
     assert {:error, :app_kit_routing_unavailable} =
              ProductBootstrap.agent_intake_options(

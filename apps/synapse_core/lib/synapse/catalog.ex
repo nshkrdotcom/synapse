@@ -126,7 +126,7 @@ defmodule Synapse.Catalog do
 
     with {:ok, bootstrap} <-
            ProductBootstrap.ensure_bootstrapped(Keyword.put(opts, :bootstrap_mode, :disabled)),
-         {:ok, surface_opts} <- ProductBootstrap.durable_readback_options(opts) do
+         {:ok, surface_opts} <- ProductBootstrap.product_surface_options(opts) do
       context = PlatformContext.product_context(config, bootstrap.installation_ref, opts)
       {:ok, context, surface_opts}
     end
