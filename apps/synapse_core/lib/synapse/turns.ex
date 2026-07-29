@@ -27,24 +27,60 @@ defmodule Synapse.Turns do
          {:ok, runtime_opts} <- ProductBootstrap.agent_intake_options(opts),
          run_ref <- decode_run_ref(run_ref_or_id),
          {:ok, kind} <- turn_kind(attrs),
-         {:ok, payload_ref} <- payload_ref(attrs, run_ref) do
-      dispatch_turn(context, run_ref, kind, payload_ref, attrs, runtime_opts)
+         {:ok, submission_token} <- submission_token(attrs, opts),
+         submission_identity <- submission_identity(run_ref, kind, submission_token),
+         {:ok, payload_ref} <- payload_ref(attrs, submission_identity),
+         {:ok, cursor_ref} <- optional_ref(attrs, opts, :cursor_ref),
+         {:ok, pending_ref} <- optional_ref(attrs, opts, :pending_ref) do
+      dispatch_turn(
+        context,
+        run_ref,
+        kind,
+        payload_ref,
+        cursor_ref,
+        pending_ref,
+        submission_identity,
+        attrs,
+        runtime_opts
+      )
     end
   end
 
-  defp dispatch_turn(context, run_ref, :cancel, _payload_ref, _attrs, runtime_opts) do
+  defp dispatch_turn(
+         context,
+         run_ref,
+         :cancel,
+         _payload_ref,
+         _cursor_ref,
+         _pending_ref,
+         _submission_identity,
+         _attrs,
+         runtime_opts
+       ) do
     AgentIntake.cancel_agent_run(context, run_ref, runtime_opts)
   end
 
-  defp dispatch_turn(context, run_ref, kind, payload_ref, attrs, runtime_opts) do
+  defp dispatch_turn(
+         context,
+         run_ref,
+         kind,
+         payload_ref,
+         cursor_ref,
+         pending_ref,
+         submission_identity,
+         attrs,
+         runtime_opts
+       ) do
     AgentIntake.submit_turn(
       context,
       %{
-        idempotency_key: "synapse:turn:#{kind}:#{run_ref}",
+        idempotency_key: "synapse:turn:#{kind}:#{submission_identity}",
         actor_ref: @actor_ref,
         run_ref: run_ref,
         kind: kind,
         payload_ref: payload_ref,
+        cursor_ref: cursor_ref,
+        pending_ref: pending_ref,
         params: %{
           input_summary: string_value(attrs, :input_summary, "Operator turn submitted"),
           source: "synapse_web"
@@ -72,14 +108,37 @@ defmodule Synapse.Turns do
     end
   end
 
-  defp payload_ref(attrs, run_ref) do
-    case map_value(attrs, :payload_ref) do
+  defp submission_token(attrs, opts) do
+    case Keyword.get(opts, :submission_token) || map_value(attrs, :submission_token) do
       value when is_binary(value) and value != "" -> {:ok, value}
-      _other -> {:ok, "payload://synapse/turn/#{run_token(run_ref)}"}
+      nil -> {:ok, "turn-#{System.unique_integer([:positive, :monotonic])}"}
+      _other -> {:error, :invalid_turn_submission_token}
     end
   end
 
-  defp run_token(run_ref), do: run_ref |> String.split("/", trim: true) |> List.last()
+  defp submission_identity(run_ref, kind, submission_token) do
+    :crypto.hash(:sha256, :erlang.term_to_binary({run_ref, kind, submission_token}))
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp payload_ref(attrs, submission_identity) do
+    case map_value(attrs, :payload_ref) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      nil -> {:ok, "payload://synapse/turn/#{submission_identity}"}
+      _other -> {:error, :invalid_turn_payload_ref}
+    end
+  end
+
+  defp optional_ref(attrs, opts, key) do
+    case Keyword.get(opts, key) || map_value(attrs, key) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      nil -> {:ok, nil}
+      _other -> {:error, invalid_optional_ref(key)}
+    end
+  end
+
+  defp invalid_optional_ref(:cursor_ref), do: :invalid_turn_cursor_ref
+  defp invalid_optional_ref(:pending_ref), do: :invalid_turn_pending_ref
 
   defp decode_run_ref(value) do
     URI.decode_www_form(value)

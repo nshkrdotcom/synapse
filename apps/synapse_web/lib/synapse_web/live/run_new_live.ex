@@ -124,6 +124,15 @@ defmodule SynapseWeb.RunNewLive do
                 {@result.command_ref}
               </dd>
             </div>
+            <div class="pt-2">
+              <.link
+                id="run-start-open-link"
+                navigate={~p"/runs/#{@result.id}"}
+                class="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Open committed run <.icon name="hero-arrow-right" class="size-4" />
+              </.link>
+            </div>
           </dl>
 
           <section

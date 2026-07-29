@@ -6,10 +6,15 @@ defmodule Synapse.TurnsTest do
 
   test "submits a turn through the injected AppKit backend" do
     assert {:ok, result} =
-             Turns.submit_turn("run://durable/test-run", %{
-               "kind" => "user_input",
-               "input_summary" => "Continue"
-             })
+             Turns.submit_turn(
+               "run://durable/test-run",
+               %{
+                 "kind" => "user_input",
+                 "input_summary" => "Continue"
+               },
+               submission_token: "browser-turn-1",
+               cursor_ref: "cursor://durable/test-run/1"
+             )
 
     assert %CommandResult{} = result
     assert result.command_kind == :submit_turn
@@ -42,5 +47,21 @@ defmodule Synapse.TurnsTest do
   test "rejects unknown turn kinds without creating atoms" do
     assert {:error, :invalid_turn_kind} =
              Turns.submit_turn("run://durable/test-run", %{"kind" => "unknown_turn_kind"})
+  end
+
+  test "rejects malformed cursor and submission identities before AppKit dispatch" do
+    assert {:error, :invalid_turn_cursor_ref} =
+             Turns.submit_turn(
+               "run://durable/test-run",
+               %{"kind" => "user_input"},
+               cursor_ref: :not_a_ref
+             )
+
+    assert {:error, :invalid_turn_submission_token} =
+             Turns.submit_turn(
+               "run://durable/test-run",
+               %{"kind" => "user_input"},
+               submission_token: :not_a_token
+             )
   end
 end
