@@ -21,7 +21,7 @@ defmodule Synapse.ReviewsTest do
     assert review.approval_payload["reviewed_operation"]["relative_path"] == "RESULT.txt"
   end
 
-  test "records an allowed review decision through AppKit" do
+  test "binds an allowed decision to the exact owner-projected effect through AppKit" do
     payload = %{
       "effect_ref" => "effect://test/reviewed-file",
       "pinned_tool_manifest" => %{"manifest_ref" => "manifest://test/codex"},
@@ -38,7 +38,13 @@ defmodule Synapse.ReviewsTest do
     assert %ActionResult{} = result
     assert result.status == :completed
     assert result.metadata.decision == :accept
-    assert result.metadata.payload == payload
+    assert result.metadata.payload["effect_ref"] == payload["effect_ref"]
+
+    assert result.metadata.payload["pinned_tool_manifest"]["manifest_hash"] ==
+             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    assert result.metadata.payload["reviewed_operation"]["content_digest"] ==
+             "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   end
 
   test "rejects unknown decision without creating atoms" do
