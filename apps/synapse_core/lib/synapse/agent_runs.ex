@@ -35,7 +35,10 @@ defmodule Synapse.AgentRuns do
          {:ok, %RuntimeStateSnapshot{} = snapshot} <-
            HeadlessSurface.state_snapshot(context, %{}, runtime_opts),
          :ok <- durable_posture(snapshot.persistence_posture) do
-      {:ok, Enum.map(snapshot.rows, &list_view(&1, config))}
+      {:ok,
+       snapshot.rows
+       |> Enum.filter(&canonical_agent_run_row?/1)
+       |> Enum.map(&list_view(&1, config))}
     else
       {:ok, _other} -> {:error, :invalid_durable_run_snapshot}
       {:error, reason} -> {:error, reason}
@@ -236,6 +239,13 @@ defmodule Synapse.AgentRuns do
       control: control,
       control_state: control.state
     }
+  end
+
+  defp canonical_agent_run_row?(%RuntimeRow{extensions: extensions}) do
+    case extension(extensions, :agent_run_projection) do
+      %{} = projection -> map_value(projection, :canonical) == true
+      _other -> false
+    end
   end
 
   defp detail_view(snapshot, turns, events, cursor) do

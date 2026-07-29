@@ -46,7 +46,7 @@ defmodule Synapse.AgentRunsTest do
              )
   end
 
-  test "lists only rows returned by the durable AppKit snapshot" do
+  test "lists only canonical agent rows returned by the durable AppKit snapshot" do
     assert {:ok, [run]} = AgentRuns.list_runs()
 
     assert run.ref == "run://durable/test-run"

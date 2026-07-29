@@ -280,11 +280,17 @@ defmodule Synapse.Test.AppKitBackend do
   def state_snapshot(_context, _request, _opts) do
     {:ok, row} = runtime_row("run://durable/test-run")
 
+    generic_row = %{
+      row
+      | subject_ref: "subject://generic/work",
+        run_ref: "subject://generic/work"
+    }
+
     RuntimeStateSnapshot.new(%{
       tenant_ref: "tenant://default",
       installation_ref: "installation://default",
       generated_at: @timestamp,
-      rows: [row],
+      rows: [row, %{generic_row | extensions: %{}}],
       persistence_posture: PersistencePosture.durable(:runtime_projection)
     })
   end
@@ -388,6 +394,7 @@ defmodule Synapse.Test.AppKitBackend do
       updated_at: @timestamp,
       persistence_posture: PersistencePosture.durable(:runtime_projection),
       extensions: %{
+        agent_run_projection: %{canonical: true, owner_ref: "Test.AppKitBackend"},
         title: "Durable run #{run_token(run_ref)}",
         goal_summary: "Read from the durable AppKit projection",
         control: %{
