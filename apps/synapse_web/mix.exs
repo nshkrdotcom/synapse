@@ -56,7 +56,7 @@ defmodule SynapseWeb.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
-      {:synapse_core, in_umbrella: true},
+      {:synapse_core, path: "../synapse_core", env: Mix.env()},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"}
     ]
