@@ -1,34 +1,45 @@
 defmodule Synapse.CatalogTest do
   use ExUnit.Case, async: true
 
-  alias AppKit.ModelSurface.CatalogProjection
-  alias AppKit.SkillSurface.SkillProjection
+  alias AppKit.Core.ProductSurface.CapabilityProjection
   alias Synapse.Catalog
 
-  test "builds fixture-backed model and skill catalog projections" do
+  test "advertises only executable owner-projected capabilities" do
     catalog = Catalog.catalog()
 
-    assert catalog.status == :fixture_backed
-    assert %CatalogProjection{} = catalog.model_catalog
-    assert Enum.all?(catalog.skills, &match?(%SkillProjection{}, &1))
-    assert length(catalog.tool_grants) == 2
-    assert Enum.any?(catalog.tool_grants, &(&1.status == :denied))
+    assert catalog.status == :available
+    assert [%CapabilityProjection{} = capability] = catalog.capabilities
+    assert capability.capability_ref == "capability://model/gemini-completion"
+    assert catalog.hidden_count == 1
+
+    assert [entry] = catalog.entries
+    assert entry.status == :available
+    assert entry.operation_refs == ["operation-class://model/completion"]
   end
 
-  test "returns eligibility detail with budget and cost posture" do
-    assert {:ok, detail} = Catalog.get_eligibility("external-write-tool")
+  test "returns executable eligibility detail from the same projection" do
+    id = URI.encode_www_form("capability://model/gemini-completion")
+    assert {:ok, detail} = Catalog.get_eligibility(id)
 
-    assert detail.item.status == :denied
-    assert "effect_write_grant_missing" in detail.item.reason_codes
-    assert detail.budgets.denied_effect_budget.decision_class == :deny_policy
-    assert detail.costs.redaction_posture == "bounded_amount_classes_only"
+    assert detail.item.status == :available
+    assert detail.item.kind == :model
+    assert detail.item.health_ref == "health://model/gemini-completion/ready"
+    assert detail.item.projection == detail.projection
   end
 
-  test "keeps governed assignment disabled until the platform surface is proven" do
+  test "keeps unsupported assignment absent" do
     assert %{
-             status: :disabled,
-             reason: :governed_assignment_surface_not_proven
+             status: :unavailable,
+             reason: :not_supported
            } = Catalog.assignment_status()
+  end
+
+  test "fails closed when the executable product role is absent" do
+    stack = Synapse.Test.AppKitBackendStack.backend_stack()
+    missing = %{stack | backends: Map.delete(stack.backends, :product_surface_backend)}
+
+    assert %{status: :unavailable, entries: []} =
+             Catalog.catalog(app_kit_backend_stack: missing)
   end
 
   test "rejects raw catalog payloads" do

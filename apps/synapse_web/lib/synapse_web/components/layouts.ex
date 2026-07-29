@@ -51,22 +51,10 @@ defmodule SynapseWeb.Layouts do
             Memory
           </.link>
           <.link
-            navigate={~p"/tools"}
-            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
-          >
-            Tools
-          </.link>
-          <.link
             navigate={~p"/catalog"}
             class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
           >
             Catalog
-          </.link>
-          <.link
-            navigate={~p"/teams"}
-            class="rounded px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
-          >
-            Teams
           </.link>
           <.link
             navigate={~p"/evidence"}

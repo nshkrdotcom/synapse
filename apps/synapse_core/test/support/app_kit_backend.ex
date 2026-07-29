@@ -7,9 +7,194 @@ defmodule Synapse.Test.AppKitBackendStack do
       headless_backend: Synapse.Test.AppKitBackend,
       operator_backend: Synapse.Test.AppKitBackend,
       effect_surface_backend: Synapse.Test.EffectBackend,
-      review_backend: Synapse.Test.ReviewBackend
+      review_backend: Synapse.Test.ReviewBackend,
+      product_surface_backend: Synapse.Test.ProductSurfaceBackend,
+      runtime_backend: Synapse.Test.RuntimeBackend
     )
   end
+end
+
+defmodule Synapse.Test.ProductSurfaceBackend do
+  @moduledoc false
+  @behaviour AppKit.Core.Backends.ProductSurfaceBackend
+
+  alias AppKit.Core.PersistencePosture
+
+  @timestamp "2026-07-20T00:00:00Z"
+
+  @impl true
+  def run_projection(_context, run_ref, _opts) do
+    {:ok,
+     %{
+       run_ref: run_ref,
+       subject_ref: "subject://synapse/test-run",
+       workflow_ref: "workflow://synapse/test-run",
+       owner_projection_ref: "projection://mezzanine/run/test-run",
+       source_contract_ref: "contract://mezzanine/run-acceptance/v1",
+       state: :running,
+       updated_at: @timestamp,
+       cursor: cursor(run_ref),
+       control: %{
+         run_ref: run_ref,
+         owner_projection_ref: "projection://mezzanine/control/test-run",
+         source_contract_ref: "contract://mezzanine/recovery-control/v1",
+         row_version: 3,
+         state: :running,
+         available_actions: [:pause, :cancel, :supersede],
+         availability: :available
+       },
+       turns: [
+         %{
+           turn_ref: "turn://durable/test-run/1",
+           run_ref: run_ref,
+           owner_projection_ref: "projection://mezzanine/turn/test-run/1",
+           source_contract_ref: "contract://mezzanine/agent-turn/v1",
+           sequence: 1,
+           state: :completed,
+           input_ref: "artifact://synapse/turn/test-run/1/input",
+           output_artifact_ref: "artifact://synapse/turn/test-run/1/output",
+           event_refs: ["event://synapse/test-run/turn-completed"],
+           artifact_refs: ["artifact://synapse/turn/test-run/1/output"],
+           availability: :available
+         }
+       ],
+       events: [
+         %{
+           event_ref: "event://synapse/test-run/started",
+           ledger_ref: run_ref,
+           event_seq: 1,
+           event_kind: :run_started,
+           visibility: :product,
+           observed_at: @timestamp,
+           summary: "Run accepted by the durable owner"
+         }
+       ],
+       reviews: [
+         %{
+           review_ref: "review://synapse/test-run/effect",
+           effect_ref: "effect://synapse/test-run/write",
+           owner_projection_ref: "projection://mezzanine/review/test-run",
+           source_contract_ref: "contract://mezzanine/review-effect/v1",
+           status: :pending,
+           row_version: 1,
+           allowed_actions: [:approve, :reject, :amend],
+           availability: :available
+         }
+       ],
+       artifacts: [
+         %{
+           artifact_ref: "artifact://synapse/turn/test-run/1/output",
+           owner_projection_ref: "projection://mezzanine/artifact/test-run/1/output",
+           source_contract_ref: "contract://mezzanine/artifact/v1",
+           kind: :turn_output,
+           status: :retained,
+           retained?: true,
+           content_ref: "content://synapse/turn/test-run/1/output",
+           content_hash: "sha256:#{String.duplicate("c", 64)}",
+           retention_policy_ref: "policy://synapse/artifact/default",
+           evidence_refs: ["evidence://synapse/test-run/output"],
+           lineage_refs: ["turn://durable/test-run/1"],
+           availability: :available
+         }
+       ],
+       operations: [
+         %{
+           operation_ref: "operation://synapse/test-run/model/1",
+           run_ref: run_ref,
+           owner_projection_ref: "projection://mezzanine/operation/test-run/model/1",
+           source_contract_ref: "contract://mezzanine/operation/v1",
+           kind: :model_invocation,
+           state: :completed,
+           attempt_ref: "attempt://synapse/test-run/model/1",
+           turn_ref: "turn://durable/test-run/1",
+           receipt_ref: "receipt://synapse/test-run/model/1",
+           artifact_refs: ["artifact://synapse/turn/test-run/1/output"],
+           evidence_refs: ["evidence://synapse/test-run/model/1"],
+           availability: :available
+         }
+       ],
+       capabilities: capability_rows(),
+       persistence_posture: PersistencePosture.durable(:runtime_projection),
+       availability: :available
+     }}
+  end
+
+  @impl true
+  def capability_projections(_context, _request, _opts), do: {:ok, capability_rows()}
+
+  defp cursor(run_ref) do
+    %{
+      cursor_ref: "cursor://synapse/test-run/1",
+      ledger_ref: run_ref,
+      tenant_ref: "tenant://default",
+      actor_ref: "actor:synapse:operator",
+      last_seq_seen: 1,
+      visibility: :product
+    }
+  end
+
+  defp capability_rows do
+    [
+      %{
+        capability_ref: "capability://model/gemini-completion",
+        owner_projection_ref: "projection://runtime/capability/gemini-completion",
+        source_contract_ref: "contract://runtime/capability/v1",
+        producer_revision_ref: "revision://jido-integration/test",
+        contract_version: "1",
+        kind: :model,
+        configured_mode: :local_effect,
+        advertised?: true,
+        health_ref: "health://model/gemini-completion/ready",
+        operation_refs: ["operation-class://model/completion"],
+        scope_refs: ["scope://tenant/default"],
+        availability: :available
+      },
+      %{
+        capability_ref: "capability://execution/runtime-http",
+        owner_projection_ref: "projection://runtime/capability/runtime-http",
+        source_contract_ref: "contract://runtime/capability/v1",
+        producer_revision_ref: "revision://execution-plane/test",
+        contract_version: "1",
+        kind: :execution_lane,
+        configured_mode: :runtime_admitted,
+        advertised?: false,
+        operation_refs: [],
+        scope_refs: [],
+        availability: {:unavailable, :not_admitted}
+      }
+    ]
+  end
+end
+
+defmodule Synapse.Test.RuntimeBackend do
+  @moduledoc false
+  @behaviour AppKit.Core.Backends.RuntimeBackend
+
+  alias AppKit.Core.RuntimeSurface.RuntimeStatusSnapshot
+
+  @impl true
+  def runtime_status(context, _request, _opts) do
+    RuntimeStatusSnapshot.new(%{
+      tenant_ref: context.tenant_ref.id,
+      program_ref: "program://test/synapse",
+      health: %{
+        "app_kit_surfaces" => "available",
+        "durable_owner" => "available",
+        "trace_export_metrics_truth" => "separate_from_ops_health"
+      },
+      preflight: %{"trace_export_metrics_truth" => "not_used"},
+      metadata: %{"source" => "durable_test_backend"}
+    })
+  end
+
+  @impl true
+  def apply_runtime_profile(_context, _profile, _opts), do: {:error, :not_used}
+
+  @impl true
+  def runtime_logs(_context, _request, _opts), do: {:error, :not_used}
+
+  @impl true
+  def record_live_effect(_context, _attrs, _opts), do: {:error, :not_used}
 end
 
 defmodule Synapse.Test.AppKitBackend do

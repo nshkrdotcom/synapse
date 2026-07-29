@@ -49,6 +49,10 @@ defmodule Synapse.ProductBootstrap do
     memory_fragment_by_proof_token: 3,
     memory_fragment_provenance: 3
   ]
+  @product_surface_callbacks [
+    run_projection: 3,
+    capability_projections: 3
+  ]
 
   @spec ensure_bootstrapped(keyword() | map()) :: {:ok, map()} | {:error, term()}
   def ensure_bootstrapped(overrides \\ []) do
@@ -86,6 +90,21 @@ defmodule Synapse.ProductBootstrap do
   def durable_readback_options(overrides \\ []) do
     with {:ok, opts} <- agent_intake_options(overrides),
          :ok <- validate_role(opts, :headless_backend, @headless_callbacks) do
+      {:ok, opts}
+    end
+  end
+
+  @doc """
+  Returns options only when the coherent AppKit product projection is composed.
+
+  Product availability is still decided by the owner-backed projection call;
+  this check only proves that the executable AppKit role is present and
+  implements the current boundary contract.
+  """
+  @spec product_surface_options(keyword() | map()) :: {:ok, keyword()} | {:error, atom()}
+  def product_surface_options(overrides \\ []) do
+    with {:ok, opts} <- durable_readback_options(overrides),
+         :ok <- validate_role(opts, :product_surface_backend, @product_surface_callbacks) do
       {:ok, opts}
     end
   end

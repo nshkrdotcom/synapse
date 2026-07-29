@@ -1,58 +1,29 @@
 defmodule SynapseWeb.EvidenceLiveTest do
   use SynapseWeb.ConnCase, async: true
 
-  test "shows evidence list and replay links", %{conn: conn} do
+  test "shows durable owner evidence and artifacts", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/evidence")
 
-    assert has_element?(view, "#evidence-list", "evidence://synapse/run-start")
-    assert has_element?(view, "#evidence-list", "missing")
-    assert has_element?(view, "#replay-links", "trace://fixture/replay/phase-8")
+    assert has_element?(view, "#evidence-list", "evidence://synapse/test-run/output")
+    assert has_element?(view, "#evidence-list", "evidence://synapse/test-run/model/1")
+    assert has_element?(view, "#artifact-list", "artifact://synapse/turn/test-run/1/output")
   end
 
-  test "shows evidence detail and receipt summary", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/evidence/run-start")
+  test "shows operation evidence detail and exact receipt", %{conn: conn} do
+    id = URI.encode_www_form("evidence://synapse/test-run/model/1")
+    {:ok, view, _html} = live(conn, "/evidence/#{id}")
 
-    assert has_element?(view, "#evidence-detail", "run_start")
-    assert has_element?(view, "#receipt-summary", "receipt://synapse/run-start")
-    assert has_element?(view, "#replay-bundle", "diverged")
-  end
-
-  test "renders missing evidence explicitly", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/evidence/missing-live-receipt")
-
-    assert has_element?(view, "#missing-evidence", "live_backend_not_proven")
-  end
-
-  test "shows governed-effect evidence details", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/evidence/governed-effect-echo")
-
-    assert has_element?(view, "#evidence-detail", "governed_effect")
-
-    assert has_element?(
-             view,
-             "#governed-effect-evidence",
-             "effect://synapse/staged-live-diagnostic/echo"
-           )
-
-    assert has_element?(
-             view,
-             "#governed-effect-evidence",
-             "authority://synapse/effects/diagnostic"
-           )
-
-    assert has_element?(view, "#governed-effect-evidence", "receipt://synapse/effects/diagnostic")
-    assert has_element?(view, "#governed-effect-evidence", "sha256:synapse-diagnostic")
-    assert has_element?(view, "#governed-effect-diagnostic-result", "ok")
-    assert has_element?(view, "#governed-effect-evidence-timeline", "receipt_received")
-    assert has_element?(view, "#governed-effect-evidence-timeline", "completed")
+    assert has_element?(view, "#evidence-detail", "operation_evidence")
+    assert has_element?(view, "#receipt-summary", "receipt://synapse/test-run/model/1")
+    assert has_element?(view, "#evidence-lineage", "operation://synapse/test-run/model/1")
   end
 
   test "shows operations health without treating trace export as metrics truth", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/operations")
 
-    assert has_element?(view, "#operations-health", "AppKit surfaces")
+    assert has_element?(view, "#operations-health", "app kit surfaces")
     assert has_element?(view, "#operations-health", "separate_from_ops_health")
-    assert has_element?(view, "#aitrace-separation", "not_used")
-    assert has_element?(view, "#runtime-facts", "authorized")
+    assert has_element?(view, "#operation-list", "operation://synapse/test-run/model/1")
+    assert has_element?(view, "#runtime-facts", "separate_from_operations_health")
   end
 end
