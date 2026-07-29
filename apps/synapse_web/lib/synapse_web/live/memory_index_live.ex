@@ -63,8 +63,9 @@ defmodule SynapseWeb.MemoryIndexLive do
             <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th class="px-3 py-2">Memory</th>
-                <th class="px-3 py-2">State</th>
-                <th class="px-3 py-2">Policy</th>
+                <th class="px-3 py-2">Class / state</th>
+                <th class="px-3 py-2">Owner artifact</th>
+                <th class="px-3 py-2">Lifecycle</th>
                 <th class="px-3 py-2">Provenance</th>
               </tr>
             </thead>
@@ -79,9 +80,20 @@ defmodule SynapseWeb.MemoryIndexLive do
                   </.link>
                   <div class="text-xs text-slate-500">{memory.memory_ref}</div>
                 </td>
-                <td class="px-3 py-2 text-slate-700">{memory.state}</td>
-                <td class="px-3 py-2 text-slate-700">{memory.redaction_policy_ref}</td>
-                <td class="px-3 py-2 text-slate-500">{memory.provenance}</td>
+                <td class="px-3 py-2 text-slate-700">
+                  <div>{memory.memory_class}</div>
+                  <div class="text-xs text-slate-500">{memory.state}</div>
+                </td>
+                <td class="px-3 py-2 text-slate-700">
+                  <div class="break-all">{memory.content_artifact_ref || "not projected"}</div>
+                  <div class="mt-1 text-xs text-slate-500">{memory.redaction_policy_ref}</div>
+                </td>
+                <td class="px-3 py-2 text-slate-700">
+                  <div>retention: {memory.lifecycle.retention_state}</div>
+                  <div>deletion: {memory.lifecycle.deletion_state}</div>
+                  <div>index: {memory.lifecycle.reindex_state}</div>
+                </td>
+                <td class="px-3 py-2 text-slate-500">{memory.provenance_label}</td>
               </tr>
             </tbody>
           </table>
@@ -113,7 +125,14 @@ defmodule SynapseWeb.MemoryIndexLive do
                 </.link>
                 <div class="text-xs text-slate-500">{pack.context_hash}</div>
               </div>
-              <span class="text-sm text-slate-600">{pack.mode}</span>
+              <div class="text-right text-sm text-slate-600">
+                <div>{pack.mode}</div>
+                <div class="text-xs text-slate-500">
+                  working {length(pack.working_memory_refs)} · episodic {length(
+                    pack.episodic_memory_refs
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </section>

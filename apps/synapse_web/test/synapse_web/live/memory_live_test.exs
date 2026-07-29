@@ -6,6 +6,8 @@ defmodule SynapseWeb.MemoryLiveTest do
 
     assert has_element?(view, "#memory-index-list")
     assert has_element?(view, "#memory-index-stream", "Included project fact")
+    assert has_element?(view, "#memory-index-stream", "episodic")
+    assert has_element?(view, "#memory-index-stream", "retention: retained")
     assert has_element?(view, "#memory-index-stream", "degraded")
     assert has_element?(view, "#memory-feedback-status", "disabled")
     assert has_element?(view, "#context-pack-list", "proof-token://synapse/test-snapshot")
@@ -27,6 +29,20 @@ defmodule SynapseWeb.MemoryLiveTest do
              "OuterBrain.MemoryContextProvenance.v2"
            )
 
+    assert has_element?(
+             view,
+             "#memory-projection",
+             "artifact://synapse/memory/project-fact"
+           )
+
+    assert has_element?(
+             view,
+             "#memory-retrieval-snapshot",
+             "snapshot://synapse/test-snapshot/7"
+           )
+
+    assert has_element?(view, "#memory-lifecycle", "retained")
+    assert has_element?(view, "#memory-lifecycle", "indexed")
     assert has_element?(view, "#memory-reason-codes")
     assert has_element?(view, "#memory-feedback-form")
     assert has_element?(view, "#memory-feedback-form button[disabled]")
@@ -48,5 +64,8 @@ defmodule SynapseWeb.MemoryLiveTest do
     assert has_element?(view, "#context-revoked-items", "revoked")
     assert has_element?(view, "#context-candidate-items", "promotion_review_required")
     assert has_element?(view, "#context-degraded-items", "partitioned")
+    assert has_element?(view, "#context-memory-manifest", "memory://durable/candidate-learning")
+    assert has_element?(view, "#context-memory-manifest", "tombstoned")
+    assert has_element?(view, "#context-memory-manifest", "pending")
   end
 end

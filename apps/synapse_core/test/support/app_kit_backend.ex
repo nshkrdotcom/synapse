@@ -250,6 +250,25 @@ defmodule Synapse.Test.AppKitBackend do
   end
 
   defp fragment(proof_token_ref, token, staleness_class, cluster_status, metadata) do
+    metadata =
+      metadata
+      |> Map.merge(%{
+        "run_ref" => "run://durable/test-run",
+        "trace_id" => "trace://synapse/memory/test",
+        "retrieval_snapshot_ref" => "snapshot://synapse/test-snapshot/7",
+        "context_manifest_artifact_ref" => "artifact://synapse/context/test-snapshot",
+        "exclusion_refs" => ["memory://durable/excluded-secret"],
+        "content_artifact_ref" => "artifact://synapse/memory/#{token}",
+        "content_digest" => "sha256:#{String.duplicate("b", 64)}",
+        "recorded_at" => @timestamp,
+        "retention_state" => "retained",
+        "retention_policy_ref" => "policy://synapse/memory/default",
+        "deletion_state" => "active",
+        "reindex_state" => "indexed",
+        "index_revision" => 12
+      })
+      |> Map.merge(lifecycle_metadata(token))
+
     {:ok, projection} =
       MemoryFragmentProjection.new(%{
         fragment_ref: "memory://durable/#{token}",
@@ -268,15 +287,27 @@ defmodule Synapse.Test.AppKitBackend do
         cluster_invalidation_status: cluster_status,
         staleness_class: staleness_class,
         redaction_posture: "refs_only",
-        metadata:
-          Map.merge(metadata, %{
-            "run_ref" => "run://durable/test-run",
-            "trace_id" => "trace://synapse/memory/test"
-          })
+        metadata: metadata
       })
 
     projection
   end
+
+  defp lifecycle_metadata("stale-note"),
+    do: %{"reindex_state" => "pending", "reindex_reason" => "invalidation_pending"}
+
+  defp lifecycle_metadata("revoked-note"),
+    do: %{
+      "retention_state" => "deleted",
+      "deletion_state" => "tombstoned",
+      "deleted_at" => @timestamp,
+      "deletion_reason" => "owner_revoked"
+    }
+
+  defp lifecycle_metadata("partitioned-note"),
+    do: %{"deletion_state" => "unknown", "reindex_state" => "degraded"}
+
+  defp lifecycle_metadata(_token), do: %{}
 
   defp control_state(run_ref) do
     case run_token(run_ref) do
