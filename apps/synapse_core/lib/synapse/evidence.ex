@@ -1,292 +1,408 @@
 defmodule Synapse.Evidence do
   @moduledoc """
-  Product-safe evidence, receipt, replay, and operations projections.
+  Durable artifact, evidence, receipt, and operations readback through AppKit.
+
+  Synapse presents only refs and typed states from an AppKit-validated
+  `ProductSurface.RunProjection`. It does not invent evidence for a run event,
+  reconstruct receipts, or use replay fixtures when an owner projection is
+  absent.
   """
 
-  alias AppKit.Core.{
-    EvidenceProjection,
-    LowerReceiptSummary,
-    RuntimeEventSummary,
-    RuntimeFactsProjection
-  }
-
+  alias AppKit.Core.{EvidenceProjection, RuntimeEventSummary, RuntimeFactsProjection}
+  alias AppKit.Core.ProductSurface.{ArtifactProjection, OperationProjection, RunProjection}
   alias AppKit.Core.RuntimeSurface.RuntimeStatusSnapshot
-  alias AppKit.ReplaySurface
+  alias AppKit.{ProductSurface, RuntimeSurface}
+  alias Synapse.{AgentRuns, Config, PlatformContext, ProductBootstrap}
 
-  @evidence_items [
-    %{
-      id: "run-start",
-      evidence_ref: "evidence://synapse/run-start",
-      evidence_kind: "run_start",
-      status: "available",
-      content_ref: "content://synapse/evidence/run-start",
-      receipt_ref: "receipt://synapse/run-start",
-      run_ref: "run://fixture/phase-3"
-    },
-    %{
-      id: "review-decision",
-      evidence_ref: "evidence://synapse/review-decision",
-      evidence_kind: "review_decision",
-      status: "available",
-      content_ref: "content://synapse/evidence/review-decision",
-      receipt_ref: "receipt://synapse/review-decision",
-      run_ref: "run://fixture/phase-3"
-    },
-    %{
-      id: "missing-live-receipt",
-      evidence_ref: "evidence://synapse/missing-live-receipt",
-      evidence_kind: "live_effect",
-      status: "missing",
-      content_ref: nil,
-      receipt_ref: nil,
-      run_ref: "run://fixture/phase-3",
-      missing_reason: :live_backend_not_proven
-    }
-  ]
+  @spec snapshot(keyword()) :: map()
+  def snapshot(opts \\ []) when is_list(opts) do
+    case run_projections(opts) do
+      {:ok, projections} ->
+        %{
+          status: :available,
+          availability: available(),
+          evidence: evidence_items(projections),
+          artifacts: artifact_items(projections),
+          replay: unavailable_replay(),
+          source: "AppKit.ProductSurface"
+        }
+
+      {:error, reason} ->
+        %{
+          status: :unavailable,
+          availability: unavailable(reason),
+          evidence: [],
+          artifacts: [],
+          replay: unavailable_replay(),
+          source: "AppKit.ProductSurface"
+        }
+    end
+  end
 
   @spec list_evidence(keyword()) :: [map()]
-  def list_evidence(opts \\ []) do
-    opts
-    |> evidence_items()
-    |> Enum.map(&evidence_view!/1)
-  end
+  def list_evidence(opts \\ []) when is_list(opts), do: snapshot(opts).evidence
+
+  @spec list_artifacts(keyword()) :: [ArtifactProjection.t()]
+  def list_artifacts(opts \\ []) when is_list(opts), do: snapshot(opts).artifacts
 
   @spec get_evidence(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_evidence(id_or_ref, opts \\ []) when is_binary(id_or_ref) do
-    case Enum.find(evidence_items(opts), &(&1.id == id_or_ref or &1.evidence_ref == id_or_ref)) do
-      nil -> {:error, :evidence_not_found}
-      item -> {:ok, evidence_view!(item)}
+  def get_evidence(id_or_ref, opts \\ [])
+
+  def get_evidence(id_or_ref, opts) when is_binary(id_or_ref) and is_list(opts) do
+    surface = snapshot(opts)
+
+    case Enum.find(surface.evidence, &(&1.id == id_or_ref or &1.evidence_ref == id_or_ref)) do
+      nil ->
+        if surface.status == :available,
+          do: {:error, :evidence_not_found},
+          else: {:error, :evidence_surface_unavailable}
+
+      item ->
+        {:ok, item}
     end
   end
+
+  def get_evidence(_id_or_ref, _opts), do: {:error, :invalid_evidence_ref}
 
   @spec get_receipt(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def get_receipt(receipt_ref, opts \\ []) when is_binary(receipt_ref) do
-    case Enum.find(evidence_items(opts), &(&1.receipt_ref == receipt_ref)) do
+  def get_receipt(receipt_ref, opts \\ [])
+
+  def get_receipt(receipt_ref, opts) when is_binary(receipt_ref) and is_list(opts) do
+    with {:ok, projections} <- run_projections(opts),
+         %OperationProjection{} = operation <-
+           projections
+           |> Enum.flat_map(& &1.operations)
+           |> Enum.find(&(&1.receipt_ref == receipt_ref)) do
+      {:ok,
+       %{
+         id: route_id(receipt_ref),
+         receipt_ref: receipt_ref,
+         state: operation.state,
+         run_ref: operation.run_ref,
+         attempt_ref: operation.attempt_ref,
+         operation: operation
+       }}
+    else
       nil -> {:error, :receipt_not_found}
-      item -> {:ok, receipt_view!(item)}
+      {:error, reason} -> {:error, reason}
     end
   end
+
+  def get_receipt(_receipt_ref, _opts), do: {:error, :invalid_receipt_ref}
 
   @spec replay_bundle(keyword()) :: map()
-  def replay_bundle(_opts \\ []) do
-    {:ok, bundle} =
-      ReplaySurface.bundle_projection(%{
-        tenant_ref: "tenant://default",
-        authority_ref: "authority://synapse/default",
-        installation_ref: "installation://default",
-        idempotency_key: "synapse:replay:phase-8",
-        trace_ref: "replay-bundle://synapse/phase-8",
-        source_trace_ref: "trace://fixture/source/phase-3",
-        replay_trace_ref: "trace://fixture/replay/phase-8",
-        divergence_refs: ["replay-divergence://synapse/phase-8/memory"],
-        decision_class: :diverged,
-        cost_class: :replay,
-        operator_action: "review_required",
-        release_manifest_ref: "release://synapse/catalog"
-      })
-
-    {:ok, divergence} =
-      ReplaySurface.divergence_projection(%{
-        divergence_ref: "replay-divergence://synapse/phase-8/memory",
-        phase: :memory_access,
-        severity: :warn,
-        redacted_excerpt_class: "refs_only",
-        remediation_class: :review,
-        source_span_ref: "span://fixture/source/memory",
-        replay_span_ref: "span://fixture/replay/memory"
-      })
-
-    %{
-      status: :fixture_backed,
-      bundle: bundle,
-      divergences: [divergence],
-      replay_links: [
-        %{
-          label: "Source trace",
-          ref: bundle.source_trace_ref,
-          status: :fixture_backed
-        },
-        %{
-          label: "Replay trace",
-          ref: bundle.replay_trace_ref,
-          status: :fixture_backed
-        }
-      ]
-    }
-  end
+  def replay_bundle(_opts \\ []), do: unavailable_replay()
 
   @spec operations(keyword()) :: map()
-  def operations(_opts \\ []) do
-    {:ok, snapshot} =
-      RuntimeStatusSnapshot.new(%{
-        tenant_ref: "tenant://default",
-        program_ref: "program://synapse",
-        health: %{
-          appkit_surfaces: "ok",
-          projection_lag: "fixture",
-          lower_invocation_errors: "none_projected",
-          replay_export: "fixture_backed"
-        },
-        preflight: %{
-          evidence_readback: "fixture_backed",
-          trace_export_metrics_truth: "not_used"
-        },
-        metadata: %{source: "Synapse.Evidence"}
-      })
+  def operations(opts \\ []) when is_list(opts) do
+    case run_projections(opts) do
+      {:ok, projections} ->
+        {status, availability, runtime_status, health_rows} =
+          case runtime_status(opts) do
+            {:ok, runtime_status} ->
+              {:available, available(), runtime_status, health_rows(runtime_status)}
 
-    %{
-      status: :fixture_backed,
-      runtime_status: snapshot,
-      health_rows: [
-        %{id: "appkit-surfaces", label: "AppKit surfaces", state: :ok},
-        %{id: "projection-lag", label: "Projection lag", state: :fixture_backed},
-        %{id: "binding-lookup", label: "Binding lookup", state: :not_live},
-        %{id: "authority-latency", label: "Authority latency", state: :fixture_backed},
-        %{id: "lower-errors", label: "Lower invocation errors", state: :none_projected},
-        %{id: "trace-export", label: "Trace export", state: :separate_from_ops_health}
-      ]
-    }
-  end
+            {:error, _reason} ->
+              {:degraded, degraded_runtime_status(), nil, []}
+          end
 
-  @spec runtime_facts(keyword()) :: struct()
-  def runtime_facts(_opts \\ []) do
-    {:ok, event} =
-      RuntimeEventSummary.new(%{
-        event_kind: "projection_updated",
-        count: 2,
-        latest_event_ref: "event://synapse/projection-updated"
-      })
+        operations = Enum.flat_map(projections, & &1.operations)
 
-    {:ok, facts} =
-      RuntimeFactsProjection.new(%{
-        token_totals: %{state: "redacted"},
-        token_dedupe: %{state: "ok"},
-        rate_limit: %{state: "not_projected"},
-        retry_queue: [],
-        aitrace: %{export_state: "separate"},
-        prompt: %{state: "refs_only"},
-        semantic: %{state: "fixture_backed"},
-        authority: %{state: "authorized"},
-        events: [event],
-        metadata: %{source: "fixture"}
-      })
-
-    facts
-  end
-
-  defp evidence_view!(attrs) do
-    {:ok, projection} =
-      EvidenceProjection.new(%{
-        evidence_ref: attrs.evidence_ref,
-        evidence_kind: attrs.evidence_kind,
-        status: attrs.status,
-        content_ref: attrs.content_ref,
-        metadata: %{
-          run_ref: attrs.run_ref,
-          receipt_ref: attrs.receipt_ref,
-          missing_reason: Map.get(attrs, :missing_reason)
+        %{
+          status: status,
+          availability: availability,
+          runtime_status: runtime_status,
+          health_rows: health_rows,
+          operation_rows: operations,
+          operator_required:
+            Enum.filter(operations, &(&1.state in [:operator_required, :outcome_unknown])),
+          capabilities: Enum.flat_map(projections, & &1.capabilities),
+          source: "AppKit.ProductSurface"
         }
-      })
 
-    Map.put(attrs, :projection, projection)
-  end
-
-  defp receipt_view!(attrs) do
-    {:ok, receipt} =
-      LowerReceiptSummary.new(%{
-        receipt_ref: attrs.receipt_ref,
-        receipt_state: "recorded",
-        lower_receipt_ref: "lower-receipt://synapse/#{attrs.id}",
-        run_ref: attrs.run_ref,
-        attempt_ref: "attempt://synapse/#{attrs.id}",
-        execution_ref: %{
-          id: "execution://synapse/#{attrs.id}",
-          dispatch_state: :accepted
-        },
-        metadata: %{
-          "evidence_ref" => attrs.evidence_ref,
-          "trace_ref" => Map.get(attrs, :trace_ref),
-          "trace_summary_hash" => Map.get(attrs, :trace_summary_hash)
+      {:error, reason} ->
+        %{
+          status: :unavailable,
+          availability: unavailable(reason),
+          runtime_status: nil,
+          health_rows: [],
+          operation_rows: [],
+          operator_required: [],
+          capabilities: [],
+          source: "AppKit.ProductSurface"
         }
-      })
-
-    %{
-      id: attrs.id,
-      evidence_ref: attrs.evidence_ref,
-      receipt: receipt
-    }
-  end
-
-  defp evidence_items(opts) do
-    @evidence_items ++ governed_effect_items(Keyword.get(opts, :governed_effects, []))
-  end
-
-  defp governed_effect_items(effects) when is_list(effects) do
-    effects
-    |> Enum.map(&governed_effect_item/1)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp governed_effect_items(_effects), do: []
-
-  defp governed_effect_item(effect) when is_map(effect) do
-    effect_ref = map_value(effect, :effect_ref)
-    receipt_ref = map_value(effect, :receipt_ref)
-    evidence_refs = map_value(effect, :evidence_refs) || []
-
-    evidence_ref =
-      first_binary(evidence_refs) || "evidence://synapse/effects/#{effect_id(effect_ref)}"
-
-    %{
-      id: "governed-effect-#{effect_id(effect_ref)}",
-      evidence_ref: evidence_ref,
-      evidence_kind: "governed_effect",
-      status: if(is_binary(receipt_ref), do: "available", else: "missing"),
-      content_ref: map_value(effect, :content_ref),
-      effect_ref: effect_ref,
-      authority_ref: map_value(effect, :authority_ref),
-      receipt_ref: receipt_ref,
-      run_ref: map_value(effect, :run_ref) || "run://synapse/governed-effect",
-      trace_ref: map_value(effect, :trace_ref),
-      trace_summary_hash: map_value(effect, :trace_summary_hash),
-      lifecycle_entries: lifecycle_entries(effect),
-      diagnostic_result: diagnostic_result(effect)
-    }
-  end
-
-  defp governed_effect_item(_effect), do: nil
-
-  defp first_binary(values) when is_list(values), do: Enum.find(values, &is_binary/1)
-  defp first_binary(_values), do: nil
-
-  defp lifecycle_entries(effect) do
-    effect
-    |> map_value(:lifecycle_entries)
-    |> case do
-      entries when is_list(entries) -> entries
-      _other -> []
     end
   end
 
-  defp diagnostic_result(effect) do
-    metadata =
-      effect
-      |> map_value(:metadata)
+  @spec runtime_facts(keyword()) :: {:ok, RuntimeFactsProjection.t()} | {:error, term()}
+  def runtime_facts(opts \\ []) when is_list(opts) do
+    with {:ok, projections} <- run_projections(opts) do
+      events = projections |> Enum.flat_map(& &1.events) |> event_summaries()
+      operations = Enum.flat_map(projections, & &1.operations)
+
+      RuntimeFactsProjection.new(%{
+        token_totals: %{"state" => "not_projected"},
+        token_dedupe: %{"state" => "not_projected"},
+        rate_limit: %{"state" => "not_projected"},
+        retry_queue: [],
+        aitrace: %{"state" => "separate_from_operations_health"},
+        prompt: %{"state" => "refs_only"},
+        semantic: %{
+          "operation_count" => length(operations),
+          "outcome_unknown_count" => Enum.count(operations, &(&1.state == :outcome_unknown)),
+          "operator_required_count" => Enum.count(operations, &(&1.state == :operator_required))
+        },
+        authority: %{"state" => authority_state(projections)},
+        events: events,
+        metadata: %{
+          "source" => "AppKit.ProductSurface",
+          "durable_run_count" => length(projections)
+        }
+      })
+    end
+  end
+
+  @spec run_projections(keyword()) :: {:ok, [RunProjection.t()]} | {:error, term()}
+  def run_projections(opts \\ []) when is_list(opts) do
+    with {:ok, context, surface_opts} <- product_surface_context(opts),
+         {:ok, run_refs} <- run_refs(opts) do
+      Enum.reduce_while(run_refs, {:ok, []}, fn run_ref, {:ok, acc} ->
+        case safe_run_projection(context, run_ref, surface_opts) do
+          {:ok, %RunProjection{} = projection} ->
+            {:cont, {:ok, [projection | acc]}}
+
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+      end)
       |> case do
-        %{} = value -> value
-        _other -> %{}
+        {:ok, projections} ->
+          {:ok,
+           projections
+           |> Enum.reverse()
+           |> Enum.sort_by(&{updated_sort_key(&1.updated_at), &1.run_ref}, :desc)}
+
+        {:error, reason} ->
+          {:error, reason}
       end
-
-    Map.get(metadata, "diagnostic_result", Map.get(metadata, :diagnostic_result))
+    end
   end
 
-  defp effect_id(value) when is_binary(value) do
-    value
-    |> String.split("/", trim: true)
-    |> List.last()
+  defp product_surface_context(opts) do
+    config = Config.load(opts)
+
+    with {:ok, bootstrap} <-
+           ProductBootstrap.ensure_bootstrapped(Keyword.put(opts, :bootstrap_mode, :disabled)),
+         {:ok, surface_opts} <- ProductBootstrap.durable_readback_options(opts) do
+      context = PlatformContext.product_context(config, bootstrap.installation_ref, opts)
+      {:ok, context, surface_opts}
+    end
   end
 
-  defp effect_id(_value), do: "unknown"
+  defp run_refs(opts) do
+    case Keyword.get(opts, :run_ref) do
+      run_ref when is_binary(run_ref) and run_ref != "" ->
+        {:ok, [run_ref]}
 
-  defp map_value(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
+      nil ->
+        with {:ok, runs} <- AgentRuns.list_runs(opts) do
+          {:ok, Enum.map(runs, & &1.ref)}
+        end
+
+      _other ->
+        {:error, :invalid_run_ref}
+    end
+  end
+
+  defp runtime_status(opts) do
+    with {:ok, context, surface_opts} <- product_surface_context(opts) do
+      safe_runtime_status(context, surface_opts)
+    end
+  end
+
+  defp safe_run_projection(context, run_ref, surface_opts) do
+    ProductSurface.run_projection(context, run_ref, surface_opts)
+  rescue
+    _error -> {:error, :product_surface_backend_unavailable}
+  catch
+    _kind, _reason -> {:error, :product_surface_backend_unavailable}
+  end
+
+  defp safe_runtime_status(context, surface_opts) do
+    RuntimeSurface.runtime_status(context, %{}, surface_opts)
+  rescue
+    _error -> {:error, :runtime_surface_backend_unavailable}
+  catch
+    _kind, _reason -> {:error, :runtime_surface_backend_unavailable}
+  end
+
+  defp evidence_items(projections) do
+    artifact_evidence =
+      Enum.flat_map(projections, fn projection ->
+        Enum.flat_map(projection.artifacts, &artifact_evidence_items(&1, projection.run_ref))
+      end)
+
+    operation_evidence =
+      Enum.flat_map(projections, fn projection ->
+        Enum.flat_map(projection.operations, &operation_evidence_items/1)
+      end)
+
+    (artifact_evidence ++ operation_evidence)
+    |> Enum.uniq_by(& &1.evidence_ref)
+    |> Enum.sort_by(& &1.evidence_ref)
+  end
+
+  defp artifact_items(projections) do
+    projections
+    |> Enum.flat_map(& &1.artifacts)
+    |> Enum.uniq_by(& &1.artifact_ref)
+    |> Enum.sort_by(& &1.artifact_ref)
+  end
+
+  defp artifact_evidence_items(%ArtifactProjection{} = artifact, run_ref) do
+    Enum.map(artifact.evidence_refs, fn evidence_ref ->
+      evidence_item!(
+        evidence_ref,
+        "artifact_evidence",
+        evidence_status(artifact.availability.state),
+        artifact.content_ref,
+        %{
+          "artifact_ref" => artifact.artifact_ref,
+          "run_ref" => run_ref,
+          "source_contract_ref" => artifact.source_contract_ref
+        },
+        %{artifact_ref: artifact.artifact_ref, run_ref: run_ref, receipt_ref: nil}
+      )
+    end)
+  end
+
+  defp operation_evidence_items(%OperationProjection{} = operation) do
+    Enum.map(operation.evidence_refs, fn evidence_ref ->
+      evidence_item!(
+        evidence_ref,
+        "operation_evidence",
+        evidence_status(operation.availability.state),
+        nil,
+        %{
+          "operation_ref" => operation.operation_ref,
+          "run_ref" => operation.run_ref,
+          "receipt_ref" => operation.receipt_ref,
+          "source_contract_ref" => operation.source_contract_ref
+        },
+        %{
+          operation_ref: operation.operation_ref,
+          run_ref: operation.run_ref,
+          receipt_ref: operation.receipt_ref
+        }
+      )
+    end)
+  end
+
+  defp evidence_item!(evidence_ref, kind, status, content_ref, metadata, links) do
+    {:ok, projection} =
+      EvidenceProjection.new(%{
+        evidence_ref: evidence_ref,
+        evidence_kind: kind,
+        status: status,
+        content_ref: content_ref,
+        metadata: metadata
+      })
+
+    Map.merge(
+      %{
+        id: route_id(evidence_ref),
+        evidence_ref: evidence_ref,
+        evidence_kind: kind,
+        status: status,
+        content_ref: content_ref,
+        projection: projection
+      },
+      links
+    )
+  end
+
+  defp health_rows(%RuntimeStatusSnapshot{health: health}) do
+    health
+    |> Enum.map(fn {label, state} ->
+      label = to_string(label)
+
+      %{
+        id: route_id("health://app-kit/#{label}"),
+        label: String.replace(label, "_", " "),
+        state: state
+      }
+    end)
+    |> Enum.sort_by(& &1.label)
+  end
+
+  defp event_summaries(events) do
+    events
+    |> Enum.group_by(&to_string(&1.event_kind))
+    |> Enum.map(fn {event_kind, rows} ->
+      latest = Enum.max_by(rows, & &1.event_seq)
+
+      {:ok, summary} =
+        RuntimeEventSummary.new(%{
+          event_kind: event_kind,
+          count: length(rows),
+          latest_event_ref: latest.event_ref
+        })
+
+      summary
+    end)
+    |> Enum.sort_by(& &1.event_kind)
+  end
+
+  defp authority_state(projections) do
+    if Enum.any?(projections, fn projection ->
+         Enum.any?(projection.operations, &(&1.state == :waiting_review))
+       end) do
+      "review_required"
+    else
+      "not_projected"
+    end
+  end
+
+  defp evidence_status(:available), do: "available"
+  defp evidence_status(state), do: Atom.to_string(state)
+
+  defp unavailable_replay do
+    %{
+      status: :unavailable,
+      availability: availability({:unavailable, :not_supported}),
+      bundle: nil,
+      divergences: [],
+      replay_links: []
+    }
+  end
+
+  defp unavailable(reason) do
+    reason
+    |> unavailable_reason()
+    |> then(&availability({:unavailable, &1}))
+  end
+
+  defp unavailable_reason(reason)
+       when reason in [
+              :app_kit_backend_unavailable,
+              :app_kit_routing_unavailable,
+              :product_surface_backend_unavailable
+            ],
+       do: :not_configured
+
+  defp unavailable_reason(:not_supported), do: :not_supported
+  defp unavailable_reason(_reason), do: :owner_unavailable
+
+  defp available, do: availability(:available)
+  defp degraded_runtime_status, do: availability({:degraded, "reason://app-kit/runtime-status"})
+
+  defp availability(value) do
+    {:ok, availability} = AppKit.Core.ProductSurface.Availability.new(value)
+    availability
+  end
+
+  defp updated_sort_key(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp updated_sort_key(value), do: to_string(value)
+
+  defp route_id(ref), do: URI.encode_www_form(ref)
 end
