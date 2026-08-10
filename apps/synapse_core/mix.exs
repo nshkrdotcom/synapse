@@ -1,5 +1,11 @@
+unless Code.ensure_loaded?(DependencySources) do
+  Code.require_file("../../build_support/dependency_sources.exs", __DIR__)
+end
+
 defmodule Synapse.MixProject do
   use Mix.Project
+
+  @repo_root Path.expand("../..", __DIR__)
 
   def project do
     [
@@ -36,20 +42,20 @@ defmodule Synapse.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:app_kit_core, path: "../../../app_kit/core/app_kit_core"},
-      {:app_kit_budget_surface, path: "../../../app_kit/core/budget_surface"},
-      {:app_kit_context_budget_surface, path: "../../../app_kit/core/context_budget_surface"},
-      {:app_kit_coordination_surface, path: "../../../app_kit/core/coordination_surface"},
-      {:app_kit_cost_surface, path: "../../../app_kit/core/cost_surface"},
-      {:app_kit_hive_surface, path: "../../../app_kit/core/hive_surface"},
-      {:app_kit_memory_surface, path: "../../../app_kit/core/memory_surface"},
-      {:app_kit_model_surface, path: "../../../app_kit/core/model_surface"},
-      {:app_kit_operator_surface, path: "../../../app_kit/core/operator_surface"},
-      {:app_kit_replay_surface, path: "../../../app_kit/core/replay_surface"},
-      {:app_kit_review_surface, path: "../../../app_kit/core/review_surface", runtime: false},
-      {:app_kit_skill_surface, path: "../../../app_kit/core/skill_surface"},
+      DependencySources.dep(:app_kit_core, @repo_root),
+      DependencySources.dep(:app_kit_budget_surface, @repo_root),
+      DependencySources.dep(:app_kit_context_budget_surface, @repo_root),
+      DependencySources.dep(:app_kit_coordination_surface, @repo_root),
+      DependencySources.dep(:app_kit_cost_surface, @repo_root),
+      DependencySources.dep(:app_kit_hive_surface, @repo_root),
+      DependencySources.dep(:app_kit_memory_surface, @repo_root),
+      DependencySources.dep(:app_kit_model_surface, @repo_root),
+      DependencySources.dep(:app_kit_operator_surface, @repo_root),
+      DependencySources.dep(:app_kit_replay_surface, @repo_root),
+      DependencySources.dep(:app_kit_review_surface, @repo_root, runtime: false),
+      DependencySources.dep(:app_kit_skill_surface, @repo_root),
       {:dns_cluster, "~> 0.2.0"},
-      {:mezzanine_pack_model, path: "../../../mezzanine/core/pack_model"},
+      DependencySources.dep(:mezzanine_pack_model, @repo_root),
       {:phoenix_pubsub, "~> 2.1"}
     ]
   end
