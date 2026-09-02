@@ -1,3 +1,5 @@
+if bootstrap = System.get_env("MIX_WORKSPACE_OPS_BOOTSTRAP"), do: Code.require_file(bootstrap)
+
 defmodule Synapse.MixProject do
   use Mix.Project
 
@@ -64,7 +66,7 @@ defmodule Synapse.MixProject do
       {:nimble_options, "~> 1.0"},
 
       # AI Layer (optional, for altar_ai integration)
-      {:altar_ai, path: "../altar_ai", optional: true},
+      workspace_dep({:altar_ai, "~> 0.1.0", optional: true}),
       {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
       {:supertester, "~> 0.5.1", only: :test},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -131,5 +133,11 @@ defmodule Synapse.MixProject do
       ],
       assets: %{"assets" => "assets"}
     ]
+  end
+
+  defp workspace_dep(committed) do
+    if function_exported?(MixWorkspaceOpsBootstrap, :dep, 2),
+      do: apply(MixWorkspaceOpsBootstrap, :dep, [committed, __DIR__]),
+      else: committed
   end
 end
