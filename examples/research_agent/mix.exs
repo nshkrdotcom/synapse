@@ -29,14 +29,14 @@ defmodule ResearchAgent.MixProject do
       {:synapse, path: "../.."},
 
       # AI providers
-      {:claude_agent_sdk, "~> 0.6.4"},
-      {:gemini_ex, "~> 0.7.2"},
+      {:claude_agent_sdk, "~> 0.21.1"},
+      {:gemini_ex, "~> 0.18.0"},
 
       # HTTP client for web search/fetch
-      {:req, "~> 0.5"},
+      {:req, "~> 0.7.4"},
 
       # Testing
-      {:mox, "~> 1.1", only: :test}
+      {:mox, "~> 1.3.2", only: :test}
     ]
   end
 

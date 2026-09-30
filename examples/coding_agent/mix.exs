@@ -29,12 +29,12 @@ defmodule CodingAgent.MixProject do
       {:synapse, path: "../.."},
 
       # SDK dependencies
-      {:claude_agent_sdk, "~> 0.6.4"},
-      {:codex_sdk, "~> 0.2.1"},
-      {:gemini_ex, "~> 0.7.2"},
+      {:claude_agent_sdk, "~> 0.21.1"},
+      {:codex_sdk, "~> 0.21.3"},
+      {:gemini_ex, "~> 0.18.0"},
 
       # Testing
-      {:mox, "~> 1.1", only: :test}
+      {:mox, "~> 1.3.2", only: :test}
     ]
   end
 

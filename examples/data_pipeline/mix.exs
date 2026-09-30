@@ -29,13 +29,13 @@ defmodule DataPipeline.MixProject do
       {:synapse, path: "../.."},
 
       # AI providers
-      {:gemini_ex, "~> 0.7.2"},
+      {:gemini_ex, "~> 0.18.0"},
 
       # Utilities
-      {:jason, "~> 1.4"},
+      {:jason, "~> 1.4.5"},
 
       # Testing
-      {:mox, "~> 1.1", only: :test}
+      {:mox, "~> 1.3.2", only: :test}
     ]
   end
 

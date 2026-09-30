@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Compilation is blocked by current JidoSignal referencing `Zoi.Types.Default`, which is absent from the latest Zoi release.
+
+- Update dependency pins to current published releases and refresh resolved project lockfiles; use the 2026-09-29 CLI SDK release train.
+
 ### Added
 - `Synapse.DelegationRequest` struct for FlowStone delegation handoff
 - `Synapse.DelegationResult` struct for coordination results

@@ -29,28 +29,28 @@ defmodule ReviewBot.MixProject do
       {:synapse, path: "../.."},
 
       # Phoenix
-      {:phoenix, "~> 1.7.14"},
-      {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_view, "~> 0.20.17"},
-      {:phoenix_live_reload, "~> 1.5", only: :dev},
-      {:phoenix_ecto, "~> 4.6"},
+      {:phoenix, "~> 1.8.15"},
+      {:phoenix_html, "~> 4.3.0"},
+      {:phoenix_live_view, "~> 1.2.12"},
+      {:phoenix_live_reload, "~> 1.7.0", only: :dev},
+      {:phoenix_ecto, "~> 4.7.0"},
 
       # Database
-      {:ecto_sql, "~> 3.11"},
-      {:postgrex, "~> 0.17"},
+      {:ecto_sql, "~> 3.14.0"},
+      {:postgrex, "~> 0.22.4"},
 
       # Web server
-      {:bandit, "~> 1.5"},
+      {:bandit, "~> 1.12.5"},
 
       # JSON
-      {:jason, "~> 1.2"},
+      {:jason, "~> 1.4.5"},
 
       # AI Provider SDKs (optional)
-      {:req, "~> 0.5"},
+      {:req, "~> 0.7.4"},
 
       # Testing
-      {:mox, "~> 1.1", only: :test},
-      {:floki, "~> 0.36", only: :test}
+      {:mox, "~> 1.3.2", only: :test},
+      {:floki, "~> 0.38.4", only: :test}
     ]
   end
 

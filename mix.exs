@@ -51,26 +51,26 @@ defmodule Synapse.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:gettext, "~> 0.26"},
-      {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"},
-      {:ecto_sql, "~> 3.11"},
-      {:postgrex, "~> 0.17"},
-      {:jido, "~> 2.0.0-rc.1"},
-      {:jido_action, "~> 2.0.0-rc.1"},
-      {:jido_signal, "~> 2.0.0-rc.1"},
-      {:lineage_ir, "~> 0.1"},
-      {:nsai_work, "~> 0.1"},
-      {:req, "~> 0.5"},
-      {:nimble_options, "~> 1.0"},
+      {:gettext, "~> 1.0.2"},
+      {:jason, "~> 1.4.5"},
+      {:dns_cluster, "~> 0.3.0"},
+      {:bandit, "~> 1.12.5"},
+      {:ecto_sql, "~> 3.14.0"},
+      {:postgrex, "~> 0.22.4"},
+      {:jido, "~> 2.3.3"},
+      {:jido_action, "~> 2.3.2"},
+      {:jido_signal, "~> 2.3.0"},
+      {:lineage_ir, "~> 0.1.0"},
+      {:nsai_work, "~> 0.1.0"},
+      {:req, "~> 0.7.4"},
+      {:nimble_options, "~> 1.1.1"},
 
       # AI Layer (optional, for altar_ai integration)
       workspace_dep({:altar_ai, "~> 0.1.0", optional: true}),
-      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
-      {:supertester, "~> 0.5.1", only: :test},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.40.4", only: :dev, runtime: false},
+      {:supertester, "~> 0.6.0", only: :test},
+      {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false}
     ]
   end
 
